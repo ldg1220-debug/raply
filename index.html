@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Pump Pattern Scanner v0.3</title>
+<title>Pump Pattern Scanner v0.4</title>
 <style>
   :root {
     --bg: #0b0e14;
@@ -93,7 +93,7 @@
     width: 100%;
     border-collapse: collapse;
     font-size: 12px;
-    min-width: 1300px;
+    min-width: 1500px;
   }
   thead th {
     position: sticky;
@@ -315,8 +315,8 @@
 
 <header>
   <div>
-    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v0.3</span></h1>
-    <span class="sub">Binance Futures only · 중소CEX · CoinGecko · Funding 7d · 매집 120d+ · 계단식 우상향 스캔</span>
+    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v0.4</span></h1>
+    <span class="sub">15-Signal · OI 매집 · L/S 편향 · 펀딩 추세 · 베이시스 · BB 압축 · 거래량 디버전스 추가</span>
   </div>
   <div class="controls">
     <button id="watchBtn">★ Watchlist</button>
@@ -332,7 +332,7 @@
   <summary>탐지 시그널 및 점수 기준 (펼치기)</summary>
   <div style="color: var(--muted); font-size: 11px; line-height: 1.7; margin-top: 8px;">
     <b>Hard Exclude</b> — Binance Spot에 이미 상장 / 선물 상장 후 120일 미만 / ATH 대비 -90% 이하 / 90일 저점 대비 10배 이상 / circ&gt;70% / 24h 거래대금 &lt; $50k<br>
-    <b>가산 시그널 (합산 100점)</b> — 중소CEX 수, circulating&lt;30%, 60~90일 변동계수&lt;0.15, 14일 중 일 2~7% 상승일수, 양봉비율, 스무스니스, 펀딩 양수율, 펀딩 평균값
+    <b>가산 시그널 (15종, 합산 100점)</b> — 거래소 노출(8) · 유통률(10) · 가격 패턴 4종(22) · 펀딩 4종(23: 양수율·평균값·추세·베이시스) · 매집 3종(22: OI 추세·L/S 편향·시장가 매수우위) · 변동성 2종(15: BB 압축·거래량/변동폭 디버전스)
   </div>
 </details>
 
@@ -363,7 +363,7 @@
   </div>
   <div class="filter">
     <label>최소 점수</label>
-    <input type="number" id="f_minScore" step="1" value="30" />
+    <input type="number" id="f_minScore" step="1" value="50" />
   </div>
   <div class="filter">
     <label>CoinGecko 매칭</label>
@@ -390,8 +390,11 @@
       <th data-sort="athChange">ATH%</th>
       <th data-sort="funding">Fund% (8h)</th>
       <th data-sort="fundPosRatio">Fund7d+</th>
+      <th data-sort="basis">Basis%</th>
+      <th data-sort="oiTrendPct">OI Δ%</th>
+      <th data-sort="lsBiasDiff">L/S Bias</th>
+      <th data-sort="bbRatio">BB</th>
       <th data-sort="upRatio">Up Days</th>
-      <th data-sort="smooth">Smooth</th>
       <th data-sort="volume">Vol(M)</th>
       <th data-sort="oi">OI(M)</th>
       <th data-sort="score" class="sorted">Score ▼</th>
@@ -400,7 +403,7 @@
     </tr>
   </thead>
   <tbody id="resultBody">
-    <tr><td colspan="17" style="text-align:center; color:var(--muted); padding: 30px;">스캔 결과가 여기에 표시됩니다.</td></tr>
+    <tr><td colspan="20" style="text-align:center; color:var(--muted); padding: 30px;">스캔 결과가 여기에 표시됩니다.</td></tr>
   </tbody>
 </table>
 </div>
@@ -460,6 +463,8 @@ const Cache = {
 const TTL_6H = 6 * 3600 * 1000;
 const TTL_12H = 12 * 3600 * 1000;
 const TTL_24H = 24 * 3600 * 1000;
+const CACHE_TTL_CG = TTL_24H;
+const CACHE_TTL_CEX = TTL_24H;
 
 // ============================================================
 // SECTION 2: Utils
@@ -515,6 +520,10 @@ const Binance = {
   FUT_KLINE:  'https://fapi.binance.com/fapi/v1/klines',
   FUT_OI:     'https://fapi.binance.com/fapi/v1/openInterest',
   FUT_FUND:   'https://fapi.binance.com/fapi/v1/fundingRate',
+  FUT_OIHIST: 'https://fapi.binance.com/futures/data/openInterestHist',
+  FUT_LS_POS: 'https://fapi.binance.com/futures/data/topLongShortPositionRatio',
+  FUT_LS_ACC: 'https://fapi.binance.com/futures/data/globalLongShortAccountRatio',
+  FUT_TAKER:  'https://fapi.binance.com/futures/data/takerlongshortRatio',
 
   async loadUniverse() {
     const [spot, fut] = await Promise.all([
@@ -561,6 +570,26 @@ const Binance = {
     try {
       return await getJSON(`${this.FUT_FUND}?symbol=${symbol}&limit=${limit}`);
     } catch { return []; }
+  },
+  async loadOIHistory(symbol, period = '4h', limit = 84) {
+    try {
+      return await getJSON(`${this.FUT_OIHIST}?symbol=${symbol}&period=${period}&limit=${limit}`);
+    } catch { return []; }
+  },
+  async loadLSPosition(symbol, period = '4h', limit = 42) {
+    try {
+      return await getJSON(`${this.FUT_LS_POS}?symbol=${symbol}&period=${period}&limit=${limit}`);
+    } catch { return []; }
+  },
+  async loadLSAccount(symbol, period = '4h', limit = 42) {
+    try {
+      return await getJSON(`${this.FUT_LS_ACC}?symbol=${symbol}&period=${period}&limit=${limit}`);
+    } catch { return []; }
+  },
+  async loadTakerRatio(symbol, period = '4h', limit = 42) {
+    try {
+      return await getJSON(`${this.FUT_TAKER}?symbol=${symbol}&period=${period}&limit=${limit}`);
+    } catch { return []; }
   }
 };
 
@@ -576,7 +605,7 @@ const CexLoader = {
       const set = new Set((d.data || [])
         .filter(s => s.quoteCoin === 'USDT' && (s.status === 'online' || s.status === 'normal'))
         .map(s => s.baseCoin.toUpperCase()));
-      Cache.set('cex_bitget', [...set], TTL_12H);
+      Cache.set("cex_bitget", [...set], CACHE_TTL_CEX);
       return set;
     } catch (e) { log(`Bitget 로드 실패: ${e.message}`); return new Set(); }
   },
@@ -588,7 +617,7 @@ const CexLoader = {
       const set = new Set(d
         .filter(s => s.quote === 'USDT' && s.trade_status === 'tradable')
         .map(s => s.base.toUpperCase()));
-      Cache.set('cex_gate', [...set], TTL_12H);
+      Cache.set("cex_gate", [...set], CACHE_TTL_CEX);
       return set;
     } catch (e) { log(`Gate.io 로드 실패: ${e.message}`); return new Set(); }
   },
@@ -600,7 +629,7 @@ const CexLoader = {
       const set = new Set((d.symbols || [])
         .filter(s => s.quoteAsset === 'USDT' && (s.isSpotTradingAllowed === true || s.status === '1' || s.status === 'ENABLED'))
         .map(s => s.baseAsset.toUpperCase()));
-      Cache.set('cex_mexc', [...set], TTL_12H);
+      Cache.set("cex_mexc", [...set], CACHE_TTL_CEX);
       return set;
     } catch (e) { log(`MEXC 로드 실패: ${e.message}`); return new Set(); }
   },
@@ -612,7 +641,7 @@ const CexLoader = {
       const set = new Set((d.result?.list || [])
         .filter(s => s.quoteCoin === 'USDT' && s.status === 'Trading')
         .map(s => s.baseCoin.toUpperCase()));
-      Cache.set('cex_bybit', [...set], TTL_12H);
+      Cache.set("cex_bybit", [...set], CACHE_TTL_CEX);
       return set;
     } catch (e) { log(`Bybit 로드 실패: ${e.message}`); return new Set(); }
   },
@@ -651,8 +680,8 @@ const CoinGecko = {
         log(`CoinGecko page ${page} 실패: ${e.message}`);
       }
     }
-    if (all.length > 0) Cache.set(cacheKey, all, TTL_6H);
-    log(`CoinGecko 로드 완료: ${all.length}개 코인 (6시간 캐시)`);
+    if (all.length > 0) Cache.set(cacheKey, all, CACHE_TTL_CG);
+    log(`CoinGecko 로드 완료: ${all.length}개 코인 (24시간 캐시)`);
     return all;
   },
 
@@ -744,9 +773,51 @@ function analyzeKlines(klines) {
     cv90 = mean > 0 ? Math.sqrt(variance) / mean : null;
   }
 
+  // S12: Bollinger 압축 (14d cv vs 60d cv)
+  let bbRatio = null, bbScore = 0;
+  if (closes.length >= 60) {
+    const last14C = closes.slice(-14);
+    const last60C = closes.slice(-60);
+    const cvOf = (arr) => {
+      const m = arr.reduce((a, b) => a + b, 0) / arr.length;
+      if (m <= 0) return 0;
+      const v = arr.reduce((a, b) => a + (b - m) ** 2, 0) / arr.length;
+      return Math.sqrt(v) / m;
+    };
+    const cv14 = cvOf(last14C);
+    const cv60 = cvOf(last60C);
+    bbRatio = cv60 > 0 ? cv14 / cv60 : null;
+    if (bbRatio !== null) {
+      if (bbRatio < 0.5) bbScore = 8;
+      else if (bbRatio < 0.7) bbScore = 6;
+      else if (bbRatio < 0.85) bbScore = 4;
+      else if (bbRatio < 1.0) bbScore = 2;
+    }
+  }
+
+  // S13: 거래량/변동폭 디버전스 (14d vs 60d)
+  let volRatio = null, rangeRatio = null, divergenceScore = 0;
+  if (candles.length >= 60) {
+    const recent14 = candles.slice(-14);
+    const recent60 = candles.slice(-60);
+    const avgVol14 = recent14.reduce((a, c) => a + c.v, 0) / 14;
+    const avgVol60 = recent60.reduce((a, c) => a + c.v, 0) / 60;
+    const avgRng14 = recent14.reduce((a, c) => a + (c.c > 0 ? (c.h - c.l) / c.c : 0), 0) / 14;
+    const avgRng60 = recent60.reduce((a, c) => a + (c.c > 0 ? (c.h - c.l) / c.c : 0), 0) / 60;
+    volRatio = avgVol60 > 0 ? avgVol14 / avgVol60 : null;
+    rangeRatio = avgRng60 > 0 ? avgRng14 / avgRng60 : null;
+    if (volRatio !== null && rangeRatio !== null) {
+      if (volRatio > 1.3 && rangeRatio < 1.2) divergenceScore = 7;
+      else if (volRatio > 1.2 && rangeRatio < 1.3) divergenceScore = 5;
+      else if (volRatio > 1.0 && rangeRatio < 1.0) divergenceScore = 3;
+    }
+  }
+
   return {
     rise14, upRatio, smoothness, avgMove, maxMove,
     riseRangeDays, gainFromLow, cv90,
+    bbRatio, bbScore,
+    volRatio, rangeRatio, divergenceScore,
     closes14: rec14,
     candles14: candles.slice(-14),
     candlesAll: candles
@@ -771,6 +842,95 @@ function analyzeFunding(history) {
   };
 }
 
+// S7: 펀딩 추세 — 최근 7회 평균 vs 이전 14회 평균 + 분산 압축
+function analyzeFundingTrend(history) {
+  if (!history || history.length < 14) return { score: 0, diff: 0, recentAvg: 0, priorAvg: 0, stdRecent: 0, stdPrior: 0 };
+  const rates = history.map(h => parseFloat(h.fundingRate));
+  const recent = rates.slice(-7);
+  const prior = rates.slice(0, Math.max(0, rates.length - 7));
+  if (prior.length < 7) return { score: 0, diff: 0, recentAvg: 0, priorAvg: 0, stdRecent: 0, stdPrior: 0 };
+  const avgOf = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
+  const stdOf = arr => {
+    const m = avgOf(arr);
+    return Math.sqrt(arr.reduce((a, b) => a + (b - m) ** 2, 0) / arr.length);
+  };
+  const recentAvg = avgOf(recent), priorAvg = avgOf(prior);
+  const stdRecent = stdOf(recent), stdPrior = stdOf(prior);
+  const diff = recentAvg - priorAvg;
+  let score = 0;
+  if (diff > 0.00005) score += 3;             // 양수 추세 (recent - prior > 0.005%/8h)
+  if (stdPrior > 0 && stdRecent < stdPrior) score += 2; // 분산 압축 (인위적 통제)
+  return { score, diff, recentAvg, priorAvg, stdRecent, stdPrior };
+}
+
+// S8: 베이시스 — mark vs index 프리미엄
+function analyzeBasis(premium) {
+  if (!premium) return { basis: 0, score: 0 };
+  const mark = parseFloat(premium.markPrice);
+  const index = parseFloat(premium.indexPrice);
+  if (!mark || !index) return { basis: 0, score: 0 };
+  const basis = ((mark - index) / index) * 100;
+  let score = 0;
+  if (basis < 0) score = 0;
+  else if (basis < 0.1) score = 1;
+  else if (basis < 0.5) score = 2;
+  else if (basis < 1.0) score = 3;
+  else score = 4;
+  return { basis, score };
+}
+
+// S9: OI 매집 추세 — 현재 OI vs 14d 평균
+function analyzeOITrend(history) {
+  if (!history || history.length < 20) return { ratio: null, current: null, avg: null, score: 0 };
+  const ois = history.map(h => parseFloat(h.sumOpenInterestValue || h.sumOpenInterest || 0)).filter(v => v > 0);
+  if (ois.length < 20) return { ratio: null, current: null, avg: null, score: 0 };
+  const current = ois[ois.length - 1];
+  const avg = ois.reduce((a, b) => a + b, 0) / ois.length;
+  const ratio = avg > 0 ? current / avg : 1;
+  let score = 0;
+  if (ratio < 1.0) score = 0;
+  else if (ratio < 1.1) score = 2;
+  else if (ratio < 1.2) score = 4;
+  else if (ratio < 1.3) score = 6;
+  else if (ratio < 1.5) score = 8;
+  else score = 9;
+  return { ratio, current, avg, score };
+}
+
+// S10: Long/Short 편향 — Top Trader Position vs Global Account
+function analyzeLSBias(topPosHist, globalAccHist) {
+  if (!topPosHist?.length || !globalAccHist?.length) return { topLong: null, globalLong: null, diff: null, score: 0 };
+  const topLongs = topPosHist.map(h => parseFloat(h.longAccount)).filter(v => !isNaN(v));
+  const globalLongs = globalAccHist.map(h => parseFloat(h.longAccount)).filter(v => !isNaN(v));
+  if (topLongs.length === 0 || globalLongs.length === 0) return { topLong: null, globalLong: null, diff: null, score: 0 };
+  const topAvg = topLongs.reduce((a, b) => a + b, 0) / topLongs.length;
+  const globalAvg = globalLongs.reduce((a, b) => a + b, 0) / globalLongs.length;
+  const diff = (topAvg - globalAvg) * 100; // percentage points
+  let score = 0;
+  if (diff <= 0) score = 0;
+  else if (diff < 5) score = 2;
+  else if (diff < 10) score = 4;
+  else if (diff < 20) score = 6;
+  else if (diff < 30) score = 8;
+  else score = 9;
+  return { topLong: topAvg, globalLong: globalAvg, diff, score };
+}
+
+// S11: 시장가 매수 우위 — Taker Buy/Sell Ratio
+function analyzeTakerRatio(history) {
+  if (!history?.length) return { avg: null, score: 0 };
+  const ratios = history.map(h => parseFloat(h.buySellRatio)).filter(v => !isNaN(v) && v > 0);
+  if (ratios.length === 0) return { avg: null, score: 0 };
+  const avg = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+  let score = 0;
+  if (avg < 1.0) score = 0;
+  else if (avg < 1.05) score = 1;
+  else if (avg < 1.10) score = 2;
+  else if (avg < 1.20) score = 3;
+  else score = 4;
+  return { avg, score };
+}
+
 // ============================================================
 // SECTION 7: Scoring v2
 // ============================================================
@@ -786,68 +946,88 @@ function hardExclude(row, opt) {
 }
 
 function computeScore(row) {
-  let s = 0;
-  const breakdown = {};
+  const b = {};
 
-  // S2: small CEX coverage (max 15)
-  breakdown.S2 = Math.min(row.cexCount, 3) * 5;
-  s += breakdown.S2;
+  // S2: small CEX coverage (max 8) — 2 pts/CEX
+  b.S2 = Math.min(row.cexCount, 4) * 2;
 
-  // S3: circulating ratio (max 15)
+  // S3: circulating ratio (max 10)
   let s3 = 0;
   if (row.cg && row.cg.circMax !== null && row.cg.circMax !== undefined) {
     const r = row.cg.circMax;
-    if (r < 0.10) s3 = 15;
-    else if (r < 0.20) s3 = 10;
-    else if (r < 0.30) s3 = 6;
-    else if (r < 0.50) s3 = 2;
+    if (r < 0.10) s3 = 10;
+    else if (r < 0.20) s3 = 7;
+    else if (r < 0.30) s3 = 4;
+    else if (r < 0.50) s3 = 1;
   }
-  breakdown.S3 = s3; s += s3;
+  b.S3 = s3;
 
-  // S5c-1: long-range CV (max 10)
+  // S5c-1: long-range CV (max 5)
   let s5c1 = 0;
   if (row.cv90 !== null && row.cv90 !== undefined) {
-    if (row.cv90 < 0.10) s5c1 = 10;
-    else if (row.cv90 < 0.15) s5c1 = 6;
+    if (row.cv90 < 0.10) s5c1 = 5;
+    else if (row.cv90 < 0.15) s5c1 = 3;
   }
-  breakdown.S5c1 = s5c1; s += s5c1;
+  b.S5c1 = s5c1;
 
-  // S5c-2: rise range days (max 10)
-  const s5c2 = (row.riseRangeDays / 13) * 10;
-  breakdown.S5c2 = s5c2; s += s5c2;
+  // S5c-2: rise range days (max 6)
+  b.S5c2 = (row.riseRangeDays / 13) * 6;
 
-  // S5c-3: up ratio (max 10)
-  const s5c3 = Math.max(0, (row.upRatio - 0.5) * 20);
-  breakdown.S5c3 = s5c3; s += s5c3;
+  // S5c-3: up ratio (max 6)
+  b.S5c3 = Math.max(0, (row.upRatio - 0.5) * 12);
 
-  // S5c-4: smoothness (max 10)
-  const s5c4 = row.smoothness * 10;
-  breakdown.S5c4 = s5c4; s += s5c4;
+  // S5c-4: smoothness (max 5)
+  b.S5c4 = row.smoothness * 5;
 
-  // S6 continuity: positive funding ratio (max 10)
-  const s6cont = row.fundPosRatio * 10;
-  breakdown.S6cont = s6cont; s += s6cont;
+  // S6 continuity: positive funding ratio (max 7)
+  b.S6cont = row.fundPosRatio * 7;
 
-  // S6 size: avg funding magnitude (max 10), avg in %
+  // S6 size: avg funding magnitude (max 7), avg in %
   const af = row.avgFundingPct;
   let s6size = 0;
-  if (af >= 0.10) s6size = 10;
-  else if (af >= 0.05) s6size = 7;
-  else if (af >= 0.02) s6size = 4;
+  if (af >= 0.10) s6size = 7;
+  else if (af >= 0.05) s6size = 5;
+  else if (af >= 0.02) s6size = 3;
   else if (af > 0) s6size = 1;
-  breakdown.S6size = s6size; s += s6size;
+  b.S6size = s6size;
 
-  return { score: Math.min(Math.round(s), 100), breakdown };
+  // S7: 펀딩 추세 (max 5)
+  b.S7 = row.fundingTrend?.score || 0;
+
+  // S8: 베이시스 (max 4)
+  b.S8 = row.basisAnalysis?.score || 0;
+
+  // S9: OI 매집 추세 (max 9)
+  b.S9 = row.oiTrend?.score || 0;
+
+  // S10: L/S 편향 (max 9)
+  b.S10 = row.lsBias?.score || 0;
+
+  // S11: Taker Buy/Sell (max 4)
+  b.S11 = row.takerRatio?.score || 0;
+
+  // S12: BB 압축 (max 8)
+  b.S12 = row.bbScore || 0;
+
+  // S13: 거래량/변동폭 디버전스 (max 7)
+  b.S13 = row.divergenceScore || 0;
+
+  const total = Object.values(b).reduce((a, x) => a + x, 0);
+  return { score: Math.min(Math.round(total), 100), breakdown: b };
 }
 
 function signalChips(row) {
+  const oiR = row.oiTrend?.ratio;
+  const lsD = row.lsBias?.diff;
   const items = [
-    { key: 'P', pass: true, title: 'Binance 선물전용 ✓' },
+    { key: 'P', pass: true, title: 'Binance 선물전용' },
     { key: 'A', pass: row.ageDays !== null && row.ageDays >= 120, title: `상장 ${row.ageDays || '?'}일 (매집 기간)` },
-    { key: 'S', pass: row.cexCount > 0, title: `중소CEX ${row.cexCount}/4곳 상장` },
+    { key: 'S', pass: row.cexCount > 0, title: `중소CEX ${row.cexCount}/4곳` },
     { key: 'U', pass: row.cg && row.cg.circMax !== null && row.cg.circMax < 0.30, title: `유통률 ${row.cg && row.cg.circMax !== null ? (row.cg.circMax * 100).toFixed(0) + '%' : '?'}` },
     { key: 'F', pass: row.fundPosRatio >= 0.70, title: `펀딩 양수율 ${(row.fundPosRatio * 100).toFixed(0)}% / 평균 ${row.avgFundingPct.toFixed(3)}%` },
-    { key: 'T', pass: row.smoothness >= 0.4 && row.upRatio >= 0.6, title: `스무스 ${(row.smoothness * 100).toFixed(0)} · 양봉 ${(row.upRatio * 100).toFixed(0)}%` }
+    { key: 'O', pass: oiR !== null && oiR !== undefined && oiR >= 1.2, title: `OI 추세 ${oiR !== null && oiR !== undefined ? ((oiR - 1) * 100).toFixed(0) + '%' : '?'}` },
+    { key: 'L', pass: lsD !== null && lsD !== undefined && lsD >= 10, title: `L/S 편향 ${lsD !== null && lsD !== undefined ? '+' + lsD.toFixed(1) + 'pp' : '?'}` },
+    { key: 'T', pass: row.smoothness >= 0.4 && row.upRatio >= 0.6 && (row.bbRatio !== null && row.bbRatio < 0.85), title: `스무스 ${(row.smoothness * 100).toFixed(0)} · 양봉 ${(row.upRatio * 100).toFixed(0)}% · BB ${row.bbRatio !== null && row.bbRatio !== undefined ? row.bbRatio.toFixed(2) : '?'}` }
   ];
   return items.map(c =>
     `<span class="chip ${c.pass ? 'chip-pass' : 'chip-fail'}" title="${c.title}">${c.key}</span>`
@@ -945,7 +1125,7 @@ async function runScan() {
 
     // Phase 3: Per-symbol detailed fetch + analysis
     const rows = [];
-    const CONCURRENCY = 6;
+    const CONCURRENCY = 8;
     let idx = 0, done = 0;
 
     async function worker() {
@@ -953,10 +1133,14 @@ async function runScan() {
         const i = idx++;
         const item = pre[i];
         try {
-          const [klines, oi, fundHist] = await Promise.all([
+          const [klines, oi, fundHist, oiHist, lsPos, lsAcc, takerHist] = await Promise.all([
             Binance.loadKlines(item.candidate.symbol, 100),
             Binance.loadOI(item.candidate.symbol),
-            Binance.loadFundingHistory(item.candidate.symbol, 21)
+            Binance.loadFundingHistory(item.candidate.symbol, 21),
+            Binance.loadOIHistory(item.candidate.symbol),
+            Binance.loadLSPosition(item.candidate.symbol),
+            Binance.loadLSAccount(item.candidate.symbol),
+            Binance.loadTakerRatio(item.candidate.symbol)
           ]);
           const a = analyzeKlines(klines);
           if (!a) continue;
@@ -965,6 +1149,12 @@ async function runScan() {
           if (a.rise14 < opt.minRise14) continue;
 
           const fundAnalysis = analyzeFunding(fundHist);
+          const fundingTrend = analyzeFundingTrend(fundHist);
+          const basisAnalysis = analyzeBasis(item.p);
+          const oiTrend = analyzeOITrend(oiHist);
+          const lsBias = analyzeLSBias(lsPos, lsAcc);
+          const takerRatio = analyzeTakerRatio(takerHist);
+
           const cg = useCG ? CoinGecko.lookup(cgMap, item.candidate.base) : null;
           const price = parseFloat(item.p.markPrice) || parseFloat(item.t.lastPrice);
           const fundingPct = item.fundingRaw * 100;
@@ -994,18 +1184,33 @@ async function runScan() {
             smoothness: a.smoothness,
             riseRangeDays: a.riseRangeDays,
             cv90: a.cv90,
+            bbRatio: a.bbRatio,
+            bbScore: a.bbScore,
+            volRatio: a.volRatio,
+            rangeRatio: a.rangeRatio,
+            divergenceScore: a.divergenceScore,
             volume: item.vol,
             oi: oi * price,
             gainFromLow: a.gainFromLow,
             cex,
             cexCount,
             cg,
+            // new analysis
+            fundingTrend,
+            basisAnalysis,
+            basis: basisAnalysis.basis,
+            oiTrend,
+            oiTrendPct: oiTrend.ratio !== null ? (oiTrend.ratio - 1) * 100 : null,
+            lsBias,
+            lsBiasDiff: lsBias.diff,
+            takerRatio,
             // for modal
             closes14: a.closes14,
             candles14: a.candles14,
             fundHistory: fundAnalysis.history,
             fundRates: fundAnalysis.rates,
-            // computed
+            oiHistRaw: oiHist,
+            // computed for sort
             circRatio: cg && cg.circMax !== null ? cg.circMax * 100 : null,
             athChange: cg && cg.athChangePct !== null ? cg.athChangePct : null
           };
@@ -1065,7 +1270,7 @@ function render() {
   });
 
   if (rows.length === 0) {
-    bodyEl.innerHTML = `<tr><td colspan="17" style="text-align:center; color:var(--muted); padding: 30px;">${state.showingWatch ? '워치리스트가 비어있거나 조건에 맞는 종목이 없습니다.' : '조건에 맞는 종목이 없습니다.'}</td></tr>`;
+    bodyEl.innerHTML = `<tr><td colspan="20" style="text-align:center; color:var(--muted); padding: 30px;">${state.showingWatch ? '워치리스트가 비어있거나 조건에 맞는 종목이 없습니다.' : '조건에 맞는 종목이 없습니다.'}</td></tr>`;
     return;
   }
 
@@ -1077,6 +1282,9 @@ function render() {
     else if (r.avgFundingPct >= 0.05) hotBadges.push('<span class="badge hot">↑</span>');
     const watched = state.watchlist.includes(r.symbol);
 
+    const oiPct = r.oiTrendPct;
+    const lsD = r.lsBiasDiff;
+    const bbR = r.bbRatio;
     return `
       <tr class="${rowCls}" data-sym="${r.symbol}">
         <td class="sym">${signalChips(r)} ${r.symbol}${hotBadges.join('')}</td>
@@ -1089,8 +1297,11 @@ function render() {
         <td>${r.athChange !== null ? fmtPct(r.athChange, 0) : '<span class="muted">?</span>'}</td>
         <td>${fmtPct(r.funding, 4)}</td>
         <td>${(r.fundPosRatio * 100).toFixed(0)}% <span class="muted" style="font-size:10px;">${r.avgFundingPct.toFixed(3)}</span></td>
+        <td>${r.basis !== null && r.basis !== undefined ? fmtPct(r.basis, 2) : '<span class="muted">?</span>'}</td>
+        <td>${oiPct !== null && oiPct !== undefined ? fmtPct(oiPct, 0) : '<span class="muted">?</span>'}</td>
+        <td>${lsD !== null && lsD !== undefined ? `<span class="${lsD >= 10 ? 'pos' : (lsD < 0 ? 'neg' : '')}">${lsD >= 0 ? '+' : ''}${lsD.toFixed(1)}</span>` : '<span class="muted">?</span>'}</td>
+        <td>${bbR !== null && bbR !== undefined ? `<span class="${bbR < 0.7 ? 'pos' : ''}">${bbR.toFixed(2)}</span>` : '<span class="muted">?</span>'}</td>
         <td>${(r.upRatio * 100).toFixed(0)}%</td>
-        <td>${(r.smoothness * 100).toFixed(0)}</td>
         <td>${fmtM(r.volume)}</td>
         <td>${fmtM(r.oi)}</td>
         <td><span class="score ${scoreCls}">${r.score}</span></td>
@@ -1240,7 +1451,9 @@ function renderSignalsTab(r) {
   const colors = {
     S2: '#60a5fa', S3: '#a78bfa',
     S5c1: '#4ade80', S5c2: '#4ade80', S5c3: '#4ade80', S5c4: '#4ade80',
-    S6cont: '#fbbf24', S6size: '#fbbf24'
+    S6cont: '#fbbf24', S6size: '#fbbf24', S7: '#fbbf24', S8: '#fbbf24',
+    S9: '#f87171', S10: '#f87171', S11: '#f87171',
+    S12: '#a78bfa', S13: '#a78bfa'
   };
   const labels = {
     S2: '중소CEX 노출 (S2)',
@@ -1250,31 +1463,60 @@ function renderSignalsTab(r) {
     S5c3: '양봉 비율 (S5c-3)',
     S5c4: '스무스니스 (S5c-4)',
     S6cont: '펀딩 양수 지속성 (S6)',
-    S6size: '펀딩 평균 크기 (S6)'
+    S6size: '펀딩 평균 크기 (S6)',
+    S7: '펀딩 추세 (S7)',
+    S8: '현·선물 베이시스 (S8)',
+    S9: 'OI 매집 추세 (S9)',
+    S10: 'Long/Short 편향 (S10)',
+    S11: '시장가 매수 우위 (S11)',
+    S12: '변동성 압축 BB (S12)',
+    S13: '거래량/변동폭 디버전스 (S13)'
+  };
+  const max = {
+    S2: 8, S3: 10, S5c1: 5, S5c2: 6, S5c3: 6, S5c4: 5,
+    S6cont: 7, S6size: 7, S7: 5, S8: 4,
+    S9: 9, S10: 9, S11: 4, S12: 8, S13: 7
   };
   const totalRaw = Object.values(b).reduce((a, x) => a + x, 0);
   const segments = Object.entries(b).map(([k, v]) =>
     `<span style="background:${colors[k] || '#888'}; width:${Math.max((v / Math.max(totalRaw, 1)) * 100, 0).toFixed(2)}%;" title="${labels[k]}: ${v.toFixed(1)}"></span>`
   ).join('');
-  const rows = Object.entries(b).map(([k, v]) =>
-    `<tr><td>${labels[k] || k}</td><td style="text-align:right;"><b>${v.toFixed(1)}</b></td></tr>`
-  ).join('');
+  const rows = Object.entries(b).map(([k, v]) => {
+    const m = max[k] || 0;
+    const ratio = m > 0 ? (v / m * 100).toFixed(0) : 0;
+    const cls = v >= m * 0.7 ? 'pos' : (v >= m * 0.4 ? 'warn' : 'muted');
+    return `<tr>
+      <td>${labels[k] || k}</td>
+      <td style="text-align:right;"><b class="${cls}">${v.toFixed(1)}</b><span class="muted" style="font-size:10px;"> / ${m}</span></td>
+      <td style="text-align:right;" class="muted">${ratio}%</td>
+    </tr>`;
+  }).join('');
   return `
     <div class="chart-block">
-      <h3>점수 분해 (총 ${r.score}점)</h3>
+      <h3>점수 분해 (총 ${r.score}/100점)</h3>
       <div class="signal-bar">${segments}</div>
       <table class="ex-table" style="margin-top:10px;">
-        <thead><tr><th>시그널</th><th style="text-align:right;">점수</th></tr></thead>
+        <thead><tr><th>시그널</th><th style="text-align:right;">점수</th><th style="text-align:right;">달성률</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
     <div class="chart-block">
-      <h3>주요 지표</h3>
+      <h3>주요 지표 (Raw)</h3>
       <div class="stat-grid">
-        <div class="stat-card"><div class="stat-label">CV 90d</div><div class="stat-value">${r.cv90 !== null ? r.cv90.toFixed(3) : '-'}</div></div>
+        <div class="stat-card"><div class="stat-label">CV 90d</div><div class="stat-value">${r.cv90 !== null && r.cv90 !== undefined ? r.cv90.toFixed(3) : '-'}</div></div>
         <div class="stat-card"><div class="stat-label">2~7% 상승일</div><div class="stat-value">${r.riseRangeDays}/13</div></div>
         <div class="stat-card"><div class="stat-label">양봉 비율</div><div class="stat-value">${(r.upRatio * 100).toFixed(0)}%</div></div>
         <div class="stat-card"><div class="stat-label">스무스니스</div><div class="stat-value">${(r.smoothness * 100).toFixed(0)}</div></div>
+        <div class="stat-card"><div class="stat-label">BB 압축비 (14d/60d)</div><div class="stat-value">${r.bbRatio !== null && r.bbRatio !== undefined ? r.bbRatio.toFixed(2) : '-'}</div></div>
+        <div class="stat-card"><div class="stat-label">거래량 14d/60d</div><div class="stat-value">${r.volRatio !== null && r.volRatio !== undefined ? r.volRatio.toFixed(2) + 'x' : '-'}</div></div>
+        <div class="stat-card"><div class="stat-label">변동폭 14d/60d</div><div class="stat-value">${r.rangeRatio !== null && r.rangeRatio !== undefined ? r.rangeRatio.toFixed(2) + 'x' : '-'}</div></div>
+        <div class="stat-card"><div class="stat-label">OI 추세 (vs 14d 평균)</div><div class="stat-value">${r.oiTrendPct !== null && r.oiTrendPct !== undefined ? (r.oiTrendPct >= 0 ? '+' : '') + r.oiTrendPct.toFixed(0) + '%' : '-'}</div></div>
+        <div class="stat-card"><div class="stat-label">Top 트레이더 롱%</div><div class="stat-value">${r.lsBias?.topLong ? (r.lsBias.topLong * 100).toFixed(0) + '%' : '-'}</div></div>
+        <div class="stat-card"><div class="stat-label">전체 계정 롱%</div><div class="stat-value">${r.lsBias?.globalLong ? (r.lsBias.globalLong * 100).toFixed(0) + '%' : '-'}</div></div>
+        <div class="stat-card"><div class="stat-label">L/S 편향 (pp)</div><div class="stat-value">${r.lsBiasDiff !== null && r.lsBiasDiff !== undefined ? (r.lsBiasDiff >= 0 ? '+' : '') + r.lsBiasDiff.toFixed(1) : '-'}</div></div>
+        <div class="stat-card"><div class="stat-label">Taker B/S (7d)</div><div class="stat-value">${r.takerRatio?.avg ? r.takerRatio.avg.toFixed(2) : '-'}</div></div>
+        <div class="stat-card"><div class="stat-label">베이시스</div><div class="stat-value">${r.basis !== null && r.basis !== undefined ? (r.basis >= 0 ? '+' : '') + r.basis.toFixed(2) + '%' : '-'}</div></div>
+        <div class="stat-card"><div class="stat-label">펀딩 추세 Δ</div><div class="stat-value">${r.fundingTrend?.diff !== null && r.fundingTrend?.diff !== undefined ? (r.fundingTrend.diff * 100).toFixed(4) + '%' : '-'}</div></div>
         <div class="stat-card"><div class="stat-label">90d 저점 대비</div><div class="stat-value">${r.gainFromLow.toFixed(2)}x</div></div>
         <div class="stat-card"><div class="stat-label">CEX 상장 수</div><div class="stat-value">${r.cexCount}/4</div></div>
       </div>
