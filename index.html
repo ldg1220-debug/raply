@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Pump Pattern Scanner</title>
+<title>Pump Pattern Scanner v0.3</title>
 <style>
   :root {
     --bg: #0b0e14;
@@ -16,6 +16,7 @@
     --danger: #f87171;
     --warn: #fbbf24;
     --info: #60a5fa;
+    --purple: #a78bfa;
   }
   * { box-sizing: border-box; }
   body {
@@ -37,6 +38,14 @@
   }
   header h1 { margin: 0; font-size: 16px; font-weight: 600; }
   header .sub { color: var(--muted); font-size: 11px; margin-left: 8px; }
+  .warning-bar {
+    background: rgba(251,191,36,.08);
+    border-bottom: 1px solid rgba(251,191,36,.3);
+    padding: 8px 20px;
+    color: var(--warn);
+    font-size: 11px;
+    line-height: 1.5;
+  }
   .controls {
     display: flex;
     gap: 8px;
@@ -51,6 +60,7 @@
     padding: 6px 10px;
     font-size: 12px;
     cursor: pointer;
+    font-family: inherit;
   }
   button:hover { border-color: var(--info); }
   button.primary { background: var(--info); color: #031; border-color: var(--info); font-weight: 600; }
@@ -60,17 +70,13 @@
     background: var(--panel);
     border-bottom: 1px solid var(--border);
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
     gap: 10px;
   }
-  .filter {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
+  .filter { display: flex; flex-direction: column; gap: 4px; }
   .filter label {
     color: var(--muted);
-    font-size: 11px;
+    font-size: 10px;
     text-transform: uppercase;
     letter-spacing: .5px;
   }
@@ -82,10 +88,12 @@
     background: var(--panel);
     border-bottom: 1px solid var(--border);
   }
+  .table-wrap { overflow-x: auto; }
   table {
     width: 100%;
     border-collapse: collapse;
     font-size: 12px;
+    min-width: 1300px;
   }
   thead th {
     position: sticky;
@@ -93,35 +101,42 @@
     background: var(--panel-2);
     color: var(--muted);
     text-align: right;
-    padding: 8px 10px;
+    padding: 8px 8px;
     border-bottom: 1px solid var(--border);
     font-weight: 500;
     cursor: pointer;
     user-select: none;
     white-space: nowrap;
+    font-size: 11px;
   }
   thead th:first-child, tbody td:first-child { text-align: left; }
   thead th.sorted { color: var(--info); }
   tbody td {
-    padding: 6px 10px;
+    padding: 6px 8px;
     border-bottom: 1px solid var(--border);
     text-align: right;
     white-space: nowrap;
   }
+  tbody tr {
+    cursor: pointer;
+  }
   tbody tr:hover { background: var(--panel-2); }
+  tbody tr.score-high { background: rgba(74,222,128,.04); }
+  tbody tr.score-high:hover { background: rgba(74,222,128,.08); }
   .sym { font-weight: 600; }
   .pos { color: var(--accent); }
   .neg { color: var(--danger); }
   .warn { color: var(--warn); }
+  .muted { color: var(--muted); }
   .badge {
     display: inline-block;
-    padding: 1px 6px;
-    border-radius: 10px;
-    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 8px;
+    font-size: 9px;
     background: var(--panel-2);
     border: 1px solid var(--border);
     color: var(--muted);
-    margin-left: 4px;
+    margin-left: 3px;
   }
   .badge.hot { background: rgba(251,191,36,.15); color: var(--warn); border-color: var(--warn); }
   .badge.fire { background: rgba(248,113,113,.15); color: var(--danger); border-color: var(--danger); }
@@ -131,16 +146,39 @@
     border-radius: 4px;
     background: var(--panel-2);
   }
+  .score.s-elite { background: rgba(167,139,250,.18); color: var(--purple); border: 1px solid var(--purple); }
   .score.s-high { background: rgba(74,222,128,.15); color: var(--accent); }
   .score.s-mid { background: rgba(251,191,36,.15); color: var(--warn); }
-  .spark {
+  .chip {
     display: inline-block;
-    vertical-align: middle;
-  }
-  .row-actions button {
-    padding: 2px 8px;
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+    text-align: center;
+    border-radius: 3px;
     font-size: 10px;
+    font-weight: 700;
+    margin-right: 2px;
+    border: 1px solid var(--border);
   }
+  .chip-pass { background: rgba(74,222,128,.15); color: var(--accent); border-color: rgba(74,222,128,.4); }
+  .chip-fail { background: var(--panel-2); color: #4a5468; }
+  .cex-icons { display: inline-flex; gap: 2px; }
+  .cex-icon {
+    display: inline-block;
+    width: 22px;
+    text-align: center;
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 0;
+    border: 1px solid var(--border);
+  }
+  .cex-icon.on { background: rgba(96,165,250,.15); color: var(--info); border-color: rgba(96,165,250,.4); }
+  .cex-icon.off { background: var(--panel-2); color: #4a5468; }
+  .spark { display: inline-block; vertical-align: middle; }
+  .row-actions button { padding: 2px 8px; font-size: 10px; }
+  .row-actions a { text-decoration: none; }
   #log {
     max-height: 120px;
     overflow-y: auto;
@@ -152,26 +190,133 @@
     color: var(--muted);
     line-height: 1.5;
   }
-  .tag { font-size: 10px; color: var(--muted); }
   details { padding: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--border); }
   summary { cursor: pointer; color: var(--muted); font-size: 11px; }
-  .pill {
-    display: inline-block;
-    padding: 1px 6px;
-    border-radius: 8px;
-    font-size: 10px;
-    margin-right: 3px;
+
+  /* Modal */
+  .modal {
+    position: fixed; inset: 0;
+    z-index: 100;
+    display: none;
   }
-  .pill-pass { background: rgba(74,222,128,.15); color: var(--accent); }
-  .pill-fail { background: rgba(135,135,135,.12); color: var(--muted); }
+  .modal.show { display: block; }
+  .modal-overlay {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,.65);
+    backdrop-filter: blur(2px);
+  }
+  .modal-box {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90vw; max-width: 900px;
+    max-height: 88vh;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .modal-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--panel-2);
+  }
+  .modal-header h2 { margin: 0; font-size: 15px; }
+  .modal-header .meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .modal-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-2);
+  }
+  .modal-tabs .tab {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    padding: 10px 16px;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    font-size: 12px;
+  }
+  .modal-tabs .tab.active { color: var(--info); border-bottom-color: var(--info); }
+  .modal-body {
+    padding: 16px 20px;
+    overflow-y: auto;
+    flex: 1;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .stat-card {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+  .stat-card .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; }
+  .stat-card .stat-value { font-size: 14px; font-weight: 600; margin-top: 2px; }
+  .chart-block {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 12px;
+  }
+  .chart-block h3 { margin: 0 0 8px; font-size: 12px; color: var(--muted); font-weight: 500; }
+  .ex-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 100%;
+    font-size: 12px;
+  }
+  .ex-table th, .ex-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+  .ex-table th { color: var(--muted); font-weight: 500; font-size: 10px; text-transform: uppercase; }
+  .ex-yes { color: var(--accent); font-weight: 600; }
+  .ex-no { color: #4a5468; }
+  .signal-bar {
+    display: flex;
+    height: 6px;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .signal-bar > span {
+    display: block;
+    height: 100%;
+  }
+  .close-btn {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 18px;
+    padding: 0 6px;
+  }
+  .close-btn:hover { color: var(--text); }
+
+  @media (max-width: 768px) {
+    table { min-width: 1100px; font-size: 11px; }
+  }
 </style>
 </head>
 <body>
 
 <header>
   <div>
-    <h1>Pump Pattern Scanner</h1>
-    <span class="sub">Binance Futures 전용 · 현물 없음 · 계단식 우상향 + 양수 펀딩비 스캔</span>
+    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v0.3</span></h1>
+    <span class="sub">Binance Futures only · 중소CEX · CoinGecko · Funding 7d · 매집 120d+ · 계단식 우상향 스캔</span>
   </div>
   <div class="controls">
     <button id="watchBtn">★ Watchlist</button>
@@ -179,119 +324,206 @@
   </div>
 </header>
 
+<div class="warning-bar">
+  본 도구는 내부자 주도 조작으로 <b>의심</b>되는 패턴의 조기 탐지를 돕습니다. 제시된 시그널은 확정적 증거가 아니며, 편승 트레이딩은 전액 손실 위험을 수반합니다. 교육·방어 목적으로 사용하십시오.
+</div>
+
 <details>
-  <summary>필터 및 점수 기준 (펼치기)</summary>
-  <div style="color: var(--muted); font-size: 11px; line-height: 1.6; margin-top: 8px;">
-    <b>필터</b> — Binance USDT-M 무기한 선물에 상장, 동일 티커가 Binance Spot에 <b>없는</b> 종목만 대상.<br>
-    <b>점수 가산</b> — (1) 펀딩비 양수 + 값 클수록, (2) 14일 중 양봉 비율 높음, (3) 일일 변동폭 작음(스무스 우상향),
-    (4) 14일 누적 상승률이 적정 구간(+5% ~ +150%), (5) 고점 대비 -90% 이상 하락 시 <b>제외</b>, (6) 저점 대비 10배 이상 상승 시 <b>제외</b>.
+  <summary>탐지 시그널 및 점수 기준 (펼치기)</summary>
+  <div style="color: var(--muted); font-size: 11px; line-height: 1.7; margin-top: 8px;">
+    <b>Hard Exclude</b> — Binance Spot에 이미 상장 / 선물 상장 후 120일 미만 / ATH 대비 -90% 이하 / 90일 저점 대비 10배 이상 / circ&gt;70% / 24h 거래대금 &lt; $50k<br>
+    <b>가산 시그널 (합산 100점)</b> — 중소CEX 수, circulating&lt;30%, 60~90일 변동계수&lt;0.15, 14일 중 일 2~7% 상승일수, 양봉비율, 스무스니스, 펀딩 양수율, 펀딩 평균값
   </div>
 </details>
 
 <section class="filters">
   <div class="filter">
-    <label>최소 펀딩비 (%/8h)</label>
+    <label>최소 펀딩비 % (8h)</label>
     <input type="number" id="f_funding" step="0.001" value="0" />
   </div>
   <div class="filter">
-    <label>최대 14일 상승률 (%)</label>
+    <label>최대 14일 상승률 %</label>
     <input type="number" id="f_maxRise14" step="1" value="300" />
   </div>
   <div class="filter">
-    <label>최소 14일 상승률 (%)</label>
-    <input type="number" id="f_minRise14" step="1" value="-20" />
+    <label>최소 14일 상승률 %</label>
+    <input type="number" id="f_minRise14" step="1" value="-30" />
   </div>
   <div class="filter">
-    <label>최대 24h 변동률 (%)</label>
+    <label>최대 24h 변동률 %</label>
     <input type="number" id="f_maxDaily" step="1" value="50" />
   </div>
   <div class="filter">
-    <label>최소 24h 거래대금 (USDT)</label>
+    <label>최소 24h 거래대금 USDT</label>
     <input type="number" id="f_minVol" step="10000" value="100000" />
+  </div>
+  <div class="filter">
+    <label>최소 상장 후 일수</label>
+    <input type="number" id="f_minDays" step="10" value="120" />
   </div>
   <div class="filter">
     <label>최소 점수</label>
     <input type="number" id="f_minScore" step="1" value="30" />
   </div>
+  <div class="filter">
+    <label>CoinGecko 매칭</label>
+    <select id="f_cg">
+      <option value="on" selected>사용 (S3/S5 정확)</option>
+      <option value="off">생략 (속도 우선)</option>
+    </select>
+  </div>
 </section>
 
-<div class="status" id="status">대기 중 — "스캔 시작"을 눌러 Binance에서 데이터를 불러오세요.</div>
+<div class="status" id="status">대기 중 — "스캔 시작" 버튼을 눌러 데이터를 불러오세요.</div>
 
+<div class="table-wrap">
 <table id="resultTable">
   <thead>
     <tr>
       <th data-sort="symbol">Symbol</th>
+      <th data-sort="ageDays">상장(d)</th>
       <th data-sort="price">Price</th>
       <th data-sort="change24">24h%</th>
       <th data-sort="rise14">14d%</th>
-      <th data-sort="funding">Funding %</th>
-      <th data-sort="fundingApr">Funding APR%</th>
+      <th data-sort="cexCount">CEX</th>
+      <th data-sort="circRatio">Circ%</th>
+      <th data-sort="athChange">ATH%</th>
+      <th data-sort="funding">Fund% (8h)</th>
+      <th data-sort="fundPosRatio">Fund7d+</th>
       <th data-sort="upRatio">Up Days</th>
-      <th data-sort="smooth">Smoothness</th>
-      <th data-sort="volume">Volume (M)</th>
-      <th data-sort="oi">OI (M)</th>
+      <th data-sort="smooth">Smooth</th>
+      <th data-sort="volume">Vol(M)</th>
+      <th data-sort="oi">OI(M)</th>
       <th data-sort="score" class="sorted">Score ▼</th>
       <th>Spark</th>
-      <th>Actions</th>
+      <th>★</th>
     </tr>
   </thead>
   <tbody id="resultBody">
-    <tr><td colspan="13" style="text-align:center; color:var(--muted); padding: 30px;">스캔 결과가 여기에 표시됩니다.</td></tr>
+    <tr><td colspan="17" style="text-align:center; color:var(--muted); padding: 30px;">스캔 결과가 여기에 표시됩니다.</td></tr>
   </tbody>
 </table>
+</div>
+
+<!-- Detail Modal -->
+<div id="modal" class="modal">
+  <div class="modal-overlay"></div>
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <h2 id="m_symbol">—</h2>
+        <div class="meta" id="m_meta">—</div>
+      </div>
+      <button class="close-btn" id="m_close">×</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="tab active" data-tab="price">Price &amp; Funding</button>
+      <button class="tab" data-tab="exchanges">Exchanges &amp; Supply</button>
+      <button class="tab" data-tab="signals">Signals</button>
+    </div>
+    <div class="modal-body">
+      <div id="tab-price" class="tab-panel active"></div>
+      <div id="tab-exchanges" class="tab-panel"></div>
+      <div id="tab-signals" class="tab-panel"></div>
+    </div>
+  </div>
+</div>
 
 <div id="log"></div>
 
 <script>
 (() => {
-  const SPOT_INFO  = 'https://api.binance.com/api/v3/exchangeInfo';
-  const FUT_INFO   = 'https://fapi.binance.com/fapi/v1/exchangeInfo';
-  const FUT_24HR   = 'https://fapi.binance.com/fapi/v1/ticker/24hr';
-  const FUT_PREM   = 'https://fapi.binance.com/fapi/v1/premiumIndex';
-  const FUT_KLINE  = 'https://fapi.binance.com/fapi/v1/klines';
-  const FUT_OI     = 'https://fapi.binance.com/fapi/v1/openInterest';
+'use strict';
 
-  const $ = (id) => document.getElementById(id);
-  const logEl = $('log');
-  const statusEl = $('status');
-  const bodyEl = $('resultBody');
-
-  let state = {
-    rows: [],
-    sortBy: 'score',
-    sortDir: 'desc',
-    scanning: false,
-    watchlist: JSON.parse(localStorage.getItem('pps_watch') || '[]')
-  };
-
-  function log(msg, cls='') {
-    const line = document.createElement('div');
-    line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-    if (cls) line.className = cls;
-    logEl.appendChild(line);
-    logEl.scrollTop = logEl.scrollHeight;
-  }
-  function setStatus(msg) { statusEl.textContent = msg; }
-
-  async function getJSON(url, retry=2) {
-    for (let i=0; i<=retry; i++) {
-      try {
-        const r = await fetch(url);
-        if (!r.ok) throw new Error(`${r.status}`);
-        return await r.json();
-      } catch (e) {
-        if (i === retry) throw e;
-        await new Promise(r => setTimeout(r, 500 * (i+1)));
-      }
+// ============================================================
+// SECTION 1: Cache (localStorage with TTL)
+// ============================================================
+const Cache = {
+  get(key) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const { value, expires } = JSON.parse(raw);
+      if (Date.now() > expires) { localStorage.removeItem(key); return null; }
+      return value;
+    } catch { return null; }
+  },
+  set(key, value, ttlMs) {
+    try {
+      localStorage.setItem(key, JSON.stringify({ value, expires: Date.now() + ttlMs }));
+    } catch (e) {
+      // Quota exceeded — clean and retry once
+      try { localStorage.removeItem(key); localStorage.setItem(key, JSON.stringify({ value, expires: Date.now() + ttlMs })); } catch {}
     }
   }
+};
+const TTL_6H = 6 * 3600 * 1000;
+const TTL_12H = 12 * 3600 * 1000;
+const TTL_24H = 24 * 3600 * 1000;
 
-  async function loadUniverse() {
-    log('Binance Spot / Futures 심볼 목록 로드 중...');
-    const [spot, fut] = await Promise.all([ getJSON(SPOT_INFO), getJSON(FUT_INFO) ]);
+// ============================================================
+// SECTION 2: Utils
+// ============================================================
+const $ = (id) => document.getElementById(id);
+const logEl = $('log');
+
+function log(msg) {
+  const line = document.createElement('div');
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function setStatus(msg) { $('status').textContent = msg; }
+
+async function getJSON(url, retry = 2, timeoutMs = 12000) {
+  for (let i = 0; i <= retry; i++) {
+    try {
+      const ctl = AbortSignal.timeout ? AbortSignal.timeout(timeoutMs) : null;
+      const r = await fetch(url, ctl ? { signal: ctl } : {});
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    } catch (e) {
+      if (i === retry) throw e;
+      await new Promise(r => setTimeout(r, 700 * (i + 1)));
+    }
+  }
+}
+
+function fmtNum(n, d=2) {
+  if (n === null || n === undefined || isNaN(n)) return '-';
+  if (Math.abs(n) >= 1) return n.toLocaleString(undefined, { maximumFractionDigits: d });
+  return Number(n).toPrecision(4);
+}
+function fmtPct(n, d=2) {
+  if (n === null || n === undefined || isNaN(n)) return '-';
+  const s = n.toFixed(d) + '%';
+  return `<span class="${n>0?'pos':(n<0?'neg':'')}">${s}</span>`;
+}
+function fmtM(n) {
+  if (!n && n !== 0) return '-';
+  return (n / 1_000_000).toFixed(2);
+}
+
+// ============================================================
+// SECTION 3: Binance API
+// ============================================================
+const Binance = {
+  SPOT_INFO:  'https://api.binance.com/api/v3/exchangeInfo',
+  FUT_INFO:   'https://fapi.binance.com/fapi/v1/exchangeInfo',
+  FUT_24HR:   'https://fapi.binance.com/fapi/v1/ticker/24hr',
+  FUT_PREM:   'https://fapi.binance.com/fapi/v1/premiumIndex',
+  FUT_KLINE:  'https://fapi.binance.com/fapi/v1/klines',
+  FUT_OI:     'https://fapi.binance.com/fapi/v1/openInterest',
+  FUT_FUND:   'https://fapi.binance.com/fapi/v1/fundingRate',
+
+  async loadUniverse() {
+    const [spot, fut] = await Promise.all([
+      getJSON(this.SPOT_INFO), getJSON(this.FUT_INFO)
+    ]);
     const spotBases = new Set(
-      spot.symbols.filter(s => s.status==='TRADING' && s.quoteAsset==='USDT')
-                  .map(s => s.baseAsset)
+      spot.symbols
+        .filter(s => s.status === 'TRADING' && s.quoteAsset === 'USDT')
+        .map(s => s.baseAsset)
     );
     const perps = fut.symbols.filter(s =>
       s.status === 'TRADING' &&
@@ -299,280 +531,812 @@
       s.quoteAsset === 'USDT'
     );
     const futuresOnly = perps.filter(s => !spotBases.has(s.baseAsset));
-    log(`Spot USDT 페어: ${spotBases.size}개 · 선물 USDT-M 무기한: ${perps.length}개 · 선물 전용: ${futuresOnly.length}개`);
-    return futuresOnly.map(s => s.symbol);
-  }
-
-  async function loadTickers() {
-    log('24h 티커 로드...');
-    const arr = await getJSON(FUT_24HR);
-    const map = new Map();
-    for (const t of arr) map.set(t.symbol, t);
-    return map;
-  }
-
-  async function loadPremium() {
-    log('펀딩비 / Mark Price 로드...');
-    const arr = await getJSON(FUT_PREM);
-    const map = new Map();
-    for (const p of arr) map.set(p.symbol, p);
-    return map;
-  }
-
-  async function loadKlines(symbol) {
-    const url = `${FUT_KLINE}?symbol=${symbol}&interval=1d&limit=30`;
-    return getJSON(url);
-  }
-  async function loadOI(symbol) {
+    return {
+      spotBaseSet: spotBases,
+      candidates: futuresOnly.map(s => ({
+        symbol: s.symbol,
+        base: s.baseAsset,
+        onboardDate: s.onboardDate || 0
+      }))
+    };
+  },
+  async loadTickers() {
+    const arr = await getJSON(this.FUT_24HR);
+    return new Map(arr.map(t => [t.symbol, t]));
+  },
+  async loadPremium() {
+    const arr = await getJSON(this.FUT_PREM);
+    return new Map(arr.map(p => [p.symbol, p]));
+  },
+  async loadKlines(symbol, limit = 100) {
+    return getJSON(`${this.FUT_KLINE}?symbol=${symbol}&interval=1d&limit=${limit}`);
+  },
+  async loadOI(symbol) {
     try {
-      const r = await getJSON(`${FUT_OI}?symbol=${symbol}`);
+      const r = await getJSON(`${this.FUT_OI}?symbol=${symbol}`);
       return parseFloat(r.openInterest) || 0;
     } catch { return 0; }
-  }
-
-  function analyzeKlines(klines) {
-    if (!klines || klines.length < 5) return null;
-    const closes = klines.map(k => parseFloat(k[4]));
-    const highs  = klines.map(k => parseFloat(k[2]));
-    const lows   = klines.map(k => parseFloat(k[3]));
-    const last14 = closes.slice(-14);
-    const last14H = highs.slice(-14);
-    const last14L = lows.slice(-14);
-    const first = last14[0];
-    const last  = last14[last14.length-1];
-    const rise14 = first > 0 ? ((last/first)-1)*100 : 0;
-
-    let up = 0;
-    for (let i=1; i<last14.length; i++) if (last14[i] >= last14[i-1]) up++;
-    const upRatio = up / (last14.length-1);
-
-    const changes = [];
-    for (let i=1; i<last14.length; i++) {
-      if (last14[i-1] > 0) changes.push(Math.abs((last14[i]/last14[i-1])-1)*100);
-    }
-    const avgMove = changes.reduce((a,b)=>a+b,0) / (changes.length||1);
-    const maxMove = Math.max(...changes, 0);
-    const smoothness = avgMove>0 && maxMove>0 ? Math.min(avgMove/maxMove, 1) : 0;
-
-    const maxHigh = Math.max(...highs);
-    const minLow  = Math.min(...lows);
-    const drawdownFromHigh = maxHigh>0 ? ((last-maxHigh)/maxHigh)*100 : 0;
-    const gainFromLow = minLow>0 ? ((last/minLow)-1)*100 : 0;
-
-    return { rise14, upRatio, avgMove, maxMove, smoothness, drawdownFromHigh, gainFromLow, closes: last14 };
-  }
-
-  function scoreRow(r) {
-    let s = 0;
-    if (r.funding > 0) s += Math.min(r.funding * 2000, 40);
-    s += r.upRatio * 20;
-    s += r.smoothness * 15;
-    if (r.rise14 >= 0 && r.rise14 <= 150) s += 15;
-    else if (r.rise14 > 150) s -= 10;
-    if (r.drawdownFromHigh < -90) s = -999;
-    if (r.gainFromLow > 900) s = -999;
-    if (r.volume < 50000) s -= 10;
-    return Math.round(s);
-  }
-
-  function sparkline(closes, w=80, h=22) {
-    if (!closes || closes.length < 2) return '';
-    const min = Math.min(...closes), max = Math.max(...closes);
-    const range = max - min || 1;
-    const step = w / (closes.length - 1);
-    const pts = closes.map((c,i) => `${(i*step).toFixed(1)},${(h - ((c-min)/range)*h).toFixed(1)}`).join(' ');
-    const color = closes[closes.length-1] >= closes[0] ? 'var(--accent)' : 'var(--danger)';
-    return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.3"/></svg>`;
-  }
-
-  function fmtNum(n, d=2) {
-    if (n === null || n === undefined || isNaN(n)) return '-';
-    if (Math.abs(n) >= 1) return n.toLocaleString(undefined,{maximumFractionDigits:d});
-    return n.toPrecision(4);
-  }
-  function fmtPct(n, d=2) {
-    if (n === null || n === undefined || isNaN(n)) return '-';
-    const s = n.toFixed(d) + '%';
-    return `<span class="${n>0?'pos':(n<0?'neg':'')}">${s}</span>`;
-  }
-  function fmtM(n) {
-    if (!n) return '-';
-    return (n/1_000_000).toFixed(2);
-  }
-
-  async function runScan() {
-    if (state.scanning) return;
-    state.scanning = true;
-    $('scanBtn').disabled = true;
-    $('scanBtn').textContent = '스캔 중...';
-    logEl.innerHTML = '';
-
+  },
+  async loadFundingHistory(symbol, limit = 21) {
     try {
-      const [symbols, tickers, premium] = await Promise.all([
-        loadUniverse(), loadTickers(), loadPremium()
-      ]);
+      return await getJSON(`${this.FUT_FUND}?symbol=${symbol}&limit=${limit}`);
+    } catch { return []; }
+  }
+};
 
-      const f_funding   = parseFloat($('f_funding').value) / 100;
-      const f_maxRise14 = parseFloat($('f_maxRise14').value);
-      const f_minRise14 = parseFloat($('f_minRise14').value);
-      const f_maxDaily  = parseFloat($('f_maxDaily').value);
-      const f_minVol    = parseFloat($('f_minVol').value);
-      const f_minScore  = parseFloat($('f_minScore').value);
+// ============================================================
+// SECTION 4: Small CEX APIs (Bitget, Gate.io, MEXC, Bybit)
+// ============================================================
+const CexLoader = {
+  async loadBitget() {
+    try {
+      const cached = Cache.get('cex_bitget');
+      if (cached) return new Set(cached);
+      const d = await getJSON('https://api.bitget.com/api/v2/spot/public/symbols');
+      const set = new Set((d.data || [])
+        .filter(s => s.quoteCoin === 'USDT' && (s.status === 'online' || s.status === 'normal'))
+        .map(s => s.baseCoin.toUpperCase()));
+      Cache.set('cex_bitget', [...set], TTL_12H);
+      return set;
+    } catch (e) { log(`Bitget 로드 실패: ${e.message}`); return new Set(); }
+  },
+  async loadGate() {
+    try {
+      const cached = Cache.get('cex_gate');
+      if (cached) return new Set(cached);
+      const d = await getJSON('https://api.gateio.ws/api/v4/spot/currency_pairs');
+      const set = new Set(d
+        .filter(s => s.quote === 'USDT' && s.trade_status === 'tradable')
+        .map(s => s.base.toUpperCase()));
+      Cache.set('cex_gate', [...set], TTL_12H);
+      return set;
+    } catch (e) { log(`Gate.io 로드 실패: ${e.message}`); return new Set(); }
+  },
+  async loadMexc() {
+    try {
+      const cached = Cache.get('cex_mexc');
+      if (cached) return new Set(cached);
+      const d = await getJSON('https://api.mexc.com/api/v3/exchangeInfo');
+      const set = new Set((d.symbols || [])
+        .filter(s => s.quoteAsset === 'USDT' && (s.isSpotTradingAllowed === true || s.status === '1' || s.status === 'ENABLED'))
+        .map(s => s.baseAsset.toUpperCase()));
+      Cache.set('cex_mexc', [...set], TTL_12H);
+      return set;
+    } catch (e) { log(`MEXC 로드 실패: ${e.message}`); return new Set(); }
+  },
+  async loadBybit() {
+    try {
+      const cached = Cache.get('cex_bybit');
+      if (cached) return new Set(cached);
+      const d = await getJSON('https://api.bybit.com/v5/market/instruments-info?category=spot&limit=1000');
+      const set = new Set((d.result?.list || [])
+        .filter(s => s.quoteCoin === 'USDT' && s.status === 'Trading')
+        .map(s => s.baseCoin.toUpperCase()));
+      Cache.set('cex_bybit', [...set], TTL_12H);
+      return set;
+    } catch (e) { log(`Bybit 로드 실패: ${e.message}`); return new Set(); }
+  },
+  async loadAll() {
+    log('중소 거래소 4종 (Bitget · Gate.io · MEXC · Bybit) 심볼 로드 중...');
+    const [bitget, gate, mexc, bybit] = await Promise.all([
+      this.loadBitget(), this.loadGate(), this.loadMexc(), this.loadBybit()
+    ]);
+    log(`CEX 로드: Bitget ${bitget.size} · Gate ${gate.size} · MEXC ${mexc.size} · Bybit ${bybit.size}`);
+    return { bitget, gate, mexc, bybit };
+  }
+};
 
-      const pre = [];
-      for (const sym of symbols) {
-        const t = tickers.get(sym);
-        const p = premium.get(sym);
-        if (!t || !p) continue;
-        const vol = parseFloat(t.quoteVolume) || 0;
-        const change24 = parseFloat(t.priceChangePercent) || 0;
-        const funding = parseFloat(p.lastFundingRate) || 0;
-        if (vol < f_minVol) continue;
-        if (Math.abs(change24) > f_maxDaily) continue;
-        if (funding < f_funding) continue;
-        pre.push({ sym, t, p, vol, change24, funding });
+// ============================================================
+// SECTION 5: CoinGecko API
+// ============================================================
+const CoinGecko = {
+  BASE: 'https://api.coingecko.com/api/v3',
+
+  async loadMarkets() {
+    const cacheKey = 'cg_markets_v1';
+    const cached = Cache.get(cacheKey);
+    if (cached && cached.length > 500) {
+      log(`CoinGecko 캐시 사용 (${cached.length}개)`);
+      return cached;
+    }
+    log('CoinGecko 마켓 데이터 로드 중 (top 1000, 약 8초)...');
+    const all = [];
+    for (let page = 1; page <= 4; page++) {
+      try {
+        const url = `${this.BASE}/coins/markets?vs_currency=usd&per_page=250&page=${page}&sparkline=false&price_change_percentage=24h%2C7d`;
+        const data = await getJSON(url, 1, 15000);
+        if (Array.isArray(data)) all.push(...data);
+        if (page < 4) await new Promise(r => setTimeout(r, 1800));
+      } catch (e) {
+        log(`CoinGecko page ${page} 실패: ${e.message}`);
       }
-      log(`1차 필터 통과: ${pre.length}개 (펀딩/볼륨/일변동 기준)`);
-      setStatus(`${pre.length}개 심볼의 캔들 데이터를 분석 중...`);
+    }
+    if (all.length > 0) Cache.set(cacheKey, all, TTL_6H);
+    log(`CoinGecko 로드 완료: ${all.length}개 코인 (6시간 캐시)`);
+    return all;
+  },
 
-      const rows = [];
-      const CONCURRENCY = 6;
-      let idx = 0, done = 0;
-      async function worker() {
-        while (idx < pre.length) {
-          const i = idx++;
-          const item = pre[i];
-          try {
-            const [kl, oi] = await Promise.all([ loadKlines(item.sym), loadOI(item.sym) ]);
-            const a = analyzeKlines(kl);
-            if (!a) continue;
-            if (a.rise14 > f_maxRise14) continue;
-            if (a.rise14 < f_minRise14) continue;
-            if (a.drawdownFromHigh < -90) continue;
-            if (a.gainFromLow > 900) continue;
-            const price = parseFloat(item.p.markPrice) || parseFloat(item.t.lastPrice);
-            const fundingPct = item.funding * 100;
-            const fundingApr = fundingPct * 3 * 365;
-            const row = {
-              symbol: item.sym,
-              price,
-              change24: item.change24,
-              rise14: a.rise14,
-              funding: fundingPct,
-              fundingApr,
-              upRatio: a.upRatio * 100,
-              smooth: a.smoothness * 100,
-              volume: item.vol,
-              oi: oi * price,
-              drawdownFromHigh: a.drawdownFromHigh,
-              gainFromLow: a.gainFromLow,
-              closes: a.closes
-            };
-            row.score = scoreRow({
-              funding: item.funding, upRatio: a.upRatio, smoothness: a.smoothness,
-              rise14: a.rise14, drawdownFromHigh: a.drawdownFromHigh,
-              gainFromLow: a.gainFromLow, volume: item.vol
-            });
-            if (row.score >= f_minScore) rows.push(row);
-          } catch (e) {
-            log(`${item.sym} 분석 실패: ${e.message}`);
-          } finally {
-            done++;
-            if (done % 10 === 0) setStatus(`분석 진행... ${done}/${pre.length}`);
-          }
+  buildSymbolMap(markets) {
+    const map = new Map();
+    for (const m of markets) {
+      const sym = (m.symbol || '').toUpperCase();
+      if (!map.has(sym)) map.set(sym, []);
+      map.get(sym).push(m);
+    }
+    return map;
+  },
+
+  lookup(symMap, baseAsset) {
+    const entries = symMap.get(baseAsset.toUpperCase()) || [];
+    if (entries.length === 0) return null;
+    entries.sort((a, b) => (b.market_cap || 0) - (a.market_cap || 0));
+    const m = entries[0];
+    const maxSupply = m.max_supply || m.total_supply || null;
+    const circSupply = m.circulating_supply || null;
+    return {
+      id: m.id,
+      name: m.name,
+      image: m.image,
+      circMax: (circSupply && maxSupply && maxSupply > 0) ? circSupply / maxSupply : null,
+      circulating: circSupply,
+      maxSupply: maxSupply,
+      ath: m.ath ?? null,
+      atl: m.atl ?? null,
+      athChangePct: m.ath_change_percentage ?? null,
+      atlChangePct: m.atl_change_percentage ?? null,
+      marketCap: m.market_cap || 0,
+      mcRank: m.market_cap_rank || null,
+      cgPrice: m.current_price,
+      change7d: m.price_change_percentage_7d_in_currency ?? null
+    };
+  }
+};
+
+// ============================================================
+// SECTION 6: Kline analysis
+// ============================================================
+function analyzeKlines(klines) {
+  if (!klines || klines.length < 10) return null;
+
+  const candles = klines.map(k => ({
+    t: k[0],
+    o: parseFloat(k[1]), h: parseFloat(k[2]),
+    l: parseFloat(k[3]), c: parseFloat(k[4]),
+    v: parseFloat(k[5])
+  }));
+  const closes = candles.map(c => c.c);
+  const lows = candles.map(c => c.l);
+  const n = closes.length;
+
+  // 90-day low (from current view back 90 days)
+  const tail90 = lows.slice(Math.max(0, n - 90));
+  const recentLow = Math.min(...tail90);
+  const currentPrice = closes[n - 1];
+  const gainFromLow = recentLow > 0 ? currentPrice / recentLow : 1;
+
+  // Recent 14 days analysis
+  const rec14 = closes.slice(-14);
+  let up = 0;
+  const dailyReturns = [];
+  for (let i = 1; i < rec14.length; i++) {
+    const ret = rec14[i - 1] > 0 ? (rec14[i] / rec14[i - 1] - 1) * 100 : 0;
+    dailyReturns.push(ret);
+    if (rec14[i] >= rec14[i - 1]) up++;
+  }
+  const upRatio = dailyReturns.length ? up / dailyReturns.length : 0;
+  const rise14 = rec14[0] > 0 ? ((rec14[rec14.length - 1] / rec14[0]) - 1) * 100 : 0;
+
+  const absRet = dailyReturns.map(Math.abs);
+  const avgMove = absRet.length ? absRet.reduce((a, b) => a + b, 0) / absRet.length : 0;
+  const maxMove = absRet.length ? Math.max(...absRet) : 0.001;
+  const smoothness = maxMove > 0 ? Math.min(avgMove / maxMove, 1) : 0;
+
+  // S5c-2: rise range days (2~7% per day)
+  const riseRangeDays = dailyReturns.filter(r => r >= 2 && r <= 7).length;
+
+  // S5c-1: long-range CV (over historical window before recent 14d)
+  const histWindow = closes.slice(0, Math.max(0, n - 14));
+  let cv90 = null;
+  if (histWindow.length >= 30) {
+    const last90 = histWindow.slice(-90);
+    const mean = last90.reduce((a, b) => a + b, 0) / last90.length;
+    const variance = last90.reduce((a, b) => a + (b - mean) ** 2, 0) / last90.length;
+    cv90 = mean > 0 ? Math.sqrt(variance) / mean : null;
+  }
+
+  return {
+    rise14, upRatio, smoothness, avgMove, maxMove,
+    riseRangeDays, gainFromLow, cv90,
+    closes14: rec14,
+    candles14: candles.slice(-14),
+    candlesAll: candles
+  };
+}
+
+function analyzeFunding(history) {
+  // history: [{ symbol, fundingRate, fundingTime }] last 21
+  if (!history || history.length === 0) {
+    return { posRatio: 0, avgPct: 0, lastPct: 0, count: 0, rates: [] };
+  }
+  const rates = history.map(h => parseFloat(h.fundingRate)); // raw decimal, e.g. 0.0005 = 0.05%
+  const positives = rates.filter(r => r > 0).length;
+  const avg = rates.reduce((a, b) => a + b, 0) / rates.length;
+  return {
+    posRatio: positives / rates.length,
+    avgPct: avg * 100,
+    lastPct: rates[rates.length - 1] * 100,
+    count: rates.length,
+    rates: rates,
+    history: history
+  };
+}
+
+// ============================================================
+// SECTION 7: Scoring v2
+// ============================================================
+function hardExclude(row, opt) {
+  if (row.volume < opt.minVol) return `저볼륨 (<$${opt.minVol})`;
+  if (row.ageDays !== null && row.ageDays < opt.minDays) return `상장 ${row.ageDays}d (<${opt.minDays})`;
+  if (row.gainFromLow >= 10) return '저점대비 10배+';
+  if (row.cg) {
+    if (row.cg.athChangePct !== null && row.cg.athChangePct <= -90) return 'ATH -90%';
+    if (row.cg.circMax !== null && row.cg.circMax > 0.7) return '유통 70%+';
+  }
+  return null;
+}
+
+function computeScore(row) {
+  let s = 0;
+  const breakdown = {};
+
+  // S2: small CEX coverage (max 15)
+  breakdown.S2 = Math.min(row.cexCount, 3) * 5;
+  s += breakdown.S2;
+
+  // S3: circulating ratio (max 15)
+  let s3 = 0;
+  if (row.cg && row.cg.circMax !== null && row.cg.circMax !== undefined) {
+    const r = row.cg.circMax;
+    if (r < 0.10) s3 = 15;
+    else if (r < 0.20) s3 = 10;
+    else if (r < 0.30) s3 = 6;
+    else if (r < 0.50) s3 = 2;
+  }
+  breakdown.S3 = s3; s += s3;
+
+  // S5c-1: long-range CV (max 10)
+  let s5c1 = 0;
+  if (row.cv90 !== null && row.cv90 !== undefined) {
+    if (row.cv90 < 0.10) s5c1 = 10;
+    else if (row.cv90 < 0.15) s5c1 = 6;
+  }
+  breakdown.S5c1 = s5c1; s += s5c1;
+
+  // S5c-2: rise range days (max 10)
+  const s5c2 = (row.riseRangeDays / 13) * 10;
+  breakdown.S5c2 = s5c2; s += s5c2;
+
+  // S5c-3: up ratio (max 10)
+  const s5c3 = Math.max(0, (row.upRatio - 0.5) * 20);
+  breakdown.S5c3 = s5c3; s += s5c3;
+
+  // S5c-4: smoothness (max 10)
+  const s5c4 = row.smoothness * 10;
+  breakdown.S5c4 = s5c4; s += s5c4;
+
+  // S6 continuity: positive funding ratio (max 10)
+  const s6cont = row.fundPosRatio * 10;
+  breakdown.S6cont = s6cont; s += s6cont;
+
+  // S6 size: avg funding magnitude (max 10), avg in %
+  const af = row.avgFundingPct;
+  let s6size = 0;
+  if (af >= 0.10) s6size = 10;
+  else if (af >= 0.05) s6size = 7;
+  else if (af >= 0.02) s6size = 4;
+  else if (af > 0) s6size = 1;
+  breakdown.S6size = s6size; s += s6size;
+
+  return { score: Math.min(Math.round(s), 100), breakdown };
+}
+
+function signalChips(row) {
+  const items = [
+    { key: 'P', pass: true, title: 'Binance 선물전용 ✓' },
+    { key: 'A', pass: row.ageDays !== null && row.ageDays >= 120, title: `상장 ${row.ageDays || '?'}일 (매집 기간)` },
+    { key: 'S', pass: row.cexCount > 0, title: `중소CEX ${row.cexCount}/4곳 상장` },
+    { key: 'U', pass: row.cg && row.cg.circMax !== null && row.cg.circMax < 0.30, title: `유통률 ${row.cg && row.cg.circMax !== null ? (row.cg.circMax * 100).toFixed(0) + '%' : '?'}` },
+    { key: 'F', pass: row.fundPosRatio >= 0.70, title: `펀딩 양수율 ${(row.fundPosRatio * 100).toFixed(0)}% / 평균 ${row.avgFundingPct.toFixed(3)}%` },
+    { key: 'T', pass: row.smoothness >= 0.4 && row.upRatio >= 0.6, title: `스무스 ${(row.smoothness * 100).toFixed(0)} · 양봉 ${(row.upRatio * 100).toFixed(0)}%` }
+  ];
+  return items.map(c =>
+    `<span class="chip ${c.pass ? 'chip-pass' : 'chip-fail'}" title="${c.title}">${c.key}</span>`
+  ).join('');
+}
+
+function cexIcons(row) {
+  const items = [
+    ['BG', row.cex.bitget],
+    ['GT', row.cex.gate],
+    ['MX', row.cex.mexc],
+    ['BB', row.cex.bybit]
+  ];
+  return `<span class="cex-icons">${items.map(([n, on]) =>
+    `<span class="cex-icon ${on ? 'on' : 'off'}" title="${n}: ${on ? '상장' : '없음'}">${n}</span>`
+  ).join('')}</span>`;
+}
+
+function sparkline(closes, w=80, h=22) {
+  if (!closes || closes.length < 2) return '';
+  const min = Math.min(...closes), max = Math.max(...closes);
+  const range = max - min || 1;
+  const step = w / (closes.length - 1);
+  const pts = closes.map((c, i) => `${(i * step).toFixed(1)},${(h - ((c - min) / range) * h).toFixed(1)}`).join(' ');
+  const color = closes[closes.length - 1] >= closes[0] ? 'var(--accent)' : 'var(--danger)';
+  return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.3"/></svg>`;
+}
+
+// ============================================================
+// SECTION 8: State + Main Scan
+// ============================================================
+const state = {
+  rows: [],
+  sortBy: 'score',
+  sortDir: 'desc',
+  scanning: false,
+  watchlist: JSON.parse(localStorage.getItem('pps_watch') || '[]'),
+  showingWatch: false,
+  rowMap: new Map() // symbol -> row (for modal)
+};
+
+async function runScan() {
+  if (state.scanning) return;
+  state.scanning = true;
+  $('scanBtn').disabled = true;
+  $('scanBtn').textContent = '스캔 중...';
+  logEl.innerHTML = '';
+
+  try {
+    const useCG = $('f_cg').value === 'on';
+    const opt = {
+      minFunding: parseFloat($('f_funding').value) / 100,
+      maxRise14: parseFloat($('f_maxRise14').value),
+      minRise14: parseFloat($('f_minRise14').value),
+      maxDaily: parseFloat($('f_maxDaily').value),
+      minVol: parseFloat($('f_minVol').value),
+      minDays: parseFloat($('f_minDays').value),
+      minScore: parseFloat($('f_minScore').value)
+    };
+
+    log('Phase 1: Universe & 거래소 데이터 병렬 로드');
+    const [universe, tickers, premium, cexSets, cgMarkets] = await Promise.all([
+      Binance.loadUniverse(),
+      Binance.loadTickers(),
+      Binance.loadPremium(),
+      CexLoader.loadAll(),
+      useCG ? CoinGecko.loadMarkets() : Promise.resolve([])
+    ]);
+
+    log(`Universe: 선물 전용 ${universe.candidates.length}개 (Binance Spot ${universe.spotBaseSet.size}개 제외)`);
+
+    const cgMap = useCG ? CoinGecko.buildSymbolMap(cgMarkets) : new Map();
+
+    // Phase 2: First-pass filter (cheap fields)
+    const today = Date.now();
+    const pre = [];
+    for (const c of universe.candidates) {
+      const t = tickers.get(c.symbol);
+      const p = premium.get(c.symbol);
+      if (!t || !p) continue;
+      const vol = parseFloat(t.quoteVolume) || 0;
+      const change24 = parseFloat(t.priceChangePercent) || 0;
+      const fundingRaw = parseFloat(p.lastFundingRate) || 0;
+      const ageDays = c.onboardDate ? Math.floor((today - c.onboardDate) / 86400000) : null;
+
+      if (vol < opt.minVol) continue;
+      if (Math.abs(change24) > opt.maxDaily) continue;
+      if (fundingRaw < opt.minFunding) continue;
+      if (ageDays !== null && ageDays < opt.minDays) continue;
+
+      pre.push({ candidate: c, t, p, vol, change24, fundingRaw, ageDays });
+    }
+    log(`Phase 2 1차 필터 통과: ${pre.length}개 (Vol/Daily/Funding/매집기간)`);
+    setStatus(`Phase 3: ${pre.length}개 캔들·펀딩히스토리·OI 분석 중...`);
+
+    // Phase 3: Per-symbol detailed fetch + analysis
+    const rows = [];
+    const CONCURRENCY = 6;
+    let idx = 0, done = 0;
+
+    async function worker() {
+      while (idx < pre.length) {
+        const i = idx++;
+        const item = pre[i];
+        try {
+          const [klines, oi, fundHist] = await Promise.all([
+            Binance.loadKlines(item.candidate.symbol, 100),
+            Binance.loadOI(item.candidate.symbol),
+            Binance.loadFundingHistory(item.candidate.symbol, 21)
+          ]);
+          const a = analyzeKlines(klines);
+          if (!a) continue;
+
+          if (a.rise14 > opt.maxRise14) continue;
+          if (a.rise14 < opt.minRise14) continue;
+
+          const fundAnalysis = analyzeFunding(fundHist);
+          const cg = useCG ? CoinGecko.lookup(cgMap, item.candidate.base) : null;
+          const price = parseFloat(item.p.markPrice) || parseFloat(item.t.lastPrice);
+          const fundingPct = item.fundingRaw * 100;
+
+          // CEX presence
+          const base = item.candidate.base.toUpperCase();
+          const cex = {
+            bitget: cexSets.bitget.has(base),
+            gate: cexSets.gate.has(base),
+            mexc: cexSets.mexc.has(base),
+            bybit: cexSets.bybit.has(base)
+          };
+          const cexCount = (cex.bitget ? 1 : 0) + (cex.gate ? 1 : 0) + (cex.mexc ? 1 : 0) + (cex.bybit ? 1 : 0);
+
+          const row = {
+            symbol: item.candidate.symbol,
+            base,
+            ageDays: item.ageDays,
+            price,
+            change24: item.change24,
+            rise14: a.rise14,
+            funding: fundingPct,
+            avgFundingPct: fundAnalysis.avgPct,
+            fundPosRatio: fundAnalysis.posRatio,
+            fundingApr: fundingPct * 3 * 365,
+            upRatio: a.upRatio,
+            smoothness: a.smoothness,
+            riseRangeDays: a.riseRangeDays,
+            cv90: a.cv90,
+            volume: item.vol,
+            oi: oi * price,
+            gainFromLow: a.gainFromLow,
+            cex,
+            cexCount,
+            cg,
+            // for modal
+            closes14: a.closes14,
+            candles14: a.candles14,
+            fundHistory: fundAnalysis.history,
+            fundRates: fundAnalysis.rates,
+            // computed
+            circRatio: cg && cg.circMax !== null ? cg.circMax * 100 : null,
+            athChange: cg && cg.athChangePct !== null ? cg.athChangePct : null
+          };
+
+          // Hard exclude
+          const reason = hardExclude(row, opt);
+          if (reason) continue;
+
+          const { score, breakdown } = computeScore(row);
+          row.score = score;
+          row.scoreBreakdown = breakdown;
+
+          if (score >= opt.minScore) rows.push(row);
+        } catch (e) {
+          log(`${item.candidate.symbol} 분석 실패: ${e.message}`);
+        } finally {
+          done++;
+          if (done % 8 === 0) setStatus(`Phase 3 분석... ${done}/${pre.length}`);
         }
       }
-      await Promise.all(Array.from({length: CONCURRENCY}, worker));
-
-      state.rows = rows;
-      setStatus(`스캔 완료 — ${rows.length}개 후보 (전체 선물전용 심볼 ${symbols.length}개 중)`);
-      log(`최종 후보: ${rows.length}개`);
-      render();
-    } catch (e) {
-      log(`스캔 실패: ${e.message}`);
-      setStatus(`오류: ${e.message}`);
-    } finally {
-      state.scanning = false;
-      $('scanBtn').disabled = false;
-      $('scanBtn').textContent = '스캔 시작';
     }
+    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+
+    state.rows = rows;
+    state.rowMap = new Map(rows.map(r => [r.symbol, r]));
+    setStatus(`스캔 완료 — ${rows.length}개 후보 (선물 전용 ${universe.candidates.length}개 중) · 점수 ≥ ${opt.minScore}`);
+    log(`최종 후보: ${rows.length}개`);
+    render();
+  } catch (e) {
+    log(`스캔 실패: ${e.message}`);
+    setStatus(`오류: ${e.message}`);
+    console.error(e);
+  } finally {
+    state.scanning = false;
+    $('scanBtn').disabled = false;
+    $('scanBtn').textContent = '스캔 시작';
+  }
+}
+
+// ============================================================
+// SECTION 9: Render Table
+// ============================================================
+const bodyEl = $('resultBody');
+
+function render() {
+  let rows = state.showingWatch
+    ? state.rows.filter(r => state.watchlist.includes(r.symbol))
+    : state.rows.slice();
+
+  rows.sort((a, b) => {
+    const d = state.sortDir === 'asc' ? 1 : -1;
+    let va = a[state.sortBy], vb = b[state.sortBy];
+    if (va === null || va === undefined) va = -Infinity;
+    if (vb === null || vb === undefined) vb = -Infinity;
+    if (typeof va === 'number') return (va - vb) * d;
+    return String(va).localeCompare(String(vb)) * d;
+  });
+
+  if (rows.length === 0) {
+    bodyEl.innerHTML = `<tr><td colspan="17" style="text-align:center; color:var(--muted); padding: 30px;">${state.showingWatch ? '워치리스트가 비어있거나 조건에 맞는 종목이 없습니다.' : '조건에 맞는 종목이 없습니다.'}</td></tr>`;
+    return;
   }
 
-  function render(filterWatch=false) {
-    const rows = filterWatch
-      ? state.rows.filter(r => state.watchlist.includes(r.symbol))
-      : state.rows.slice();
+  bodyEl.innerHTML = rows.map(r => {
+    const scoreCls = r.score >= 80 ? 's-elite' : (r.score >= 60 ? 's-high' : (r.score >= 40 ? 's-mid' : ''));
+    const rowCls = r.score >= 70 ? 'score-high' : '';
+    const hotBadges = [];
+    if (r.avgFundingPct >= 0.10) hotBadges.push('<span class="badge fire">HOT</span>');
+    else if (r.avgFundingPct >= 0.05) hotBadges.push('<span class="badge hot">↑</span>');
+    const watched = state.watchlist.includes(r.symbol);
 
-    rows.sort((a,b) => {
-      const d = state.sortDir === 'asc' ? 1 : -1;
-      const va = a[state.sortBy], vb = b[state.sortBy];
-      if (typeof va === 'number') return (va - vb) * d;
-      return String(va).localeCompare(String(vb)) * d;
-    });
+    return `
+      <tr class="${rowCls}" data-sym="${r.symbol}">
+        <td class="sym">${signalChips(r)} ${r.symbol}${hotBadges.join('')}</td>
+        <td>${r.ageDays ?? '-'}</td>
+        <td>${fmtNum(r.price, 6)}</td>
+        <td>${fmtPct(r.change24)}</td>
+        <td>${fmtPct(r.rise14)}</td>
+        <td>${cexIcons(r)}</td>
+        <td>${r.circRatio !== null ? r.circRatio.toFixed(0) + '%' : '<span class="muted">?</span>'}</td>
+        <td>${r.athChange !== null ? fmtPct(r.athChange, 0) : '<span class="muted">?</span>'}</td>
+        <td>${fmtPct(r.funding, 4)}</td>
+        <td>${(r.fundPosRatio * 100).toFixed(0)}% <span class="muted" style="font-size:10px;">${r.avgFundingPct.toFixed(3)}</span></td>
+        <td>${(r.upRatio * 100).toFixed(0)}%</td>
+        <td>${(r.smoothness * 100).toFixed(0)}</td>
+        <td>${fmtM(r.volume)}</td>
+        <td>${fmtM(r.oi)}</td>
+        <td><span class="score ${scoreCls}">${r.score}</span></td>
+        <td>${sparkline(r.closes14)}</td>
+        <td><button class="watch-btn" data-watch="${r.symbol}" onclick="event.stopPropagation()">${watched ? '★' : '☆'}</button></td>
+      </tr>`;
+  }).join('');
 
-    if (rows.length === 0) {
-      bodyEl.innerHTML = `<tr><td colspan="13" style="text-align:center; color:var(--muted); padding: 30px;">조건에 맞는 종목이 없습니다.</td></tr>`;
-      return;
-    }
-
-    bodyEl.innerHTML = rows.map(r => {
-      const scoreCls = r.score >= 70 ? 's-high' : (r.score >= 40 ? 's-mid' : '');
-      const hotBadges = [];
-      if (r.funding >= 0.1) hotBadges.push('<span class="badge fire">HOT 펀딩</span>');
-      else if (r.funding >= 0.05) hotBadges.push('<span class="badge hot">펀딩↑</span>');
-      if (r.upRatio >= 70 && r.smooth >= 40) hotBadges.push('<span class="badge hot">스무스</span>');
-      const watched = state.watchlist.includes(r.symbol);
-      return `
-        <tr>
-          <td class="sym">${r.symbol}${hotBadges.join('')}</td>
-          <td>${fmtNum(r.price, 6)}</td>
-          <td>${fmtPct(r.change24)}</td>
-          <td>${fmtPct(r.rise14)}</td>
-          <td>${fmtPct(r.funding, 4)}</td>
-          <td>${fmtPct(r.fundingApr, 0)}</td>
-          <td>${r.upRatio.toFixed(0)}%</td>
-          <td>${r.smooth.toFixed(0)}</td>
-          <td>${fmtM(r.volume)}</td>
-          <td>${fmtM(r.oi)}</td>
-          <td><span class="score ${scoreCls}">${r.score}</span></td>
-          <td>${sparkline(r.closes)}</td>
-          <td class="row-actions">
-            <button data-watch="${r.symbol}">${watched ? '★' : '☆'}</button>
-            <a href="https://www.binance.com/en/futures/${r.symbol}" target="_blank"><button>Chart</button></a>
-          </td>
-        </tr>`;
-    }).join('');
-
-    bodyEl.querySelectorAll('button[data-watch]').forEach(b => {
-      b.addEventListener('click', () => {
-        const sym = b.getAttribute('data-watch');
-        const i = state.watchlist.indexOf(sym);
-        if (i >= 0) state.watchlist.splice(i,1); else state.watchlist.push(sym);
-        localStorage.setItem('pps_watch', JSON.stringify(state.watchlist));
-        render();
-      });
-    });
-  }
-
-  document.querySelectorAll('thead th[data-sort]').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.getAttribute('data-sort');
-      if (state.sortBy === key) state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
-      else { state.sortBy = key; state.sortDir = 'desc'; }
-      document.querySelectorAll('thead th').forEach(t => t.classList.remove('sorted'));
-      th.classList.add('sorted');
-      th.textContent = th.textContent.replace(/[▲▼]/,'').trim() + (state.sortDir==='asc'?' ▲':' ▼');
+  // Bind row clicks
+  bodyEl.querySelectorAll('tr[data-sym]').forEach(tr => {
+    tr.addEventListener('click', () => openModal(tr.getAttribute('data-sym')));
+  });
+  // Bind watch buttons
+  bodyEl.querySelectorAll('button[data-watch]').forEach(b => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const sym = b.getAttribute('data-watch');
+      const i = state.watchlist.indexOf(sym);
+      if (i >= 0) state.watchlist.splice(i, 1); else state.watchlist.push(sym);
+      localStorage.setItem('pps_watch', JSON.stringify(state.watchlist));
       render();
     });
   });
+}
 
-  $('scanBtn').addEventListener('click', runScan);
-  let showingWatch = false;
-  $('watchBtn').addEventListener('click', () => {
-    showingWatch = !showingWatch;
-    $('watchBtn').textContent = showingWatch ? '전체 보기' : '★ Watchlist';
-    render(showingWatch);
+// ============================================================
+// SECTION 10: Detail Modal
+// ============================================================
+function candleSVG(candles, w = 800, h = 180) {
+  if (!candles || candles.length === 0) return '';
+  const highs = candles.map(c => c.h), lows = candles.map(c => c.l);
+  const max = Math.max(...highs), min = Math.min(...lows);
+  const range = max - min || 1;
+  const barW = w / candles.length;
+  const toY = p => h - ((p - min) / range) * h;
+
+  const parts = candles.map((c, i) => {
+    const x = i * barW + barW * 0.15;
+    const bw = barW * 0.7;
+    const cx = x + bw / 2;
+    const up = c.c >= c.o;
+    const color = up ? '#4ade80' : '#f87171';
+    const bodyTop = toY(Math.max(c.o, c.c));
+    const bodyBot = toY(Math.min(c.o, c.c));
+    const bodyH = Math.max(bodyBot - bodyTop, 1);
+    return `
+      <line x1="${cx}" y1="${toY(c.h)}" x2="${cx}" y2="${toY(c.l)}" stroke="${color}" stroke-width="1"/>
+      <rect x="${x}" y="${bodyTop}" width="${bw}" height="${bodyH}" fill="${color}"/>`;
+  }).join('');
+
+  // y-axis labels
+  const labels = `
+    <text x="2" y="10" fill="#8b99a8" font-size="10">${max.toPrecision(4)}</text>
+    <text x="2" y="${h - 2}" fill="#8b99a8" font-size="10">${min.toPrecision(4)}</text>`;
+
+  return `<svg width="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="display:block;">${parts}${labels}</svg>`;
+}
+
+function fundingBarSVG(rates, w = 800, h = 100) {
+  if (!rates || rates.length === 0) return '<div class="muted">펀딩 히스토리 없음</div>';
+  const ratesPct = rates.map(r => r * 100);
+  const absMax = Math.max(...ratesPct.map(Math.abs), 0.01);
+  const barW = w / ratesPct.length;
+  const midY = h / 2;
+
+  const bars = ratesPct.map((r, i) => {
+    const bh = Math.abs(r) / absMax * (h / 2 - 4);
+    const y = r >= 0 ? midY - bh : midY;
+    const color = r >= 0 ? '#4ade80' : '#f87171';
+    return `<rect x="${i * barW + 1}" y="${y}" width="${Math.max(barW - 2, 2)}" height="${bh}" fill="${color}" opacity="0.85"><title>${r.toFixed(4)}%</title></rect>`;
+  }).join('');
+
+  return `<svg width="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="display:block;">
+    <line x1="0" y1="${midY}" x2="${w}" y2="${midY}" stroke="#243045" stroke-width="1"/>
+    ${bars}
+    <text x="2" y="10" fill="#8b99a8" font-size="10">+${absMax.toFixed(3)}%</text>
+    <text x="2" y="${h - 2}" fill="#8b99a8" font-size="10">-${absMax.toFixed(3)}%</text>
+  </svg>`;
+}
+
+function renderPriceTab(r) {
+  const stats = `
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-label">현재가</div><div class="stat-value">${fmtNum(r.price, 6)}</div></div>
+      <div class="stat-card"><div class="stat-label">24h 변동</div><div class="stat-value">${fmtPct(r.change24)}</div></div>
+      <div class="stat-card"><div class="stat-label">14d 상승</div><div class="stat-value">${fmtPct(r.rise14)}</div></div>
+      <div class="stat-card"><div class="stat-label">상장 후</div><div class="stat-value">${r.ageDays ?? '-'}일</div></div>
+      <div class="stat-card"><div class="stat-label">현재 펀딩 (8h)</div><div class="stat-value">${fmtPct(r.funding, 4)}</div></div>
+      <div class="stat-card"><div class="stat-label">펀딩 평균 (7d)</div><div class="stat-value">${r.avgFundingPct.toFixed(4)}%</div></div>
+      <div class="stat-card"><div class="stat-label">펀딩 양수율</div><div class="stat-value">${(r.fundPosRatio * 100).toFixed(0)}%</div></div>
+      <div class="stat-card"><div class="stat-label">예상 연 펀딩</div><div class="stat-value pos">${r.fundingApr.toFixed(0)}%</div></div>
+    </div>`;
+  const candles = `<div class="chart-block"><h3>14-Day 캔들</h3>${candleSVG(r.candles14)}</div>`;
+  const funding = `<div class="chart-block"><h3>21회 펀딩 히스토리 (≈ 7일, 8h 단위)</h3>${fundingBarSVG(r.fundRates)}</div>`;
+  return stats + candles + funding;
+}
+
+function renderExchangesTab(r) {
+  const cg = r.cg;
+  const supply = cg ? `
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-label">유통량</div><div class="stat-value">${cg.circulating ? fmtNum(cg.circulating, 0) : '-'}</div></div>
+      <div class="stat-card"><div class="stat-label">최대 공급</div><div class="stat-value">${cg.maxSupply ? fmtNum(cg.maxSupply, 0) : '-'}</div></div>
+      <div class="stat-card"><div class="stat-label">유통률</div><div class="stat-value ${cg.circMax !== null && cg.circMax < 0.30 ? 'pos' : ''}">${cg.circMax !== null ? (cg.circMax * 100).toFixed(1) + '%' : '?'}</div></div>
+      <div class="stat-card"><div class="stat-label">시총 (M)</div><div class="stat-value">${fmtM(cg.marketCap)}</div></div>
+      <div class="stat-card"><div class="stat-label">시총 순위</div><div class="stat-value">${cg.mcRank ? '#' + cg.mcRank : '-'}</div></div>
+      <div class="stat-card"><div class="stat-label">ATH</div><div class="stat-value">${cg.ath ? fmtNum(cg.ath, 6) : '-'}</div></div>
+      <div class="stat-card"><div class="stat-label">ATH 대비</div><div class="stat-value">${cg.athChangePct !== null ? fmtPct(cg.athChangePct, 1) : '-'}</div></div>
+      <div class="stat-card"><div class="stat-label">ATL 대비</div><div class="stat-value">${cg.atlChangePct !== null ? fmtPct(cg.atlChangePct, 0) : '-'}</div></div>
+    </div>` : '<p class="muted" style="margin: 0 0 12px;">CoinGecko 매칭 실패 — 공급 정보를 가져올 수 없습니다.</p>';
+
+  const exMatrix = `
+    <div class="chart-block">
+      <h3>거래소 상장 매트릭스</h3>
+      <table class="ex-table">
+        <thead>
+          <tr><th>거래소</th><th>현물</th><th>선물</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><b>Binance</b></td><td class="ex-no">없음 (조건)</td><td class="ex-yes">상장</td></tr>
+          <tr><td>Bitget</td><td class="${r.cex.bitget ? 'ex-yes' : 'ex-no'}">${r.cex.bitget ? '상장' : '없음'}</td><td>-</td></tr>
+          <tr><td>Gate.io</td><td class="${r.cex.gate ? 'ex-yes' : 'ex-no'}">${r.cex.gate ? '상장' : '없음'}</td><td>-</td></tr>
+          <tr><td>MEXC</td><td class="${r.cex.mexc ? 'ex-yes' : 'ex-no'}">${r.cex.mexc ? '상장' : '없음'}</td><td>-</td></tr>
+          <tr><td>Bybit</td><td class="${r.cex.bybit ? 'ex-yes' : 'ex-no'}">${r.cex.bybit ? '상장' : '없음'}</td><td>-</td></tr>
+        </tbody>
+      </table>
+    </div>`;
+
+  const links = `
+    <div class="chart-block">
+      <h3>외부 링크</h3>
+      <div style="display:flex; flex-wrap:wrap; gap:8px;">
+        <a href="https://www.binance.com/en/futures/${r.symbol}" target="_blank"><button>Binance Futures Chart</button></a>
+        ${cg ? `<a href="https://www.coingecko.com/en/coins/${cg.id}" target="_blank"><button>CoinGecko</button></a>` : ''}
+        ${r.cex.bitget ? `<a href="https://www.bitget.com/spot/${r.base}USDT" target="_blank"><button>Bitget</button></a>` : ''}
+        ${r.cex.gate ? `<a href="https://www.gate.io/trade/${r.base}_USDT" target="_blank"><button>Gate.io</button></a>` : ''}
+        ${r.cex.mexc ? `<a href="https://www.mexc.com/exchange/${r.base}_USDT" target="_blank"><button>MEXC</button></a>` : ''}
+        ${r.cex.bybit ? `<a href="https://www.bybit.com/en/trade/spot/${r.base}/USDT" target="_blank"><button>Bybit</button></a>` : ''}
+      </div>
+    </div>`;
+
+  return supply + exMatrix + links;
+}
+
+function renderSignalsTab(r) {
+  const b = r.scoreBreakdown || {};
+  const colors = {
+    S2: '#60a5fa', S3: '#a78bfa',
+    S5c1: '#4ade80', S5c2: '#4ade80', S5c3: '#4ade80', S5c4: '#4ade80',
+    S6cont: '#fbbf24', S6size: '#fbbf24'
+  };
+  const labels = {
+    S2: '중소CEX 노출 (S2)',
+    S3: '유통량 통제 (S3)',
+    S5c1: '장기 횡보 CV (S5c-1)',
+    S5c2: '계단식 상승 일수 (S5c-2)',
+    S5c3: '양봉 비율 (S5c-3)',
+    S5c4: '스무스니스 (S5c-4)',
+    S6cont: '펀딩 양수 지속성 (S6)',
+    S6size: '펀딩 평균 크기 (S6)'
+  };
+  const totalRaw = Object.values(b).reduce((a, x) => a + x, 0);
+  const segments = Object.entries(b).map(([k, v]) =>
+    `<span style="background:${colors[k] || '#888'}; width:${Math.max((v / Math.max(totalRaw, 1)) * 100, 0).toFixed(2)}%;" title="${labels[k]}: ${v.toFixed(1)}"></span>`
+  ).join('');
+  const rows = Object.entries(b).map(([k, v]) =>
+    `<tr><td>${labels[k] || k}</td><td style="text-align:right;"><b>${v.toFixed(1)}</b></td></tr>`
+  ).join('');
+  return `
+    <div class="chart-block">
+      <h3>점수 분해 (총 ${r.score}점)</h3>
+      <div class="signal-bar">${segments}</div>
+      <table class="ex-table" style="margin-top:10px;">
+        <thead><tr><th>시그널</th><th style="text-align:right;">점수</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="chart-block">
+      <h3>주요 지표</h3>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-label">CV 90d</div><div class="stat-value">${r.cv90 !== null ? r.cv90.toFixed(3) : '-'}</div></div>
+        <div class="stat-card"><div class="stat-label">2~7% 상승일</div><div class="stat-value">${r.riseRangeDays}/13</div></div>
+        <div class="stat-card"><div class="stat-label">양봉 비율</div><div class="stat-value">${(r.upRatio * 100).toFixed(0)}%</div></div>
+        <div class="stat-card"><div class="stat-label">스무스니스</div><div class="stat-value">${(r.smoothness * 100).toFixed(0)}</div></div>
+        <div class="stat-card"><div class="stat-label">90d 저점 대비</div><div class="stat-value">${r.gainFromLow.toFixed(2)}x</div></div>
+        <div class="stat-card"><div class="stat-label">CEX 상장 수</div><div class="stat-value">${r.cexCount}/4</div></div>
+      </div>
+    </div>`;
+}
+
+function openModal(symbol) {
+  const r = state.rowMap.get(symbol);
+  if (!r) return;
+  $('m_symbol').textContent = `${r.symbol} ${r.cg ? '— ' + r.cg.name : ''}`;
+  $('m_meta').innerHTML = `
+    Score <span class="score ${r.score >= 80 ? 's-elite' : r.score >= 60 ? 's-high' : 's-mid'}">${r.score}</span>
+    · 상장 ${r.ageDays ?? '?'}일 · CEX ${r.cexCount}/4 · ${signalChips(r)}
+  `;
+  $('tab-price').innerHTML = renderPriceTab(r);
+  $('tab-exchanges').innerHTML = renderExchangesTab(r);
+  $('tab-signals').innerHTML = renderSignalsTab(r);
+  $('modal').classList.add('show');
+  // reset to first tab
+  document.querySelectorAll('.modal-tabs .tab').forEach((t, i) => t.classList.toggle('active', i === 0));
+  document.querySelectorAll('.tab-panel').forEach((p, i) => p.classList.toggle('active', i === 0));
+}
+function closeModal() { $('modal').classList.remove('show'); }
+
+// ============================================================
+// SECTION 11: Event Bindings
+// ============================================================
+document.querySelectorAll('thead th[data-sort]').forEach(th => {
+  th.addEventListener('click', () => {
+    const key = th.getAttribute('data-sort');
+    if (state.sortBy === key) state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+    else { state.sortBy = key; state.sortDir = 'desc'; }
+    document.querySelectorAll('thead th').forEach(t => {
+      t.classList.remove('sorted');
+      t.textContent = t.textContent.replace(/[▲▼]\s*$/, '').trim();
+    });
+    th.classList.add('sorted');
+    th.textContent = th.textContent + (state.sortDir === 'asc' ? ' ▲' : ' ▼');
+    render();
   });
+});
+
+$('scanBtn').addEventListener('click', runScan);
+
+$('watchBtn').addEventListener('click', () => {
+  state.showingWatch = !state.showingWatch;
+  $('watchBtn').textContent = state.showingWatch ? '전체 보기' : '★ Watchlist';
+  render();
+});
+
+// Modal events
+$('m_close').addEventListener('click', closeModal);
+document.querySelector('.modal-overlay').addEventListener('click', closeModal);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+document.querySelectorAll('.modal-tabs .tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const target = tab.getAttribute('data-tab');
+    document.querySelectorAll('.modal-tabs .tab').forEach(t => t.classList.toggle('active', t === tab));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + target));
+  });
+});
+
 })();
 </script>
 </body>
