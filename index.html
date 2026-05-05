@@ -331,7 +331,7 @@
 <details>
   <summary>탐지 시그널 및 점수 기준 (펼치기)</summary>
   <div style="color: var(--muted); font-size: 11px; line-height: 1.7; margin-top: 8px;">
-    <b>Hard Exclude</b> — Binance Spot에 이미 상장 / 선물 상장 후 120일 미만 / ATH 대비 -90% 이하 / 90일 저점 대비 10배 이상 / circ&gt;70% / 24h 거래대금 &lt; $50k<br>
+    <b>Hard Exclude</b> — Binance Spot에 이미 상장 / 선물 상장 N일 미만 / ATH 대비 -90% 이하 / 저점대비 N배 이상 / 유통률 N% 초과 / CEX N곳 미만 / 펀딩 양수율 N% 미만 / OI/MCap N 미만 / 저볼륨<br>
     <b>가산 시그널 (15종, 합산 100점)</b> — 거래소 노출(8) · 유통률(10) · 가격 패턴 4종(22) · 펀딩 4종(23: 양수율·평균값·추세·베이시스) · 매집 3종(22: OI 추세·L/S 편향·시장가 매수우위) · 변동성 2종(15: BB 압축·거래량/변동폭 디버전스)
   </div>
 </details>
@@ -343,11 +343,11 @@
   </div>
   <div class="filter">
     <label>최대 14일 상승률 %</label>
-    <input type="number" id="f_maxRise14" step="1" value="300" />
+    <input type="number" id="f_maxRise14" step="1" value="50" />
   </div>
   <div class="filter">
     <label>최소 14일 상승률 %</label>
-    <input type="number" id="f_minRise14" step="1" value="-30" />
+    <input type="number" id="f_minRise14" step="1" value="-15" />
   </div>
   <div class="filter">
     <label>최대 24h 변동률 %</label>
@@ -363,7 +363,56 @@
   </div>
   <div class="filter">
     <label>최소 점수</label>
-    <input type="number" id="f_minScore" step="1" value="30" />
+    <input type="number" id="f_minScore" step="1" value="35" />
+  </div>
+  <div class="filter">
+    <label>저점대비 최대 배수</label>
+    <select id="f_maxGain">
+      <option value="1.5">1.5x (+50%, 매우 타이트)</option>
+      <option value="1.8">1.8x (+80%, 타이트)</option>
+      <option value="2.5" selected>2.5x (+150%, 추천)</option>
+      <option value="3">3x (+200%, 느슨)</option>
+      <option value="5">5x (+400%, 매우 느슨)</option>
+      <option value="999">제한 없음</option>
+    </select>
+  </div>
+  <div class="filter">
+    <label>유통률 상한 %</label>
+    <select id="f_maxCirc">
+      <option value="0.20">20% (RAVE급)</option>
+      <option value="0.30" selected>30% (KGEN/4급, 추천)</option>
+      <option value="0.50">50% (느슨)</option>
+      <option value="0.70">70% (매우 느슨)</option>
+      <option value="1.0">제한 없음</option>
+    </select>
+  </div>
+  <div class="filter">
+    <label>최소 CEX 상장수</label>
+    <select id="f_minCex">
+      <option value="0">0 (제한 없음)</option>
+      <option value="1">1곳</option>
+      <option value="2" selected>2곳 (추천)</option>
+      <option value="3">3곳</option>
+      <option value="4">4곳 (매우 타이트)</option>
+    </select>
+  </div>
+  <div class="filter">
+    <label>최소 펀딩 양수 비율</label>
+    <select id="f_minFundPos">
+      <option value="0">0 (제한 없음)</option>
+      <option value="0.3">30%</option>
+      <option value="0.5" selected>50% (추천)</option>
+      <option value="0.7">70% (타이트)</option>
+    </select>
+  </div>
+  <div class="filter">
+    <label>OI/MCap 최소 비율</label>
+    <select id="f_minOiMcap">
+      <option value="0" selected>0 (제한 없음)</option>
+      <option value="0.1">0.1</option>
+      <option value="0.2">0.2 (RAVE급)</option>
+      <option value="0.3">0.3 (매우 타이트)</option>
+    </select>
   </div>
   <div class="filter">
     <label>CoinGecko 매칭</label>
@@ -937,10 +986,16 @@ function analyzeTakerRatio(history) {
 function hardExclude(row, opt) {
   if (row.volume < opt.minVol) return `저볼륨 (<$${opt.minVol})`;
   if (row.ageDays !== null && row.ageDays < opt.minDays) return `상장 ${row.ageDays}d (<${opt.minDays})`;
-  if (row.gainFromLow >= 10) return '저점대비 10배+';
+  if (row.gainFromLow >= opt.maxGain) return `저점대비 ${opt.maxGain}x+`;
+  if (row.cexCount < opt.minCex) return `CEX ${row.cexCount}/${opt.minCex} 미달`;
+  if (row.fundPosRatio < opt.minFundPos) return `펀딩양수율 ${(row.fundPosRatio*100).toFixed(0)}% (<${(opt.minFundPos*100).toFixed(0)}%)`;
   if (row.cg) {
     if (row.cg.athChangePct !== null && row.cg.athChangePct <= -90) return 'ATH -90%';
-    if (row.cg.circMax !== null && row.cg.circMax > 0.7) return '유통 70%+';
+    if (row.cg.circMax !== null && row.cg.circMax > opt.maxCirc) return `유통 ${(row.cg.circMax*100).toFixed(0)}% (>${(opt.maxCirc*100).toFixed(0)}%)`;
+    if (opt.minOiMcap > 0 && row.cg.marketCap > 0 && row.oi > 0) {
+      const oiMcap = row.oi / row.cg.marketCap;
+      if (oiMcap < opt.minOiMcap) return `OI/MCap ${oiMcap.toFixed(2)} (<${opt.minOiMcap})`;
+    }
   }
   return null;
 }
@@ -1085,7 +1140,12 @@ async function runScan() {
       maxDaily: parseFloat($('f_maxDaily').value),
       minVol: parseFloat($('f_minVol').value),
       minDays: parseFloat($('f_minDays').value),
-      minScore: parseFloat($('f_minScore').value)
+      minScore: parseFloat($('f_minScore').value),
+      maxGain: parseFloat($('f_maxGain').value),
+      maxCirc: parseFloat($('f_maxCirc').value),
+      minCex: parseInt($('f_minCex').value),
+      minFundPos: parseFloat($('f_minFundPos').value),
+      minOiMcap: parseFloat($('f_minOiMcap').value)
     };
 
     log('Phase 1: Universe & 거래소 데이터 병렬 로드');
