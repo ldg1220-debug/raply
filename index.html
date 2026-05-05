@@ -363,7 +363,7 @@
   </div>
   <div class="filter">
     <label>최소 점수</label>
-    <input type="number" id="f_minScore" step="1" value="50" />
+    <input type="number" id="f_minScore" step="1" value="30" />
   </div>
   <div class="filter">
     <label>CoinGecko 매칭</label>
@@ -1125,6 +1125,8 @@ async function runScan() {
 
     // Phase 3: Per-symbol detailed fetch + analysis
     const rows = [];
+    const nearMiss = []; // 컷오프 -10점 이내 탈락
+    const excludeStats = { rise14: 0, hard: {}, lowScore: 0, error: 0 };
     const CONCURRENCY = 8;
     let idx = 0, done = 0;
 
@@ -1145,8 +1147,8 @@ async function runScan() {
           const a = analyzeKlines(klines);
           if (!a) continue;
 
-          if (a.rise14 > opt.maxRise14) continue;
-          if (a.rise14 < opt.minRise14) continue;
+          if (a.rise14 > opt.maxRise14) { excludeStats.rise14++; continue; }
+          if (a.rise14 < opt.minRise14) { excludeStats.rise14++; continue; }
 
           const fundAnalysis = analyzeFunding(fundHist);
           const fundingTrend = analyzeFundingTrend(fundHist);
@@ -1217,14 +1219,23 @@ async function runScan() {
 
           // Hard exclude
           const reason = hardExclude(row, opt);
-          if (reason) continue;
+          if (reason) {
+            excludeStats.hard[reason] = (excludeStats.hard[reason] || 0) + 1;
+            continue;
+          }
 
           const { score, breakdown } = computeScore(row);
           row.score = score;
           row.scoreBreakdown = breakdown;
 
-          if (score >= opt.minScore) rows.push(row);
+          if (score >= opt.minScore) {
+            rows.push(row);
+          } else {
+            excludeStats.lowScore++;
+            if (score >= opt.minScore - 15) nearMiss.push(row);
+          }
         } catch (e) {
+          excludeStats.error++;
           log(`${item.candidate.symbol} 분석 실패: ${e.message}`);
         } finally {
           done++;
@@ -1238,6 +1249,18 @@ async function runScan() {
     state.rowMap = new Map(rows.map(r => [r.symbol, r]));
     setStatus(`스캔 완료 — ${rows.length}개 후보 (선물 전용 ${universe.candidates.length}개 중) · 점수 ≥ ${opt.minScore}`);
     log(`최종 후보: ${rows.length}개`);
+
+    // 진단 로그
+    log(`제외 사유 — 14d변동: ${excludeStats.rise14}, 점수미달: ${excludeStats.lowScore}, 분석실패: ${excludeStats.error}`);
+    const hardKeys = Object.keys(excludeStats.hard);
+    if (hardKeys.length) {
+      log(`HardExclude — ${hardKeys.map(k => `${k}: ${excludeStats.hard[k]}`).join(', ')}`);
+    }
+    if (nearMiss.length) {
+      const top = nearMiss.sort((a, b) => b.score - a.score).slice(0, 8);
+      log(`근소 탈락 (컷 ${opt.minScore} 미만 ~15점): ${top.map(r => `${r.base}(${r.score})`).join(', ')}`);
+    }
+
     render();
   } catch (e) {
     log(`스캔 실패: ${e.message}`);
