@@ -286,6 +286,18 @@
   .ex-table th { color: var(--muted); font-weight: 500; font-size: 10px; text-transform: uppercase; }
   .ex-yes { color: var(--accent); font-weight: 600; }
   .ex-no { color: #4a5468; }
+  .link-btn {
+    display: inline-block;
+    padding: 6px 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 11px;
+    text-decoration: none;
+    transition: background 0.15s;
+  }
+  .link-btn:hover { background: var(--border); }
   .signal-bar {
     display: flex;
     height: 6px;
@@ -1376,7 +1388,7 @@ function render() {
         <td>${fmtPct(r.change24)}</td>
         <td>${fmtPct(r.rise14)}</td>
         <td>${cexIcons(r)}</td>
-        <td>${r.circRatio !== null ? r.circRatio.toFixed(0) + '%' : '<span class="muted">?</span>'}</td>
+        <td>${r.cg && r.cg.circMax !== null ? `<span title="유통: ${fmtNum(r.cg.circulating,0)} / 최대: ${fmtNum(r.cg.maxSupply,0)}\n락업: ${fmtNum((r.cg.maxSupply||0)-(r.cg.circulating||0),0)} (${(100-r.circRatio).toFixed(0)}%)\n시총: $${fmtM(r.cg.marketCap)}M\nFDV: $${fmtM((r.cg.maxSupply||0)*r.price)}M\nMC순위: ${r.cg.mcRank ? '#'+r.cg.mcRank : '-'}" class="${r.circRatio < 30 ? 'pos' : (r.circRatio > 50 ? 'neg' : '')}">${r.circRatio.toFixed(0)}%</span>` : '<span class="muted">?</span>'}</td>
         <td>${r.athChange !== null ? fmtPct(r.athChange, 0) : '<span class="muted">?</span>'}</td>
         <td>${fmtPct(r.funding, 4)}</td>
         <td>${(r.fundPosRatio * 100).toFixed(0)}% <span class="muted" style="font-size:10px;">${r.avgFundingPct.toFixed(3)}</span></td>
@@ -1484,17 +1496,28 @@ function renderPriceTab(r) {
 
 function renderExchangesTab(r) {
   const cg = r.cg;
+  const locked = cg && cg.maxSupply && cg.circulating ? cg.maxSupply - cg.circulating : null;
+  const lockedRatio = cg && cg.circMax !== null ? (1 - cg.circMax) * 100 : null;
+  const fdv = cg && cg.maxSupply ? cg.maxSupply * r.price : null;
+  const fdvMcGap = fdv && cg.marketCap ? fdv / cg.marketCap : null;
   const supply = cg ? `
     <div class="stat-grid">
       <div class="stat-card"><div class="stat-label">유통량</div><div class="stat-value">${cg.circulating ? fmtNum(cg.circulating, 0) : '-'}</div></div>
       <div class="stat-card"><div class="stat-label">최대 공급</div><div class="stat-value">${cg.maxSupply ? fmtNum(cg.maxSupply, 0) : '-'}</div></div>
+      <div class="stat-card"><div class="stat-label">락업 (비유통)</div><div class="stat-value neg">${locked ? fmtNum(locked, 0) : '-'}${lockedRatio !== null ? ` <span style="font-size:11px;">(${lockedRatio.toFixed(0)}%)</span>` : ''}</div></div>
       <div class="stat-card"><div class="stat-label">유통률</div><div class="stat-value ${cg.circMax !== null && cg.circMax < 0.30 ? 'pos' : ''}">${cg.circMax !== null ? (cg.circMax * 100).toFixed(1) + '%' : '?'}</div></div>
-      <div class="stat-card"><div class="stat-label">시총 (M)</div><div class="stat-value">${fmtM(cg.marketCap)}</div></div>
+      <div class="stat-card"><div class="stat-label">시총 (M)</div><div class="stat-value">$${fmtM(cg.marketCap)}</div></div>
+      <div class="stat-card"><div class="stat-label">FDV (M)</div><div class="stat-value">${fdv ? '$' + fmtM(fdv) : '-'}${fdvMcGap ? ` <span style="font-size:11px;">×${fdvMcGap.toFixed(1)}</span>` : ''}</div></div>
       <div class="stat-card"><div class="stat-label">시총 순위</div><div class="stat-value">${cg.mcRank ? '#' + cg.mcRank : '-'}</div></div>
-      <div class="stat-card"><div class="stat-label">ATH</div><div class="stat-value">${cg.ath ? fmtNum(cg.ath, 6) : '-'}</div></div>
+      <div class="stat-card"><div class="stat-label">ATH</div><div class="stat-value">${cg.ath ? '$' + fmtNum(cg.ath, 6) : '-'}</div></div>
       <div class="stat-card"><div class="stat-label">ATH 대비</div><div class="stat-value">${cg.athChangePct !== null ? fmtPct(cg.athChangePct, 1) : '-'}</div></div>
       <div class="stat-card"><div class="stat-label">ATL 대비</div><div class="stat-value">${cg.atlChangePct !== null ? fmtPct(cg.atlChangePct, 0) : '-'}</div></div>
-    </div>` : '<p class="muted" style="margin: 0 0 12px;">CoinGecko 매칭 실패 — 공급 정보를 가져올 수 없습니다.</p>';
+    </div>
+    <div style="display:flex; gap:8px; margin: 8px 0 14px; flex-wrap:wrap;">
+      <a href="https://www.coingecko.com/en/coins/${cg.id}" target="_blank" rel="noopener" class="link-btn">📊 CoinGecko 검증</a>
+      <a href="https://www.coingecko.com/en/coins/${cg.id}/tokenomics" target="_blank" rel="noopener" class="link-btn">🔓 락업/베스팅 일정</a>
+      <a href="https://www.binance.com/en/futures/${r.symbol}" target="_blank" rel="noopener" class="link-btn">📈 Binance 차트</a>
+    </div>` : '<p class="muted" style="margin: 0 0 12px;">CoinGecko 매칭 실패 — 공급 정보를 가져올 수 없습니다. <a href="https://www.coingecko.com/en/search?query=' + encodeURIComponent(r.base) + '" target="_blank" rel="noopener" class="link-btn">CoinGecko에서 직접 검색</a></p>';
 
   const exMatrix = `
     <div class="chart-block">
