@@ -173,6 +173,10 @@
   }
   .badge.hot { background: rgba(251,191,36,.15); color: var(--warn); border-color: var(--warn); }
   .badge.fire { background: rgba(248,113,113,.15); color: var(--danger); border-color: var(--danger); }
+  .badge.crime { background: rgba(239,68,68,.20); color: #fca5a5; border-color: #ef4444; font-weight: 700; }
+  .badge.fire-alert { background: rgba(168,85,247,.20); color: #d8b4fe; border-color: #a855f7; font-weight: 700; }
+  .preset-divider { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+  .preset-select { padding: 5px 8px; background: var(--card); border: 1px solid var(--border); border-radius: 5px; color: var(--text); font-size: 11px; min-width: 140px; }
   .score {
     font-weight: 700;
     padding: 2px 8px;
@@ -360,8 +364,8 @@
 
 <header>
   <div>
-    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v0.4</span></h1>
-    <span class="sub">15-Signal · OI 매집 · L/S 편향 · 펀딩 추세 · 베이시스 · BB 압축 · 거래량 디버전스 추가</span>
+    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v0.5</span></h1>
+    <span class="sub">17-Signal · OI/MCap · 유기+OI Spike · 🚨Crime · 🎯발사임박 · 온체인 검증 (GoPlus)</span>
   </div>
   <div class="controls">
     <button id="watchBtn">★ Watchlist</button>
@@ -377,70 +381,71 @@
   <summary>탐지 시그널 및 점수 기준 (펼치기)</summary>
   <div style="color: var(--muted); font-size: 11px; line-height: 1.7; margin-top: 8px;">
     <b>Hard Exclude</b> — Binance Spot에 이미 상장 / 선물 상장 N일 미만 / ATH 대비 -90% 이하 / 저점대비 N배 이상 / 유통률 N% 초과 / CEX N곳 미만 / 펀딩 양수율 N% 미만 / OI/MCap N 미만 / 저볼륨<br>
-    <b>가산 시그널 (15종, 합산 100점)</b> — 거래소 노출(8) · 유통률(10) · 가격 패턴 4종(22) · 펀딩 4종(23: 양수율·평균값·추세·베이시스) · 매집 3종(22: OI 추세·L/S 편향·시장가 매수우위) · 변동성 2종(15: BB 압축·거래량/변동폭 디버전스)
+    <b>가산 시그널 (17종, 합산 100점)</b> — 거래소 노출(8) · 유통률(10) · 가격 패턴 4종(22) · 펀딩 4종(23) · 매집 3종(22) · 변동성 2종(15) · OI/MCap(6) · 유기+OI Spike(8)<br>
+    <b>알람 배지</b> — 🚨 CRIME (펀딩+ Basis≥0.5% 양수율≥60%) · 🎯 발사임박 (14d Vol &lt; 90d 평균 50% + cv90 &lt; 10% + OI 14d ratio ≥ 1.2)
   </div>
 </details>
 
 <section class="filters">
   <div class="filter">
     <label>최소 펀딩비 % (8h)</label>
-    <input type="number" id="f_funding" step="0.001" value="0" />
-    <div class="hint">0=무제한, 0.01=양수만</div>
+    <input type="number" id="f_funding" list="dl_funding" step="0.001" value="0" />
+    <datalist id="dl_funding"><option value="0">0 (무제한)</option><option value="0.005">0.005</option><option value="0.01">0.01</option><option value="0.02">0.02</option></datalist>
   </div>
   <div class="filter">
     <label>최대 14일 상승률 %</label>
-    <input type="number" id="f_maxRise14" step="1" value="50" />
-    <div class="hint">RAVE 직전: 30~50</div>
+    <input type="number" id="f_maxRise14" list="dl_maxRise14" step="1" value="50" />
+    <datalist id="dl_maxRise14"><option value="30">30</option><option value="50">50</option><option value="100">100</option><option value="300">300</option></datalist>
   </div>
   <div class="filter">
     <label>최소 14일 상승률 %</label>
-    <input type="number" id="f_minRise14" step="1" value="-15" />
-    <div class="hint">횡보 허용: -15 ~ -30</div>
+    <input type="number" id="f_minRise14" list="dl_minRise14" step="1" value="-15" />
+    <datalist id="dl_minRise14"><option value="-30">-30</option><option value="-15">-15</option><option value="-10">-10</option><option value="0">0</option></datalist>
   </div>
   <div class="filter">
     <label>최대 24h 변동률 %</label>
-    <input type="number" id="f_maxDaily" step="1" value="50" />
-    <div class="hint">급등주 컷: 30~50</div>
+    <input type="number" id="f_maxDaily" list="dl_maxDaily" step="1" value="50" />
+    <datalist id="dl_maxDaily"><option value="20">20</option><option value="30">30</option><option value="50">50</option></datalist>
   </div>
   <div class="filter">
     <label>최소 24h 거래대금 USDT</label>
-    <input type="number" id="f_minVol" step="10000" value="100000" />
-    <div class="hint">10만~100만</div>
+    <input type="number" id="f_minVol" list="dl_minVol" step="10000" value="100000" />
+    <datalist id="dl_minVol"><option value="50000">5만</option><option value="100000">10만</option><option value="200000">20만</option><option value="500000">50만</option></datalist>
   </div>
   <div class="filter">
     <label>최소 상장 후 일수</label>
-    <input type="number" id="f_minDays" step="10" value="120" />
-    <div class="hint">매집 기간: 90~180</div>
+    <input type="number" id="f_minDays" list="dl_minDays" step="10" value="120" />
+    <datalist id="dl_minDays"><option value="60">60</option><option value="90">90</option><option value="120">120</option><option value="180">180</option></datalist>
   </div>
   <div class="filter">
     <label>최소 점수</label>
-    <input type="number" id="f_minScore" step="1" value="35" />
-    <div class="hint">엄격 50, 균형 35, 탐색 25</div>
+    <input type="number" id="f_minScore" list="dl_minScore" step="1" value="35" />
+    <datalist id="dl_minScore"><option value="25">25 (탐색)</option><option value="35">35 (균형)</option><option value="50">50 (엄격)</option></datalist>
   </div>
   <div class="filter">
     <label>저점대비 최대 배수 (x)</label>
-    <input type="number" id="f_maxGain" step="0.1" value="2.5" />
-    <div class="hint">1.5/1.8 타이트, 2.5★, 3/5 느슨</div>
+    <input type="number" id="f_maxGain" list="dl_maxGain" step="0.1" value="2.5" />
+    <datalist id="dl_maxGain"><option value="1.5">1.5</option><option value="1.8">1.8</option><option value="2.5">2.5</option><option value="3">3</option><option value="5">5</option><option value="999">무제한</option></datalist>
   </div>
   <div class="filter">
     <label>유통률 상한 %</label>
-    <input type="number" id="f_maxCirc" step="1" value="30" />
-    <div class="hint">20=RAVE급, 30★, 50 느슨</div>
+    <input type="number" id="f_maxCirc" list="dl_maxCirc" step="1" value="30" />
+    <datalist id="dl_maxCirc"><option value="20">20 (RAVE급)</option><option value="30">30</option><option value="50">50</option><option value="70">70</option><option value="100">100 (무제한)</option></datalist>
   </div>
   <div class="filter">
     <label>최소 CEX 상장수</label>
-    <input type="number" id="f_minCex" step="1" value="2" min="0" max="4" />
-    <div class="hint">Bitget/Gate/MEXC/Bybit 중 0~4곳</div>
+    <input type="number" id="f_minCex" list="dl_minCex" step="1" value="2" min="0" max="4" />
+    <datalist id="dl_minCex"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></datalist>
   </div>
   <div class="filter">
     <label>최소 펀딩 양수 비율 %</label>
-    <input type="number" id="f_minFundPos" step="5" value="50" min="0" max="100" />
-    <div class="hint">최근 21회 중 양수 펀딩 %</div>
+    <input type="number" id="f_minFundPos" list="dl_minFundPos" step="5" value="50" min="0" max="100" />
+    <datalist id="dl_minFundPos"><option value="0">0</option><option value="30">30</option><option value="50">50</option><option value="70">70</option></datalist>
   </div>
   <div class="filter">
     <label>OI/MCap 최소 비율</label>
-    <input type="number" id="f_minOiMcap" step="0.05" value="0" min="0" />
-    <div class="hint">0=무제한, 0.2=RAVE급, 0.3 타이트</div>
+    <input type="number" id="f_minOiMcap" list="dl_minOiMcap" step="0.05" value="0" min="0" />
+    <datalist id="dl_minOiMcap"><option value="0">0</option><option value="0.1">0.1</option><option value="0.2">0.2 (RAVE급)</option><option value="0.3">0.3</option></datalist>
   </div>
   <div class="filter">
     <label>CoinGecko 매칭</label>
@@ -452,12 +457,17 @@
 </section>
 
 <div class="preset-bar">
-  <span class="preset-label">프리셋:</span>
-  <button id="presetSave" class="preset-btn">💾 현재값 저장</button>
-  <button id="presetLoad" class="preset-btn">📂 저장값 복원</button>
+  <span class="preset-label">시스템 프리셋:</span>
   <button id="presetReset" class="preset-btn">↺ 기본값(추천)</button>
   <button id="presetTight" class="preset-btn">🔒 타이트 (RAVE급)</button>
   <button id="presetLoose" class="preset-btn">🔓 느슨 (탐색)</button>
+  <span class="preset-divider"></span>
+  <span class="preset-label">내 프리셋:</span>
+  <select id="myPresetSel" class="preset-select"><option value="">— 선택 —</option></select>
+  <button id="myPresetLoad" class="preset-btn">불러오기</button>
+  <button id="myPresetSave" class="preset-btn">💾 새로 저장</button>
+  <button id="myPresetOver" class="preset-btn">↻ 덮어쓰기</button>
+  <button id="myPresetDel" class="preset-btn">🗑 삭제</button>
   <span id="presetStatus" class="preset-status"></span>
 </div>
 
@@ -484,13 +494,14 @@
       <th data-sort="upRatio">Up Days</th>
       <th data-sort="volume">Vol(M)</th>
       <th data-sort="oi">OI(M)</th>
+      <th data-sort="oiMcap">OI/MC</th>
       <th data-sort="score" class="sorted">Score ▼</th>
       <th>Spark</th>
       <th>★</th>
     </tr>
   </thead>
   <tbody id="resultBody">
-    <tr><td colspan="20" style="text-align:center; color:var(--muted); padding: 30px;">스캔 결과가 여기에 표시됩니다.</td></tr>
+    <tr><td colspan="21" style="text-align:center; color:var(--muted); padding: 30px;">스캔 결과가 여기에 표시됩니다.</td></tr>
   </tbody>
 </table>
 </div>
@@ -772,6 +783,28 @@ const CoinGecko = {
     return all;
   },
 
+  async loadPlatforms() {
+    const key = 'cg_platforms_v1';
+    const cached = Cache.get(key);
+    if (cached && cached.length > 5000) return cached;
+    try {
+      log('CoinGecko 컨트랙트 주소(platforms) 로드 중...');
+      const data = await getJSON(`${this.BASE}/coins/list?include_platform=true`, 1, 30000);
+      if (Array.isArray(data) && data.length > 0) {
+        Cache.set(key, data, CACHE_TTL_CG);
+        log(`CoinGecko platforms 로드: ${data.length}개`);
+        return data;
+      }
+    } catch (e) { log(`CG platforms 실패: ${e.message}`); }
+    return [];
+  },
+
+  buildPlatformMap(list) {
+    const map = new Map();
+    for (const c of list) map.set(c.id, c.platforms || {});
+    return map;
+  },
+
   buildSymbolMap(markets) {
     const map = new Map();
     for (const m of markets) {
@@ -782,13 +815,14 @@ const CoinGecko = {
     return map;
   },
 
-  lookup(symMap, baseAsset) {
+  lookup(symMap, baseAsset, platMap=null) {
     const entries = symMap.get(baseAsset.toUpperCase()) || [];
     if (entries.length === 0) return null;
     entries.sort((a, b) => (b.market_cap || 0) - (a.market_cap || 0));
     const m = entries[0];
     const maxSupply = m.max_supply || m.total_supply || null;
     const circSupply = m.circulating_supply || null;
+    const platforms = platMap ? (platMap.get(m.id) || {}) : {};
     return {
       id: m.id,
       name: m.name,
@@ -803,8 +837,41 @@ const CoinGecko = {
       marketCap: m.market_cap || 0,
       mcRank: m.market_cap_rank || null,
       cgPrice: m.current_price,
-      change7d: m.price_change_percentage_7d_in_currency ?? null
+      change7d: m.price_change_percentage_7d_in_currency ?? null,
+      platforms
     };
+  }
+};
+
+// GoPlus Token Security API (free, no key) — EVM chains only
+const GoPlus = {
+  CHAIN_IDS: {
+    ethereum: '1', 'binance-smart-chain': '56', 'polygon-pos': '137',
+    'arbitrum-one': '42161', 'optimistic-ethereum': '10', avalanche: '43114',
+    base: '8453', linea: '59144'
+  },
+  pickPrimary(platforms) {
+    if (!platforms) return null;
+    const order = ['ethereum', 'binance-smart-chain', 'base', 'arbitrum-one', 'optimistic-ethereum', 'polygon-pos', 'avalanche', 'linea'];
+    for (const k of order) {
+      if (platforms[k]) return { chain: k, address: platforms[k], chainId: this.CHAIN_IDS[k] };
+    }
+    if (platforms.solana) return { chain: 'solana', address: platforms.solana, chainId: null };
+    const first = Object.entries(platforms).find(([k, v]) => v);
+    return first ? { chain: first[0], address: first[1], chainId: this.CHAIN_IDS[first[0]] || null } : null;
+  },
+  async fetchSecurity(chainId, address) {
+    if (!chainId || !address) return null;
+    const key = `goplus_${chainId}_${address.toLowerCase()}`;
+    const cached = Cache.get(key);
+    if (cached) return cached;
+    try {
+      const url = `https://api.gopluslabs.io/api/v1/token_security/${chainId}?contract_addresses=${address}`;
+      const data = await getJSON(url, 1, 8000);
+      const item = data?.result?.[address.toLowerCase()];
+      if (item) Cache.set(key, item, 12 * 60 * 60 * 1000);
+      return item || null;
+    } catch (e) { return null; }
   }
 };
 
@@ -900,11 +967,22 @@ function analyzeKlines(klines) {
     }
   }
 
+  // 유기(Quiet) 판별: 14d 평균 거래량 / 90d 평균 거래량
+  let volQuietRatio = null;
+  if (candles.length >= 60) {
+    const tail14 = candles.slice(-14);
+    const tail90 = candles.slice(-Math.min(90, candles.length));
+    const v14 = tail14.reduce((a, c) => a + c.v, 0) / tail14.length;
+    const v90 = tail90.reduce((a, c) => a + c.v, 0) / tail90.length;
+    volQuietRatio = v90 > 0 ? v14 / v90 : null;
+  }
+
   return {
     rise14, upRatio, smoothness, avgMove, maxMove,
     riseRangeDays, gainFromLow, cv90,
     bbRatio, bbScore,
     volRatio, rangeRatio, divergenceScore,
+    volQuietRatio,
     closes14: rec14,
     candles14: candles.slice(-14),
     candlesAll: candles
@@ -1030,9 +1108,8 @@ function hardExclude(row, opt) {
   if (row.cg) {
     if (row.cg.athChangePct !== null && row.cg.athChangePct <= -90) return 'ATH -90%';
     if (row.cg.circMax !== null && row.cg.circMax > opt.maxCirc) return `유통 ${(row.cg.circMax*100).toFixed(0)}% (>${(opt.maxCirc*100).toFixed(0)}%)`;
-    if (opt.minOiMcap > 0 && row.cg.marketCap > 0 && row.oi > 0) {
-      const oiMcap = row.oi / row.cg.marketCap;
-      if (oiMcap < opt.minOiMcap) return `OI/MCap ${oiMcap.toFixed(2)} (<${opt.minOiMcap})`;
+    if (opt.minOiMcap > 0 && row.oiMcap !== null && row.oiMcap < opt.minOiMcap) {
+      return `OI/MCap ${row.oiMcap.toFixed(2)} (<${opt.minOiMcap})`;
     }
   }
   return null;
@@ -1105,8 +1182,42 @@ function computeScore(row) {
   // S13: 거래량/변동폭 디버전스 (max 7)
   b.S13 = row.divergenceScore || 0;
 
+  // S14: OI/MCap 비율 (max 6) — 시총 대비 OI가 클수록 세력 장악
+  let s14 = 0;
+  if (row.oiMcap !== null && row.oiMcap !== undefined) {
+    if (row.oiMcap >= 0.30) s14 = 6;
+    else if (row.oiMcap >= 0.20) s14 = 4;
+    else if (row.oiMcap >= 0.10) s14 = 2;
+    else if (row.oiMcap >= 0.05) s14 = 1;
+  }
+  b.S14 = s14;
+
+  // S15: 유기(Quiet Zone) + OI Spike 콤보 (max 8)
+  // 90d vol 대비 14d vol < 0.5 + cv90 < 0.10 + OI 14d ratio >= 1.2
+  let s15 = 0;
+  const quiet = row.volQuietRatio !== null && row.volQuietRatio !== undefined && row.volQuietRatio < 0.5;
+  const dead = row.cv90 !== null && row.cv90 !== undefined && row.cv90 < 0.10;
+  const oiSpike = row.oiTrend?.ratio !== null && row.oiTrend?.ratio !== undefined && row.oiTrend.ratio >= 1.2;
+  if (quiet && dead && oiSpike) s15 = 8;
+  else if (quiet && oiSpike) s15 = 5;
+  else if (dead && oiSpike) s15 = 3;
+  b.S15 = s15;
+
   const total = Object.values(b).reduce((a, x) => a + x, 0);
   return { score: Math.min(Math.round(total), 100), breakdown: b };
+}
+
+// Crime 배지: 펀딩 양수 + basis ≥ 0.5% + 양수율 ≥ 60%
+function isCrimeAlert(row) {
+  return row.funding > 0
+      && row.basis !== null && row.basis !== undefined && row.basis >= 0.5
+      && row.fundPosRatio >= 0.6;
+}
+// 발사 임박 배지: 거래량 죽음 + 변동성 죽음 + OI 급증
+function isAboutToFire(row) {
+  return row.volQuietRatio !== null && row.volQuietRatio !== undefined && row.volQuietRatio < 0.5
+      && row.cv90 !== null && row.cv90 !== undefined && row.cv90 < 0.10
+      && row.oiTrend?.ratio !== null && row.oiTrend?.ratio !== undefined && row.oiTrend.ratio >= 1.2;
 }
 
 function signalChips(row) {
@@ -1187,17 +1298,19 @@ async function runScan() {
     };
 
     log('Phase 1: Universe & 거래소 데이터 병렬 로드');
-    const [universe, tickers, premium, cexSets, cgMarkets] = await Promise.all([
+    const [universe, tickers, premium, cexSets, cgMarkets, cgPlatforms] = await Promise.all([
       Binance.loadUniverse(),
       Binance.loadTickers(),
       Binance.loadPremium(),
       CexLoader.loadAll(),
-      useCG ? CoinGecko.loadMarkets() : Promise.resolve([])
+      useCG ? CoinGecko.loadMarkets() : Promise.resolve([]),
+      useCG ? CoinGecko.loadPlatforms() : Promise.resolve([])
     ]);
 
     log(`Universe: 선물 전용 ${universe.candidates.length}개 (Binance Spot ${universe.spotBaseSet.size}개 제외)`);
 
     const cgMap = useCG ? CoinGecko.buildSymbolMap(cgMarkets) : new Map();
+    const cgPlatMap = useCG ? CoinGecko.buildPlatformMap(cgPlatforms) : new Map();
 
     // Phase 2: First-pass filter (cheap fields)
     const today = Date.now();
@@ -1255,7 +1368,7 @@ async function runScan() {
           const lsBias = analyzeLSBias(lsPos, lsAcc);
           const takerRatio = analyzeTakerRatio(takerHist);
 
-          const cg = useCG ? CoinGecko.lookup(cgMap, item.candidate.base) : null;
+          const cg = useCG ? CoinGecko.lookup(cgMap, item.candidate.base, cgPlatMap) : null;
           const price = parseFloat(item.p.markPrice) || parseFloat(item.t.lastPrice);
           const fundingPct = item.fundingRaw * 100;
 
@@ -1289,8 +1402,10 @@ async function runScan() {
             volRatio: a.volRatio,
             rangeRatio: a.rangeRatio,
             divergenceScore: a.divergenceScore,
+            volQuietRatio: a.volQuietRatio,
             volume: item.vol,
             oi: oi * price,
+            oiMcap: cg && cg.marketCap > 0 ? (oi * price) / cg.marketCap : null,
             gainFromLow: a.gainFromLow,
             cex,
             cexCount,
@@ -1391,7 +1506,7 @@ function render() {
   });
 
   if (rows.length === 0) {
-    bodyEl.innerHTML = `<tr><td colspan="20" style="text-align:center; color:var(--muted); padding: 30px;">${state.showingWatch ? '워치리스트가 비어있거나 조건에 맞는 종목이 없습니다.' : '조건에 맞는 종목이 없습니다.'}</td></tr>`;
+    bodyEl.innerHTML = `<tr><td colspan="21" style="text-align:center; color:var(--muted); padding: 30px;">${state.showingWatch ? '워치리스트가 비어있거나 조건에 맞는 종목이 없습니다.' : '조건에 맞는 종목이 없습니다.'}</td></tr>`;
     return;
   }
 
@@ -1401,6 +1516,8 @@ function render() {
     const hotBadges = [];
     if (r.avgFundingPct >= 0.10) hotBadges.push('<span class="badge fire">HOT</span>');
     else if (r.avgFundingPct >= 0.05) hotBadges.push('<span class="badge hot">↑</span>');
+    if (isCrimeAlert(r)) hotBadges.push('<span class="badge crime" title="펀딩 양수 + Basis ≥ 0.5% + 양수율 ≥ 60%">🚨 CRIME</span>');
+    if (isAboutToFire(r)) hotBadges.push('<span class="badge fire-alert" title="14d 거래량 < 90d 평균 50% + cv90 < 10% + OI 14d ratio ≥ 1.2">🎯 발사</span>');
     const watched = state.watchlist.includes(r.symbol);
 
     const oiPct = r.oiTrendPct;
@@ -1425,6 +1542,7 @@ function render() {
         <td>${(r.upRatio * 100).toFixed(0)}%</td>
         <td>${fmtM(r.volume)}</td>
         <td>${fmtM(r.oi)}</td>
+        <td>${r.oiMcap !== null && r.oiMcap !== undefined ? `<span class="${r.oiMcap >= 0.20 ? 'pos' : (r.oiMcap >= 0.10 ? '' : 'muted')}" title="OI ÷ Market Cap (시총 대비 미결제약정 — 0.20+ 이면 세력 장악)">${r.oiMcap.toFixed(2)}</span>` : '<span class="muted">?</span>'}</td>
         <td><span class="score ${scoreCls}">${r.score}</span></td>
         <td>${sparkline(r.closes14)}</td>
         <td><button class="watch-btn" data-watch="${r.symbol}" onclick="event.stopPropagation()">${watched ? '★' : '☆'}</button></td>
@@ -1562,20 +1680,60 @@ function renderExchangesTab(r) {
       </table>
     </div>`;
 
-  const links = `
+  // 온체인 검증 링크 (체인별 분기)
+  const primary = cg && cg.platforms ? GoPlus.pickPrimary(cg.platforms) : null;
+  let onchainLinks = '';
+  if (primary) {
+    const addr = primary.address;
+    const linksByChain = {
+      'ethereum': [
+        ['Etherscan 홀더', `https://etherscan.io/token/${addr}#balances`],
+        ['Bubblemaps', `https://app.bubblemaps.io/eth/token/${addr}`],
+        ['DexScreener', `https://dexscreener.com/ethereum/${addr}`]
+      ],
+      'binance-smart-chain': [
+        ['BSCscan 홀더', `https://bscscan.com/token/${addr}#balances`],
+        ['Bubblemaps', `https://app.bubblemaps.io/bsc/token/${addr}`],
+        ['DexScreener', `https://dexscreener.com/bsc/${addr}`]
+      ],
+      'base': [['BaseScan 홀더', `https://basescan.org/token/${addr}#balances`], ['DexScreener', `https://dexscreener.com/base/${addr}`]],
+      'arbitrum-one': [['Arbiscan 홀더', `https://arbiscan.io/token/${addr}#balances`], ['DexScreener', `https://dexscreener.com/arbitrum/${addr}`]],
+      'optimistic-ethereum': [['OP Etherscan 홀더', `https://optimistic.etherscan.io/token/${addr}#balances`]],
+      'polygon-pos': [['Polygonscan 홀더', `https://polygonscan.com/token/${addr}#balances`], ['Bubblemaps', `https://app.bubblemaps.io/poly/token/${addr}`]],
+      'avalanche': [['Snowtrace 홀더', `https://snowtrace.io/token/${addr}#balances`]],
+      'solana': [
+        ['Solscan 홀더', `https://solscan.io/token/${addr}#holders`],
+        ['Bubblemaps', `https://app.bubblemaps.io/sol/token/${addr}`],
+        ['DexScreener', `https://dexscreener.com/solana/${addr}`]
+      ]
+    };
+    const chainLinks = linksByChain[primary.chain] || [];
+    onchainLinks = `
+      <div class="chart-block">
+        <h3>온체인 검증 (${primary.chain} · <span class="muted" style="font-size:11px;">${addr.slice(0,8)}...${addr.slice(-6)}</span>)</h3>
+        <div id="goplus-result" class="muted" style="font-size:11px; padding: 6px 0;">GoPlus 보안 정보 로드 중...</div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top: 8px;">
+          ${chainLinks.map(([t, u]) => `<a href="${u}" target="_blank" rel="noopener" class="link-btn">🔗 ${t}</a>`).join('')}
+          <a href="https://www.coingecko.com/en/coins/${cg.id}#markets" target="_blank" rel="noopener" class="link-btn">💧 CG 거래소</a>
+        </div>
+      </div>`;
+  } else if (cg) {
+    onchainLinks = `<div class="chart-block"><h3>온체인 검증</h3><p class="muted" style="font-size:11px;">컨트랙트 주소 정보 없음 — <a href="https://www.coingecko.com/en/coins/${cg.id}" target="_blank" rel="noopener" class="link-btn">CG에서 직접 확인</a></p></div>`;
+  }
+
+  const cexLinks = `
     <div class="chart-block">
-      <h3>외부 링크</h3>
+      <h3>거래소 차트</h3>
       <div style="display:flex; flex-wrap:wrap; gap:8px;">
-        <a href="https://www.binance.com/en/futures/${r.symbol}" target="_blank"><button>Binance Futures Chart</button></a>
-        ${cg ? `<a href="https://www.coingecko.com/en/coins/${cg.id}" target="_blank"><button>CoinGecko</button></a>` : ''}
-        ${r.cex.bitget ? `<a href="https://www.bitget.com/spot/${r.base}USDT" target="_blank"><button>Bitget</button></a>` : ''}
-        ${r.cex.gate ? `<a href="https://www.gate.io/trade/${r.base}_USDT" target="_blank"><button>Gate.io</button></a>` : ''}
-        ${r.cex.mexc ? `<a href="https://www.mexc.com/exchange/${r.base}_USDT" target="_blank"><button>MEXC</button></a>` : ''}
-        ${r.cex.bybit ? `<a href="https://www.bybit.com/en/trade/spot/${r.base}/USDT" target="_blank"><button>Bybit</button></a>` : ''}
+        <a href="https://www.binance.com/en/futures/${r.symbol}" target="_blank" rel="noopener" class="link-btn">Binance Futures</a>
+        ${r.cex.bitget ? `<a href="https://www.bitget.com/spot/${r.base}USDT" target="_blank" rel="noopener" class="link-btn">Bitget</a>` : ''}
+        ${r.cex.gate ? `<a href="https://www.gate.io/trade/${r.base}_USDT" target="_blank" rel="noopener" class="link-btn">Gate.io</a>` : ''}
+        ${r.cex.mexc ? `<a href="https://www.mexc.com/exchange/${r.base}_USDT" target="_blank" rel="noopener" class="link-btn">MEXC</a>` : ''}
+        ${r.cex.bybit ? `<a href="https://www.bybit.com/en/trade/spot/${r.base}/USDT" target="_blank" rel="noopener" class="link-btn">Bybit</a>` : ''}
       </div>
     </div>`;
 
-  return supply + exMatrix + links;
+  return supply + exMatrix + onchainLinks + cexLinks;
 }
 
 function renderSignalsTab(r) {
@@ -1670,6 +1828,34 @@ function openModal(symbol) {
   // reset to first tab
   document.querySelectorAll('.modal-tabs .tab').forEach((t, i) => t.classList.toggle('active', i === 0));
   document.querySelectorAll('.tab-panel').forEach((p, i) => p.classList.toggle('active', i === 0));
+
+  // GoPlus 비동기 로드 (EVM 체인만)
+  const primary = r.cg && r.cg.platforms ? GoPlus.pickPrimary(r.cg.platforms) : null;
+  const goplusEl = document.getElementById('goplus-result');
+  if (goplusEl && primary && primary.chainId) {
+    GoPlus.fetchSecurity(primary.chainId, primary.address).then(sec => {
+      if (!sec) { goplusEl.innerHTML = '<span class="muted">GoPlus 데이터 없음 (체인 미지원 또는 인덱싱 안됨)</span>'; return; }
+      const holders = sec.holders || [];
+      const top10Pct = holders.slice(0, 10).reduce((a, h) => a + parseFloat(h.percent || 0), 0) * 100;
+      const creator = parseFloat(sec.creator_percent || 0) * 100;
+      const owner = parseFloat(sec.owner_percent || 0) * 100;
+      const items = [];
+      items.push(`<b>홀더 수:</b> ${sec.holder_count || '?'}`);
+      items.push(`<b>Top10 점유:</b> <span class="${top10Pct >= 50 ? 'neg' : (top10Pct >= 30 ? 'warn' : 'pos')}">${top10Pct.toFixed(1)}%</span>`);
+      if (creator > 0.1) items.push(`Creator: <span class="${creator >= 5 ? 'neg' : ''}">${creator.toFixed(2)}%</span>`);
+      if (owner > 0.1) items.push(`Owner: <span class="${owner >= 5 ? 'neg' : ''}">${owner.toFixed(2)}%</span>`);
+      if (sec.is_honeypot === '1') items.push('<span class="neg">⚠ Honeypot 의심</span>');
+      if (sec.is_mintable === '1') items.push('<span class="warn">⚠ Mintable</span>');
+      if (sec.can_take_back_ownership === '1') items.push('<span class="warn">⚠ Ownership 회수 가능</span>');
+      if (sec.is_proxy === '1') items.push('<span class="warn">⚠ Proxy 컨트랙트</span>');
+      const buyTax = parseFloat(sec.buy_tax || 0) * 100;
+      const sellTax = parseFloat(sec.sell_tax || 0) * 100;
+      if (buyTax > 0 || sellTax > 0) items.push(`Buy/Sell Tax: ${buyTax.toFixed(1)}% / ${sellTax.toFixed(1)}%`);
+      goplusEl.innerHTML = items.join(' · ');
+    }).catch(() => { goplusEl.innerHTML = '<span class="muted">GoPlus 로드 실패</span>'; });
+  } else if (goplusEl) {
+    goplusEl.innerHTML = '<span class="muted">GoPlus: EVM 체인만 지원 (현재 ' + (primary?.chain || '미지원 체인') + ')</span>';
+  }
 }
 function closeModal() { $('modal').classList.remove('show'); }
 
@@ -1694,18 +1880,19 @@ document.querySelectorAll('thead th[data-sort]').forEach(th => {
 $('scanBtn').addEventListener('click', runScan);
 
 // ============================================================
-// 프리셋 (필터 저장/복원)
+// 프리셋 (시스템 + 사용자 다중 저장)
 // ============================================================
 const FILTER_FIELDS = ['f_funding','f_maxRise14','f_minRise14','f_maxDaily','f_minVol','f_minDays','f_minScore','f_maxGain','f_maxCirc','f_minCex','f_minFundPos','f_minOiMcap','f_cg'];
-const PRESET_KEY = 'raply.filterPreset.v1';
-const PRESETS = {
+const PRESETS_KEY = 'raply.presets.v2';
+const LAST_KEY = 'raply.presets.last';
+const SYS_PRESETS = {
   default: { f_funding:0, f_maxRise14:50, f_minRise14:-15, f_maxDaily:50, f_minVol:100000, f_minDays:120, f_minScore:35, f_maxGain:2.5, f_maxCirc:30, f_minCex:2, f_minFundPos:50, f_minOiMcap:0, f_cg:'on' },
   tight:   { f_funding:0.005, f_maxRise14:30, f_minRise14:-10, f_maxDaily:30, f_minVol:200000, f_minDays:120, f_minScore:50, f_maxGain:1.8, f_maxCirc:20, f_minCex:3, f_minFundPos:70, f_minOiMcap:0.2, f_cg:'on' },
   loose:   { f_funding:0, f_maxRise14:150, f_minRise14:-30, f_maxDaily:50, f_minVol:50000, f_minDays:90, f_minScore:25, f_maxGain:5, f_maxCirc:50, f_minCex:1, f_minFundPos:30, f_minOiMcap:0, f_cg:'on' }
 };
 function applyPreset(values) {
   for (const id of FILTER_FIELDS) {
-    if (values[id] !== undefined) $(id).value = values[id];
+    if (values[id] !== undefined && values[id] !== null) $(id).value = values[id];
   }
 }
 function readFilters() {
@@ -1713,30 +1900,100 @@ function readFilters() {
   for (const id of FILTER_FIELDS) out[id] = $(id).value;
   return out;
 }
+function loadUserPresets() {
+  try { return JSON.parse(localStorage.getItem(PRESETS_KEY) || '{}'); }
+  catch(e) { return {}; }
+}
+function saveUserPresets(map) {
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(map));
+}
+function refreshPresetSelector(selectName=null) {
+  const sel = $('myPresetSel');
+  const map = loadUserPresets();
+  const names = Object.keys(map).sort();
+  sel.innerHTML = '<option value="">— 선택 —</option>' +
+    names.map(n => `<option value="${n}"${n===selectName?' selected':''}>${n}</option>`).join('');
+}
 function flashStatus(msg) {
   $('presetStatus').textContent = msg;
   setTimeout(() => { $('presetStatus').textContent = ''; }, 2500);
 }
-$('presetSave').addEventListener('click', () => {
-  localStorage.setItem(PRESET_KEY, JSON.stringify(readFilters()));
-  flashStatus('✓ 현재값 저장됨');
-});
-$('presetLoad').addEventListener('click', () => {
-  const raw = localStorage.getItem(PRESET_KEY);
-  if (!raw) return flashStatus('저장된 값 없음');
-  try { applyPreset(JSON.parse(raw)); flashStatus('✓ 저장값 복원됨'); }
-  catch(e) { flashStatus('복원 실패'); }
-});
-$('presetReset').addEventListener('click', () => { applyPreset(PRESETS.default); flashStatus('✓ 기본값(추천) 적용'); });
-$('presetTight').addEventListener('click', () => { applyPreset(PRESETS.tight);   flashStatus('✓ 타이트 적용'); });
-$('presetLoose').addEventListener('click', () => { applyPreset(PRESETS.loose);   flashStatus('✓ 느슨 적용'); });
+$('presetReset').addEventListener('click', () => { applyPreset(SYS_PRESETS.default); flashStatus('✓ 기본값(추천) 적용'); });
+$('presetTight').addEventListener('click', () => { applyPreset(SYS_PRESETS.tight);   flashStatus('✓ 타이트 적용'); });
+$('presetLoose').addEventListener('click', () => { applyPreset(SYS_PRESETS.loose);   flashStatus('✓ 느슨 적용'); });
 
-// 페이지 로드 시 저장값 자동 복원
+$('myPresetSave').addEventListener('click', () => {
+  const name = prompt('프리셋 이름을 입력하세요 (예: 내세팅1, RAVE+, 보수형)');
+  if (!name || !name.trim()) return;
+  const map = loadUserPresets();
+  if (map[name] && !confirm(`"${name}" 프리셋이 이미 있습니다. 덮어쓸까요?`)) return;
+  map[name] = readFilters();
+  saveUserPresets(map);
+  refreshPresetSelector(name);
+  localStorage.setItem(LAST_KEY, name);
+  flashStatus(`✓ "${name}" 저장됨`);
+});
+$('myPresetOver').addEventListener('click', () => {
+  const name = $('myPresetSel').value;
+  if (!name) return flashStatus('선택된 프리셋 없음');
+  if (!confirm(`"${name}"을(를) 현재값으로 덮어쓸까요?`)) return;
+  const map = loadUserPresets();
+  map[name] = readFilters();
+  saveUserPresets(map);
+  flashStatus(`✓ "${name}" 덮어씀`);
+});
+$('myPresetLoad').addEventListener('click', () => {
+  const name = $('myPresetSel').value;
+  if (!name) return flashStatus('선택된 프리셋 없음');
+  const map = loadUserPresets();
+  if (!map[name]) return flashStatus('프리셋 없음');
+  applyPreset(map[name]);
+  localStorage.setItem(LAST_KEY, name);
+  flashStatus(`✓ "${name}" 불러옴`);
+});
+$('myPresetDel').addEventListener('click', () => {
+  const name = $('myPresetSel').value;
+  if (!name) return flashStatus('선택된 프리셋 없음');
+  if (!confirm(`"${name}" 프리셋을 삭제할까요?`)) return;
+  const map = loadUserPresets();
+  delete map[name];
+  saveUserPresets(map);
+  refreshPresetSelector();
+  if (localStorage.getItem(LAST_KEY) === name) localStorage.removeItem(LAST_KEY);
+  flashStatus(`✓ "${name}" 삭제됨`);
+});
+$('myPresetSel').addEventListener('change', () => {
+  const name = $('myPresetSel').value;
+  if (!name) return;
+  const map = loadUserPresets();
+  if (map[name]) {
+    applyPreset(map[name]);
+    localStorage.setItem(LAST_KEY, name);
+    flashStatus(`↻ "${name}" 자동 적용`);
+  }
+});
+
+// 페이지 로드 시 마지막으로 사용한 프리셋 복원 (구버전 마이그레이션 포함)
 (function autoLoadPreset(){
-  const raw = localStorage.getItem(PRESET_KEY);
-  if (!raw) return;
-  try { applyPreset(JSON.parse(raw)); $('presetStatus').textContent = '↻ 저장값 자동 복원'; setTimeout(()=>{$('presetStatus').textContent='';}, 2500); }
-  catch(e) {}
+  refreshPresetSelector();
+  const last = localStorage.getItem(LAST_KEY);
+  const map = loadUserPresets();
+  if (last && map[last]) {
+    applyPreset(map[last]);
+    refreshPresetSelector(last);
+    $('presetStatus').textContent = `↻ "${last}" 자동 복원`;
+    setTimeout(()=>{$('presetStatus').textContent='';}, 2500);
+    return;
+  }
+  // v1 단일 저장값 마이그레이션
+  const oldRaw = localStorage.getItem('raply.filterPreset.v1');
+  if (oldRaw) {
+    try {
+      applyPreset(JSON.parse(oldRaw));
+      $('presetStatus').textContent = '↻ 이전 버전 저장값 복원';
+      setTimeout(()=>{$('presetStatus').textContent='';}, 2500);
+    } catch(e) {}
+  }
 })();
 
 $('watchBtn').addEventListener('click', () => {
