@@ -194,6 +194,9 @@
   .pts-full { background: rgba(74,222,128,.2); color: #4ade80; }
   .pts-mid { background: rgba(251,191,36,.15); color: #fbbf24; }
   .pts-zero { background: rgba(248,113,113,.15); color: #f87171; }
+  .diag-watch-btn { padding: 8px 16px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; cursor: pointer; transition: all 0.15s; }
+  .diag-watch-btn:hover { background: var(--border); }
+  .diag-watch-btn.watched { background: rgba(251,191,36,.15); border-color: var(--warn); color: var(--warn); }
   .score {
     font-weight: 700;
     padding: 2px 8px;
@@ -381,8 +384,8 @@
 
 <header>
   <div>
-    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v0.5</span></h1>
-    <span class="sub">17-Signal · OI/MCap · 유기+OI Spike · 🚨Crime · 🎯발사임박 · 온체인 검증 (GoPlus)</span>
+    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v0.7</span></h1>
+    <span class="sub">17-Signal (재조정) · 단일토큰 진단 · 워치리스트 추가</span>
   </div>
   <div class="controls">
     <input id="diagInput" type="text" placeholder="심볼 진단 (예: KGEN)" class="diag-input" />
@@ -400,7 +403,7 @@
   <summary>탐지 시그널 및 점수 기준 (펼치기)</summary>
   <div style="color: var(--muted); font-size: 11px; line-height: 1.7; margin-top: 8px;">
     <b>Hard Exclude</b> — Binance Spot에 이미 상장 / 선물 상장 N일 미만 / ATH 대비 -90% 이하 / 저점대비 N배 이상 / 유통률 N% 초과 / CEX N곳 미만 / 펀딩 양수율 N% 미만 / OI/MCap N 미만 / 저볼륨<br>
-    <b>가산 시그널 (17종, 합산 100점)</b> — 거래소 노출(8) · 유통률(10) · 가격 패턴 4종(22) · 펀딩 4종(23) · 매집 3종(22) · 변동성 2종(15) · OI/MCap(6) · 유기+OI Spike(8)<br>
+    <b>가산 시그널 (17종, 합산 ≤100점)</b> — CEX(3, 1곳 이상 고정) · 유통률(12) · 가격 패턴 4종(22) · 펀딩 4종(26: 양수율7+크기7+추세5+베이시스7) · 매집 3종(19: OI 9+L/S 6+Taker 4) · 변동성 2종(15) · OI/MCap(8) · 유기+OI Spike(10)<br>
     <b>알람 배지</b> — 🚨 CRIME (펀딩+ Basis≥0.5% 양수율≥60%) · 🎯 발사임박 (14d Vol &lt; 90d 평균 50% + cv90 &lt; 10% + OI 14d ratio ≥ 1.2)
   </div>
 </details>
@@ -1056,7 +1059,7 @@ function analyzeFundingTrend(history) {
   return { score, diff, recentAvg, priorAvg, stdRecent, stdPrior };
 }
 
-// S8: 베이시스 — mark vs index 프리미엄
+// S8: 베이시스 — mark vs index 프리미엄 (max 7)
 function analyzeBasis(premium) {
   if (!premium) return { basis: 0, score: 0 };
   const mark = parseFloat(premium.markPrice);
@@ -1065,10 +1068,10 @@ function analyzeBasis(premium) {
   const basis = ((mark - index) / index) * 100;
   let score = 0;
   if (basis < 0) score = 0;
-  else if (basis < 0.1) score = 1;
-  else if (basis < 0.5) score = 2;
-  else if (basis < 1.0) score = 3;
-  else score = 4;
+  else if (basis < 0.1) score = 2;
+  else if (basis < 0.5) score = 4;
+  else if (basis < 1.0) score = 5;
+  else score = 7;
   return { basis, score };
 }
 
@@ -1090,7 +1093,7 @@ function analyzeOITrend(history) {
   return { ratio, current, avg, score };
 }
 
-// S10: Long/Short 편향 — Top Trader Position vs Global Account
+// S10: Long/Short 편향 — Top Trader Position vs Global Account (max 6)
 function analyzeLSBias(topPosHist, globalAccHist) {
   if (!topPosHist?.length || !globalAccHist?.length) return { topLong: null, globalLong: null, diff: null, score: 0 };
   const topLongs = topPosHist.map(h => parseFloat(h.longAccount)).filter(v => !isNaN(v));
@@ -1101,11 +1104,11 @@ function analyzeLSBias(topPosHist, globalAccHist) {
   const diff = (topAvg - globalAvg) * 100; // percentage points
   let score = 0;
   if (diff <= 0) score = 0;
-  else if (diff < 5) score = 2;
-  else if (diff < 10) score = 4;
-  else if (diff < 20) score = 6;
-  else if (diff < 30) score = 8;
-  else score = 9;
+  else if (diff < 5) score = 1;
+  else if (diff < 10) score = 2;
+  else if (diff < 20) score = 4;
+  else if (diff < 30) score = 5;
+  else score = 6;
   return { topLong: topAvg, globalLong: globalAvg, diff, score };
 }
 
@@ -1146,16 +1149,16 @@ function hardExclude(row, opt) {
 function computeScore(row) {
   const b = {};
 
-  // S2: small CEX coverage (max 8) — 2 pts/CEX
-  b.S2 = Math.min(row.cexCount, 4) * 2;
+  // S2: small CEX coverage (max 3) — 1곳 이상이면 고정 3pt
+  b.S2 = row.cexCount >= 1 ? 3 : 0;
 
-  // S3: circulating ratio (max 10)
+  // S3: circulating ratio (max 12) — RAVE 핵심 시그니처 가중치 ↑
   let s3 = 0;
   if (row.cg && row.cg.circMax !== null && row.cg.circMax !== undefined) {
     const r = row.cg.circMax;
-    if (r < 0.10) s3 = 10;
-    else if (r < 0.20) s3 = 7;
-    else if (r < 0.30) s3 = 4;
+    if (r < 0.10) s3 = 12;
+    else if (r < 0.20) s3 = 8;
+    else if (r < 0.30) s3 = 5;
     else if (r < 0.50) s3 = 1;
   }
   b.S3 = s3;
@@ -1210,25 +1213,25 @@ function computeScore(row) {
   // S13: 거래량/변동폭 디버전스 (max 7)
   b.S13 = row.divergenceScore || 0;
 
-  // S14: OI/MCap 비율 (max 6) — 시총 대비 OI가 클수록 세력 장악
+  // S14: OI/MCap 비율 (max 8) — 시총 대비 OI가 클수록 세력 장악
   let s14 = 0;
   if (row.oiMcap !== null && row.oiMcap !== undefined) {
-    if (row.oiMcap >= 0.30) s14 = 6;
-    else if (row.oiMcap >= 0.20) s14 = 4;
-    else if (row.oiMcap >= 0.10) s14 = 2;
-    else if (row.oiMcap >= 0.05) s14 = 1;
+    if (row.oiMcap >= 0.30) s14 = 8;
+    else if (row.oiMcap >= 0.20) s14 = 6;
+    else if (row.oiMcap >= 0.10) s14 = 4;
+    else if (row.oiMcap >= 0.05) s14 = 2;
   }
   b.S14 = s14;
 
-  // S15: 유기(Quiet Zone) + OI Spike 콤보 (max 8)
+  // S15: 유기(Quiet Zone) + OI Spike 콤보 (max 10)
   // 90d vol 대비 14d vol < 0.5 + cv90 < 0.10 + OI 14d ratio >= 1.2
   let s15 = 0;
   const quiet = row.volQuietRatio !== null && row.volQuietRatio !== undefined && row.volQuietRatio < 0.5;
   const dead = row.cv90 !== null && row.cv90 !== undefined && row.cv90 < 0.10;
   const oiSpike = row.oiTrend?.ratio !== null && row.oiTrend?.ratio !== undefined && row.oiTrend.ratio >= 1.2;
-  if (quiet && dead && oiSpike) s15 = 8;
-  else if (quiet && oiSpike) s15 = 5;
-  else if (dead && oiSpike) s15 = 3;
+  if (quiet && dead && oiSpike) s15 = 10;
+  else if (quiet && oiSpike) s15 = 6;
+  else if (dead && oiSpike) s15 = 4;
   b.S15 = s15;
 
   const total = Object.values(b).reduce((a, x) => a + x, 0);
@@ -1299,6 +1302,25 @@ const state = {
   watchlist: JSON.parse(localStorage.getItem('pps_watch') || '[]'),
   showingWatch: false,
   rowMap: new Map() // symbol -> row (for modal)
+};
+
+function toggleWatch(symbol) {
+  const i = state.watchlist.indexOf(symbol);
+  if (i >= 0) state.watchlist.splice(i, 1);
+  else state.watchlist.push(symbol);
+  localStorage.setItem('pps_watch', JSON.stringify(state.watchlist));
+  return state.watchlist.includes(symbol);
+}
+window.diagToggleWatch = function(symbol) {
+  const watched = toggleWatch(symbol);
+  // 진단 탭의 버튼 라벨 갱신
+  const btn = document.getElementById('diagWatchBtn');
+  if (btn) {
+    btn.textContent = watched ? '★ 워치리스트에서 제거' : '☆ 워치리스트 추가';
+    btn.classList.toggle('watched', watched);
+  }
+  // 테이블이 떠있으면 갱신
+  if (state.rows.length) render();
 };
 
 async function runScan() {
@@ -1585,10 +1607,7 @@ function render() {
   bodyEl.querySelectorAll('button[data-watch]').forEach(b => {
     b.addEventListener('click', (e) => {
       e.stopPropagation();
-      const sym = b.getAttribute('data-watch');
-      const i = state.watchlist.indexOf(sym);
-      if (i >= 0) state.watchlist.splice(i, 1); else state.watchlist.push(sym);
-      localStorage.setItem('pps_watch', JSON.stringify(state.watchlist));
+      toggleWatch(b.getAttribute('data-watch'));
       render();
     });
   });
@@ -2013,20 +2032,20 @@ function buildSignalDiagnostics(r) {
 
   // S2
   items.push({
-    code: 'S2', name: '중소 CEX 노출', max: 8, score: b.S2 || 0,
+    code: 'S2', name: '중소 CEX 노출', max: 3, score: b.S2 || 0,
     detail: `Bitget/Gate/MEXC/Bybit 중 ${r.cexCount}/4곳 상장`,
-    advice: r.cexCount >= 4 ? '✓ 만점' : `+${4 - r.cexCount}곳 상장 시 +${(4 - r.cexCount) * 2}pt`
+    advice: r.cexCount >= 1 ? '✓ 만점 (1곳 이상)' : '최소 1곳에 상장되어야 +3pt'
   });
   // S3
   const cm = r.cg?.circMax;
   items.push({
-    code: 'S3', name: '유통률 (Insider 락업)', max: 10, score: b.S3 || 0,
+    code: 'S3', name: '유통률 (Insider 락업)', max: 12, score: b.S3 || 0,
     detail: cm !== null && cm !== undefined ? `유통률 ${(cm*100).toFixed(1)}%` : '데이터 없음',
     advice: cm === null || cm === undefined ? 'CoinGecko 매칭 실패 → 0pt 고정. 수동으로 토크노믹스 확인 필요'
           : cm < 0.10 ? '✓ 만점 (락업 90%+)'
-          : cm < 0.20 ? '20% → 10% 미만 진입 시 +3pt'
-          : cm < 0.30 ? '30% → 20% 미만 진입 시 +6pt 또는 10% 미만 시 +6pt'
-          : cm < 0.50 ? '50% → 30% 미만 진입 시 +3pt 또는 20% 미만 시 +6pt'
+          : cm < 0.20 ? '<10% 시 +4pt'
+          : cm < 0.30 ? '<20% 시 +3pt, <10% 시 +7pt'
+          : cm < 0.50 ? '<30% 시 +4pt, <20% 시 +7pt, <10% 시 +11pt'
           : '50%+ → 락업 해제가 많이 진행됨, 매력도 낮음'
   });
   // S5c1
@@ -2073,9 +2092,9 @@ function buildSignalDiagnostics(r) {
   });
   // S8
   items.push({
-    code: 'S8', name: '베이시스 (mark vs index)', max: 4, score: b.S8 || 0,
+    code: 'S8', name: '베이시스 (mark vs index)', max: 7, score: b.S8 || 0,
     detail: r.basis !== null ? `${r.basis.toFixed(3)}%` : '-',
-    advice: r.basis >= 1.0 ? '✓ 만점' : r.basis >= 0.5 ? '1.0%+ 시 +1pt' : r.basis >= 0.1 ? '0.5%+ 시 +1pt, 1.0%+ 시 +2pt' : r.basis > 0 ? '0.1%+ 단계별 +1~3pt' : 'mark가 index보다 높아져야 점수'
+    advice: r.basis >= 1.0 ? '✓ 만점' : r.basis >= 0.5 ? '1.0%+ 시 +2pt' : r.basis >= 0.1 ? '0.5%+ 시 +1pt, 1.0%+ 시 +3pt' : r.basis > 0 ? '0.1%+ 시 +2pt 시작' : 'mark가 index보다 높아져야 점수'
   });
   // S9
   items.push({
@@ -2085,9 +2104,9 @@ function buildSignalDiagnostics(r) {
   });
   // S10
   items.push({
-    code: 'S10', name: 'Top Trader 롱 편향', max: 9, score: b.S10 || 0,
+    code: 'S10', name: 'Top Trader 롱 편향', max: 6, score: b.S10 || 0,
     detail: r.lsBias?.diff !== null && r.lsBias?.diff !== undefined ? `Top Long - Global Long = +${r.lsBias.diff.toFixed(1)}pp` : '데이터 없음',
-    advice: !r.lsBias?.diff ? 'L/S 데이터 부족' : r.lsBias.diff >= 30 ? '✓ 만점' : r.lsBias.diff >= 20 ? '30pp+ 시 +1pt' : r.lsBias.diff >= 10 ? '20pp+ 시 +2pt, 30pp+ 시 +3pt' : r.lsBias.diff >= 5 ? '10pp+ 시 +2pt' : 'Top Trader 롱 비중이 일반 계정보다 5pp+ 높아져야'
+    advice: !r.lsBias?.diff ? 'L/S 데이터 부족' : r.lsBias.diff >= 30 ? '✓ 만점' : r.lsBias.diff >= 20 ? '30pp+ 시 +1pt' : r.lsBias.diff >= 10 ? '20pp+ 시 +2pt' : r.lsBias.diff >= 5 ? '10pp+ 시 +2pt' : 'Top Trader 롱 비중이 일반 계정보다 5pp+ 높아져야'
   });
   // S11
   items.push({
@@ -2109,9 +2128,9 @@ function buildSignalDiagnostics(r) {
   });
   // S14
   items.push({
-    code: 'S14', name: 'OI / Market Cap', max: 6, score: b.S14 || 0,
+    code: 'S14', name: 'OI / Market Cap', max: 8, score: b.S14 || 0,
     detail: r.oiMcap !== null && r.oiMcap !== undefined ? `${r.oiMcap.toFixed(2)}` : '데이터 없음',
-    advice: r.oiMcap === null ? 'CG 시총 매칭 실패' : r.oiMcap >= 0.30 ? '✓ 만점' : r.oiMcap >= 0.20 ? '0.30+ 시 +2pt' : r.oiMcap >= 0.10 ? '0.20+ 시 +2pt, 0.30+ 시 +4pt' : r.oiMcap >= 0.05 ? '0.10+ 시 +1pt 시작' : '시총 대비 OI가 더 커져야 (세력 장악도)'
+    advice: r.oiMcap === null ? 'CG 시총 매칭 실패' : r.oiMcap >= 0.30 ? '✓ 만점' : r.oiMcap >= 0.20 ? '0.30+ 시 +2pt' : r.oiMcap >= 0.10 ? '0.20+ 시 +2pt, 0.30+ 시 +4pt' : r.oiMcap >= 0.05 ? '0.10+ 시 +2pt 시작' : '시총 대비 OI가 더 커져야 (세력 장악도)'
   });
   // S15
   const quietOK = r.volQuietRatio !== null && r.volQuietRatio !== undefined && r.volQuietRatio < 0.5;
@@ -2119,9 +2138,9 @@ function buildSignalDiagnostics(r) {
   const oiSpikeOK = r.oiTrend?.ratio !== null && r.oiTrend?.ratio !== undefined && r.oiTrend.ratio >= 1.2;
   const okFlags = [quietOK, deadOK, oiSpikeOK];
   items.push({
-    code: 'S15', name: '유기(Quiet) + OI Spike 콤보', max: 8, score: b.S15 || 0,
+    code: 'S15', name: '유기(Quiet) + OI Spike 콤보', max: 10, score: b.S15 || 0,
     detail: `거래량 ${quietOK?'✓':'✗'}(${r.volQuietRatio !== null ? r.volQuietRatio.toFixed(2) : '?'}<0.5) · 변동성 ${deadOK?'✓':'✗'}(cv ${r.cv90!==null?(r.cv90*100).toFixed(1)+'%':'?'}<10%) · OI ${oiSpikeOK?'✓':'✗'}(${r.oiTrend?.ratio?r.oiTrend.ratio.toFixed(2)+'x':'?'}≥1.2)`,
-    advice: okFlags.every(x => x) ? '✓ 만점 — 발사임박 배지' : `${okFlags.filter(x=>x).length}/3 충족. 모두 충족 시 +${8 - (b.S15||0)}pt 및 🎯 발사임박 배지`
+    advice: okFlags.every(x => x) ? '✓ 만점 — 발사임박 배지' : `${okFlags.filter(x=>x).length}/3 충족. 모두 충족 시 +${10 - (b.S15||0)}pt 및 🎯 발사임박 배지`
   });
 
   return items;
@@ -2212,6 +2231,7 @@ function renderDiagnosisTab(r) {
       </div>
     </div>`).join('');
 
+  const watched = state.watchlist.includes(r.symbol);
   return `
     <div class="diag-section" style="text-align:center;">
       <div style="font-size: 13px; color: var(--muted);">진단 결과</div>
@@ -2222,6 +2242,9 @@ function renderDiagnosisTab(r) {
       </div>
       <div style="font-size: 13px;">${grade.desc}</div>
       ${comments.length ? `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; line-height: 1.6; color: var(--text);">${comments.map(c => '• ' + c).join('<br>')}</div>` : ''}
+      <div style="margin-top: 12px;">
+        <button id="diagWatchBtn" class="diag-watch-btn ${watched ? 'watched' : ''}" onclick="diagToggleWatch('${r.symbol}')">${watched ? '★ 워치리스트에서 제거' : '☆ 워치리스트 추가'}</button>
+      </div>
     </div>
 
     ${hardX.length ? `
