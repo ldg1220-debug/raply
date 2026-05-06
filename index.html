@@ -1319,8 +1319,8 @@ window.diagToggleWatch = function(symbol) {
     btn.textContent = watched ? '★ 워치리스트에서 제거' : '☆ 워치리스트 추가';
     btn.classList.toggle('watched', watched);
   }
-  // 테이블이 떠있으면 갱신
-  if (state.rows.length) render();
+  // 테이블 갱신 (워치리스트 보기 모드일 때 새로 추가된 토큰 즉시 표시)
+  render();
 };
 
 async function runScan() {
@@ -1542,9 +1542,15 @@ async function runScan() {
 const bodyEl = $('resultBody');
 
 function render() {
-  let rows = state.showingWatch
-    ? state.rows.filter(r => state.watchlist.includes(r.symbol))
-    : state.rows.slice();
+  let rows;
+  if (state.showingWatch) {
+    // 워치리스트는 rowMap 기반 (스캔 결과 + 진단으로 추가된 토큰 모두 포함)
+    rows = state.watchlist
+      .map(sym => state.rowMap.get(sym))
+      .filter(r => r);
+  } else {
+    rows = state.rows.slice();
+  }
 
   rows.sort((a, b) => {
     const d = state.sortDir === 'asc' ? 1 : -1;
@@ -1556,7 +1562,14 @@ function render() {
   });
 
   if (rows.length === 0) {
-    bodyEl.innerHTML = `<tr><td colspan="21" style="text-align:center; color:var(--muted); padding: 30px;">${state.showingWatch ? '워치리스트가 비어있거나 조건에 맞는 종목이 없습니다.' : '조건에 맞는 종목이 없습니다.'}</td></tr>`;
+    let msg;
+    if (state.showingWatch) {
+      if (state.watchlist.length === 0) msg = '워치리스트가 비어있습니다. 진단하거나 스캔 결과에서 ☆을 클릭해 추가하세요.';
+      else msg = `워치리스트에 ${state.watchlist.length}개 등록되어 있으나 데이터가 메모리에 없습니다. 스캔 또는 각 심볼을 진단하세요.`;
+    } else {
+      msg = '조건에 맞는 종목이 없습니다.';
+    }
+    bodyEl.innerHTML = `<tr><td colspan="21" style="text-align:center; color:var(--muted); padding: 30px;">${msg}</td></tr>`;
     return;
   }
 
