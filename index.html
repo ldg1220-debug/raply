@@ -385,14 +385,15 @@
 
 <header>
   <div>
-    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v1.1</span></h1>
-    <span class="sub">20-Signal (S5c3/S5c4 삭제, S17~S20 추가) · max 110 · Wyckoff·Body압축·매수우위·거래량분위</span>
+    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v1.2</span></h1>
+    <span class="sub">20-Signal · 🔬+ 심층 비교 (펌프 4단계 진화) · 자동 시그널 분류 (선행/일관/후행/무용)</span>
   </div>
   <div class="controls">
     <input id="diagInput" type="text" placeholder="심볼 진단 (예: KGEN)" class="diag-input" />
     <button id="diagBtn">🔍 진단</button>
     <input id="btMinRatio" type="number" step="0.5" value="3" class="diag-input" style="width:70px;" title="최소 펌프 배수 (3x 권장)" />
     <button id="backtestBtn">🔬 역검증</button>
+    <button id="deepBtBtn" title="펌프 -21d/-10d/-3d/피크 4단계 비교">🔬+ 심층</button>
     <button id="watchBtn">★ Watchlist</button>
     <button id="scanBtn" class="primary">스캔 시작</button>
   </div>
@@ -2731,7 +2732,234 @@ window.diagToggleWatchOpen = function(symbol) {
   render();
 };
 
-// 시그널별 현재값/만점/갭/개선 메시지
+// ============================================================
+// 심층 백테스트: 펌프 4단계 시점(초입/중반/말기/피크) 시그널 진화
+// ============================================================
+const DEEP_PHASES = [
+  { name: '초입', short: '-21d', offsetDays: 21, color: '#94a3b8' },
+  { name: '중반', short: '-10d', offsetDays: 10, color: '#fbbf24' },
+  { name: '말기', short: '-3d',  offsetDays: 3,  color: '#fb923c' },
+  { name: '피크', short: '0d',   offsetDays: 0,  color: '#f87171' }
+];
+const SIG_KEYS = ['S2','S3','S5c1','S5c2','S6cont','S6size','S7','S8','S9','S10','S11','S12','S13','S14','S15','S16','S17','S18','S19','S20'];
+const SIG_MAX  = {S2:3,S3:12,S5c1:5,S5c2:3,S6cont:9,S6size:7,S7:5,S8:7,S9:9,S10:6,S11:4,S12:10,S13:7,S14:8,S15:10,S16:5,S17:6,S18:5,S19:5,S20:4};
+const SIG_NAME = {S2:'CEX',S3:'유통률',S5c1:'cv90',S5c2:'계단상승',S6cont:'펀딩양수율⚡',S6size:'펀딩크기',S7:'펀딩추세',S8:'베이시스',S9:'OI추세',S10:'L/S편향',S11:'Taker',S12:'BB압축⚡',S13:'디버전스',S14:'OI/MCap',S15:'발사임박',S16:'조작의심',S17:'HigherLows',S18:'Body압축',S19:'매수우위',S20:'거래량분위'};
+
+async function runDeepBacktest() {
+  const btn = $('deepBtBtn');
+  const minRatio = parseFloat($('btMinRatio').value) || 5;
+  btn.disabled = true; btn.textContent = '...';
+  $('bt-modal').classList.add('show');
+  $('bt-body').innerHTML = `<div class="muted">Phase 1: ${minRatio}x+ 펌프 종목 탐색...</div>`;
+
+  try {
+    const useCG = $('f_cg').value === 'on';
+    const [universe, cexSets, cgMarkets, cgPlatforms] = await Promise.all([
+      Binance.loadUniverse(), CexLoader.loadAll(),
+      useCG ? CoinGecko.loadMarkets() : Promise.resolve([]),
+      useCG ? CoinGecko.loadPlatforms() : Promise.resolve([])
+    ]);
+    const cgMap = useCG ? CoinGecko.buildSymbolMap(cgMarkets) : new Map();
+    const cgPlatMap = useCG ? CoinGecko.buildPlatformMap(cgPlatforms) : new Map();
+
+    // Phase 1: 펌프 검출
+    const targets = universe.allPerps;
+    const pumpCandidates = [];
+    let done = 0; let idx = 0;
+    async function pumpWorker() {
+      while (idx < targets.length) {
+        const i = idx++;
+        const t = targets[i];
+        try {
+          const klines = await Binance.loadKlines(t.symbol, 180);
+          const pump = detectPump(klines, 180, minRatio);
+          if (pump) pumpCandidates.push({ symbol: t.symbol, base: t.base, onboardDate: t.onboardDate, hasSpot: t.hasSpot, ...pump });
+        } catch(e) {}
+        done++;
+        if (done % 20 === 0) $('bt-body').innerHTML = `<div class="muted">Phase 1: ${done}/${targets.length} · 발견 ${pumpCandidates.length}</div>`;
+      }
+    }
+    await Promise.all(Array.from({length: 10}, pumpWorker));
+    log(`심층: 펌프 ${pumpCandidates.length}개 검출 (${minRatio}x+)`);
+
+    if (!pumpCandidates.length) { $('bt-body').innerHTML = '<div class="muted">펌프 종목 없음</div>'; return; }
+    pumpCandidates.sort((a, b) => b.pumpRatio - a.pumpRatio);
+    // 메모리/속도 위해 상위 30개로 제한 (4 phases × 7 API = 28 calls/token × 30 = 840 calls)
+    const topCands = pumpCandidates.slice(0, 30);
+    $('bt-body').innerHTML = `<div class="muted">Phase 2: ${topCands.length}개 종목 × 4단계 시점 백테스트... (예상 1~3분)</div>`;
+
+    // Phase 2: 각 종목 4단계 시점 backtestRow
+    const evolutions = [];
+    let done2 = 0; let idx2 = 0;
+    async function deepWorker() {
+      while (idx2 < topCands.length) {
+        const i = idx2++;
+        const p = topCands[i];
+        const cg = useCG ? CoinGecko.lookup(cgMap, p.base, cgPlatMap) : null;
+        const phaseResults = [];
+        for (const phase of DEEP_PHASES) {
+          const evalDate = p.peakDate - phase.offsetDays * DAY_MS;
+          const ageDays = p.onboardDate ? Math.floor((evalDate - p.onboardDate) / DAY_MS) : null;
+          if (ageDays !== null && ageDays < 7) continue; // 상장 직후 평가 X
+          try {
+            const row = await backtestRow(p.symbol, p.base, ageDays, evalDate, cg, cexSets);
+            if (row) phaseResults.push({ phase: phase.name, offset: phase.offsetDays, score: row.score, breakdown: row.scoreBreakdown, row });
+          } catch(e) {}
+        }
+        if (phaseResults.length >= 2) {
+          evolutions.push({
+            symbol: p.symbol, base: p.base, pumpRatio: p.pumpRatio,
+            peakDaysAgo: p.peakDaysAgo, fullBacktest: p.fullBacktest,
+            phases: phaseResults
+          });
+        }
+        done2++;
+        $('bt-body').innerHTML = `<div class="muted">Phase 2: ${done2}/${topCands.length} 처리 중...</div>`;
+      }
+    }
+    // Concurrency 3 (4 calls/token × 7 API = 28 ≈ 메모리/네트워크 균형)
+    await Promise.all(Array.from({length: 3}, deepWorker));
+
+    renderDeepResults(evolutions);
+  } catch(e) {
+    $('bt-body').innerHTML = `<div class="neg">오류: ${e.message}</div>`;
+    log(`심층 백테스트 실패: ${e.message}`);
+  } finally {
+    btn.disabled = false; btn.textContent = '🔬+ 심층';
+  }
+}
+
+function renderDeepResults(evolutions) {
+  if (!evolutions.length) { $('bt-body').innerHTML = '<div class="muted">데이터 없음</div>'; return; }
+
+  // 시그널 진화 집계: phase별 시그널별 평균/등장률
+  const phaseStats = {}; // { phaseName: { sigKey: { avg, pctNonZero, pctHalf } } }
+  for (const phase of DEEP_PHASES) {
+    phaseStats[phase.name] = {};
+    for (const k of SIG_KEYS) {
+      const vals = [];
+      for (const e of evolutions) {
+        const ph = e.phases.find(p => p.phase === phase.name);
+        if (ph) vals.push(ph.breakdown?.[k] || 0);
+      }
+      const avg = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : 0;
+      const pctNonZero = vals.length ? vals.filter(v => v > 0).length / vals.length * 100 : 0;
+      const pctHalf = vals.length ? vals.filter(v => v >= SIG_MAX[k]/2).length / vals.length * 100 : 0;
+      phaseStats[phase.name][k] = { avg, pctNonZero, pctHalf, n: vals.length };
+    }
+  }
+
+  // 평균 점수 진화
+  const phaseScoreAvg = {};
+  for (const phase of DEEP_PHASES) {
+    const scores = evolutions.map(e => e.phases.find(p => p.phase === phase.name)?.score).filter(s => s !== undefined);
+    phaseScoreAvg[phase.name] = scores.length ? scores.reduce((a,b)=>a+b,0)/scores.length : 0;
+  }
+
+  // 시그널 분류: 초입 vs 말기 등장률 차이로 분류
+  const sigCategorized = SIG_KEYS.map(k => {
+    const earlyAvg = phaseStats['초입']?.[k]?.avg || 0;
+    const lateAvg = phaseStats['말기']?.[k]?.avg || 0;
+    const peakAvg = phaseStats['피크']?.[k]?.avg || 0;
+    const max = SIG_MAX[k];
+    const earlyRatio = earlyAvg / max;
+    const lateRatio = lateAvg / max;
+    const peakRatio = peakAvg / max;
+    let category, recommend;
+    if (peakRatio < 0.20) { category = '🚫 무용'; recommend = '삭제 검토'; }
+    else if (earlyRatio > 0.40 && lateRatio > 0.40) { category = '🟢 일관'; recommend = '가중치 강화'; }
+    else if (lateRatio > earlyRatio + 0.20) { category = '🟡 후행'; recommend = '말기 검출용 (조기 검출엔 불리)'; }
+    else if (earlyRatio > lateRatio + 0.10) { category = '🔵 선행'; recommend = '조기 검출에 유용 (가중치 ↑)'; }
+    else { category = '⚪ 중립'; recommend = '유지'; }
+    return { key: k, name: SIG_NAME[k], max, earlyAvg, lateAvg, peakAvg, earlyRatio, lateRatio, peakRatio, category, recommend };
+  });
+
+  // 시그널 진화 테이블 (요약)
+  const sigEvoRows = sigCategorized
+    .sort((a, b) => b.peakRatio - a.peakRatio)
+    .map(s => {
+      const cls = (v) => v >= s.max * 0.6 ? 'pos' : v >= s.max * 0.3 ? 'warn' : 'muted';
+      return `<tr>
+        <td><b>${s.key}</b> ${s.name}</td>
+        <td class="${cls(s.earlyAvg)}">${s.earlyAvg.toFixed(1)}/${s.max}</td>
+        <td class="${cls(s.lateAvg)}">${s.lateAvg.toFixed(1)}/${s.max}</td>
+        <td class="${cls(s.peakAvg)}">${s.peakAvg.toFixed(1)}/${s.max}</td>
+        <td>${s.category}</td>
+        <td class="muted" style="font-size:10px;">${s.recommend}</td>
+      </tr>`;
+    }).join('');
+
+  // 종목별 점수 진화 테이블
+  const evoRows = evolutions.map(e => {
+    const phaseCells = DEEP_PHASES.map(ph => {
+      const found = e.phases.find(p => p.phase === ph.name);
+      if (!found) return '<td class="muted">-</td>';
+      const grade = gradeOf(found.score);
+      return `<td><span class="diag-grade grade-${grade.g}" style="font-size:10px; padding:1px 4px;">${found.score}</span></td>`;
+    }).join('');
+    const peakScore = e.phases.find(p => p.phase === '피크')?.score || 0;
+    const earlyScore = e.phases.find(p => p.phase === '초입')?.score || 0;
+    const delta = peakScore - earlyScore;
+    return `<tr style="cursor:pointer;" onclick="diagToggleWatchOpen('${e.symbol}')">
+      <td><b>${e.symbol}</b></td>
+      <td>${e.pumpRatio.toFixed(1)}x</td>
+      ${phaseCells}
+      <td class="${delta > 0 ? 'pos' : 'muted'}">+${delta}</td>
+      <td>${e.fullBacktest ? '<span class="pos" style="font-size:10px;">전체</span>' : '<span class="warn" style="font-size:10px;">부분</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  // 자동 권장 사항 (시그널 분류 기반)
+  const drops = sigCategorized.filter(s => s.category === '🚫 무용');
+  const boosts = sigCategorized.filter(s => s.category === '🟢 일관' || s.category === '🔵 선행');
+  const lateOnly = sigCategorized.filter(s => s.category === '🟡 후행');
+  const recommendHtml = `
+    <div class="diag-section" style="border-color: #c084fc;">
+      <h4 style="color: #c084fc;">🎯 자동 추천 시그널 조정</h4>
+      ${drops.length ? `<div class="diag-row"><b class="neg">삭제 후보 (피크 등장률 &lt; 20%):</b> ${drops.map(s => s.key + ' ' + s.name).join(', ')}</div>` : ''}
+      ${boosts.length ? `<div class="diag-row"><b class="pos">강화 후보 (조기·일관 등장):</b> ${boosts.map(s => s.key + ' ' + s.name).join(', ')}</div>` : ''}
+      ${lateOnly.length ? `<div class="diag-row"><b class="warn">후행 시그널 (말기에만 강함):</b> ${lateOnly.map(s => s.key + ' ' + s.name).join(', ')} <span class="muted" style="font-size:10px;">— 조기 검출엔 불리</span></div>` : ''}
+      <div class="muted" style="font-size:10px; margin-top:6px;">
+        선행/일관 시그널은 펌프 14~21일 전에도 발현 → 매수 시점 확보. 후행은 말기에만 발현 → 진입 시점 늦음.
+      </div>
+    </div>
+  `;
+
+  $('bt-body').innerHTML = `
+    <div class="diag-section" style="text-align:center;">
+      <div style="font-size:13px; color:var(--muted);">심층 백테스트 — ${evolutions.length}개 펌프 종목 × 4단계 시점</div>
+      <div style="margin: 10px 0; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;">
+        ${DEEP_PHASES.map(ph => `
+          <div>
+            <div style="color:${ph.color}; font-size:11px;">${ph.name} (${ph.short})</div>
+            <div style="font-size: 22px; font-weight: 700;">${phaseScoreAvg[ph.name].toFixed(1)}</div>
+            <div class="muted" style="font-size:10px;">평균 점수</div>
+          </div>
+        `).join('')}
+      </div>
+      <div class="muted" style="font-size:11px;">평균 점수가 시점별로 상승하면 시그널이 펌프 임박 시점에 더 강해진다는 뜻 (정상). 차이가 작으면 조기 검출도 가능.</div>
+    </div>
+
+    ${recommendHtml}
+
+    <div class="diag-section">
+      <h4>📊 시그널 진화 (펌프 종목 평균)</h4>
+      <table style="width:100%; font-size:11px;">
+        <thead><tr style="color:var(--muted);"><th style="text-align:left;">시그널</th><th>초입(-21d)</th><th>말기(-3d)</th><th>피크(0d)</th><th>분류</th><th>권장</th></tr></thead>
+        <tbody>${sigEvoRows}</tbody>
+      </table>
+    </div>
+
+    <div class="diag-section">
+      <h4>📈 종목별 점수 진화 (Top ${evolutions.length})</h4>
+      <table style="width:100%; font-size:11px;">
+        <thead><tr style="color:var(--muted);"><th style="text-align:left;">Symbol</th><th>펌프</th><th>초입</th><th>중반</th><th>말기</th><th>피크</th><th>Δ</th><th>BT</th></tr></thead>
+        <tbody>${evoRows}</tbody>
+      </table>
+      <div class="muted" style="font-size:10px; margin-top:6px;">행 클릭 시 워치리스트 추가. Δ = 피크 점수 - 초입 점수 (시그널 누적 정도).</div>
+    </div>
+  `;
+}
 function buildSignalDiagnostics(r) {
   const b = r.scoreBreakdown || {};
   const items = [];
@@ -3076,6 +3304,7 @@ $('diagInput').addEventListener('keydown', (e) => {
 });
 
 $('backtestBtn').addEventListener('click', runBacktest);
+$('deepBtBtn').addEventListener('click', runDeepBacktest);
 $('bt-close').addEventListener('click', () => $('bt-modal').classList.remove('show'));
 document.querySelector('#bt-modal .modal-overlay').addEventListener('click', () => $('bt-modal').classList.remove('show'));
 
