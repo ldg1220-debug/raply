@@ -391,6 +391,7 @@
   <div class="controls">
     <input id="diagInput" type="text" placeholder="심볼 진단 (예: KGEN)" class="diag-input" />
     <button id="diagBtn">🔍 진단</button>
+    <input id="btMinRatio" type="number" step="0.5" value="3" class="diag-input" style="width:70px;" title="최소 펌프 배수 (3x 권장)" />
     <button id="backtestBtn">🔬 역검증</button>
     <button id="watchBtn">★ Watchlist</button>
     <button id="scanBtn" class="primary">스캔 시작</button>
@@ -2160,43 +2161,46 @@ async function backtestRow(symbol, base, ageDays, evalEndTime, cgLookup, cexSets
   return row;
 }
 
-// 펌프 패턴 검출: 최근 N일 내 5x+ 펌프 종목 자동 식별 (RAVE/LAB처럼 이미 덤프된 경우도 포함)
-function detectPump(klines, lookbackDays = 180) {
+// 펌프 패턴 검출: 피크 -30일 구간 median을 진짜 베이스로 사용
+function detectPump(klines, lookbackDays = 180, minRatio = 3) {
   if (!klines || klines.length < 30) return null;
   const candles = klines.map(k => ({ t: k[0], o: parseFloat(k[1]), h: parseFloat(k[2]), l: parseFloat(k[3]), c: parseFloat(k[4]) }));
   const n = candles.length;
   const window = candles.slice(Math.max(0, n - lookbackDays));
   const wn = window.length;
-  if (wn < 14) return null;
+  if (wn < 21) return null;
 
-  // 1. 윈도우 내 최고점 찾기
+  // 1. 피크 찾기
   let peakIdx = 0, peakPrice = window[0].h;
   for (let i = 0; i < wn; i++) {
     if (window[i].h > peakPrice) { peakPrice = window[i].h; peakIdx = i; }
   }
-  // 2. 최고점 이전 구간에서 최저점 찾기 (펌프 직전 베이스)
-  if (peakIdx < 3) return null; // 너무 초반 피크는 매집 데이터 부족
-  let lowIdx = 0, lowPrice = window[0].l;
-  for (let i = 0; i <= peakIdx; i++) {
-    if (window[i].l < lowPrice) { lowPrice = window[i].l; lowIdx = i; }
-  }
-  const pumpRatio = lowPrice > 0 ? peakPrice / lowPrice : 1;
-  if (pumpRatio < 5) return null;
-  // 3. 저점부터 피크까지 7일 이상 (단발 스파이크 제외)
-  if (peakIdx - lowIdx < 5) return null;
+  if (peakIdx < 14) return null; // 베이스 구간 부족
 
-  const lowDaysAgo = (wn - 1) - lowIdx;
+  // 2. Pre-pump base: 피크 -30일 ~ -3일의 low들의 median (우연한 dip 영향 제거)
+  const baseStart = Math.max(0, peakIdx - 30);
+  const baseEnd = Math.max(baseStart, peakIdx - 3);
+  if (baseEnd - baseStart < 7) return null;
+  const baseLows = [];
+  for (let i = baseStart; i <= baseEnd; i++) baseLows.push(window[i].l);
+  baseLows.sort((a,b) => a - b);
+  const basePrice = baseLows[Math.floor(baseLows.length / 2)];
+  if (basePrice <= 0) return null;
+
+  const pumpRatio = peakPrice / basePrice;
+  if (pumpRatio < minRatio) return null;
+
+  const baseDaysAgo = (wn - 1) - baseStart;
   const peakDaysAgo = (wn - 1) - peakIdx;
-  // OI 데이터 범위 체크: 저점이 30일 이내면 전체 시그널 가용, 아니면 부분
-  const fullBacktest = lowDaysAgo <= 28;
+  const fullBacktest = baseDaysAgo <= 28;
 
   return {
     pumpRatio,
-    lowDate: window[lowIdx].t,
+    lowDate: window[baseStart].t,
     peakDate: window[peakIdx].t,
-    lowPrice,
+    lowPrice: basePrice,
     peakPrice,
-    lowDaysAgo,
+    lowDaysAgo: baseDaysAgo,
     peakDaysAgo,
     fullBacktest
   };
@@ -2204,9 +2208,10 @@ function detectPump(klines, lookbackDays = 180) {
 
 async function runBacktest() {
   const btn = $('backtestBtn');
+  const minRatio = parseFloat($('btMinRatio').value) || 3;
   btn.disabled = true; btn.textContent = '🔬 검증 중...';
   $('bt-modal').classList.add('show');
-  $('bt-body').innerHTML = '<div class="muted">Phase 1: 펌프 종목 탐색 중 (선물 전체 klines 로드)...</div>';
+  $('bt-body').innerHTML = `<div class="muted">Phase 1: 펌프 ${minRatio}x+ 탐색 중 (선물 전체 klines 180일치 로드)...</div>`;
 
   try {
     const useCG = $('f_cg').value === 'on';
@@ -2231,7 +2236,7 @@ async function runBacktest() {
         const t = targets[i];
         try {
           const klines = await Binance.loadKlines(t.symbol, 180);
-          const pump = detectPump(klines, 180);
+          const pump = detectPump(klines, 180, minRatio);
           if (pump) {
             pumpCandidates.push({ symbol: t.symbol, base: t.base, onboardDate: t.onboardDate, hasSpot: t.hasSpot, ...pump });
           }
@@ -2241,7 +2246,12 @@ async function runBacktest() {
       }
     }
     await Promise.all(Array.from({length: CONCURRENCY}, pumpWorker));
-    log(`펌프 탐색 완료: ${pumpCandidates.length}개`);
+    log(`펌프 탐색 완료 (${minRatio}x+): ${pumpCandidates.length}개`);
+    // 발견 심볼 로그 (디버깅: RAVE/LAB 등이 검출됐는지 확인)
+    const sortedNames = pumpCandidates.slice().sort((a,b) => b.pumpRatio - a.pumpRatio).map(p => `${p.base}(${p.pumpRatio.toFixed(1)}x,${p.peakDaysAgo}d전)`);
+    if (sortedNames.length) log(`상위 펌프: ${sortedNames.slice(0, 30).join(', ')}${sortedNames.length > 30 ? ` 외 ${sortedNames.length - 30}개` : ''}`);
+    // 미발견 안내: 사용자가 알고 있는 심볼이 누락됐다면 Binance Futures 미상장 가능성
+    log(`참고: Binance USDT-M 선물에 상장된 토큰만 검출됨 (현물 전용/DEX 전용 토큰은 미포함)`);
 
     if (pumpCandidates.length === 0) {
       $('bt-body').innerHTML = '<div class="muted">최근 30일 내 5x+ 펌프 종목 없음</div>';
