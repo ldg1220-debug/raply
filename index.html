@@ -176,6 +176,7 @@
   .badge.crime { background: rgba(239,68,68,.20); color: #fca5a5; border-color: #ef4444; font-weight: 700; }
   .badge.fire-alert { background: rgba(168,85,247,.20); color: #d8b4fe; border-color: #a855f7; font-weight: 700; }
   .badge.manip { background: rgba(56,189,248,.20); color: #7dd3fc; border-color: #38bdf8; font-weight: 700; }
+  .badge.late { background: rgba(115,115,115,.20); color: #a3a3a3; border-color: #737373; font-weight: 700; }
   .preset-divider { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
   .preset-select { padding: 5px 8px; background: var(--card); border: 1px solid var(--border); border-radius: 5px; color: var(--text); font-size: 11px; min-width: 140px; }
   .diag-input { padding: 6px 10px; background: var(--card); border: 1px solid var(--border); border-radius: 5px; color: var(--text); font-size: 12px; width: 160px; text-transform: uppercase; }
@@ -385,8 +386,8 @@
 
 <header>
   <div>
-    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v1.2</span></h1>
-    <span class="sub">20-Signal · 🔬+ 심층 비교 (펌프 4단계 진화) · 자동 시그널 분류 (선행/일관/후행/무용)</span>
+    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v1.3</span></h1>
+    <span class="sub">16-Signal · 조기 진입 최적화 (BB압축 13·펀딩추세 8) · 후기 시그널 페널티 (⏰배지)</span>
   </div>
   <div class="controls">
     <input id="diagInput" type="text" placeholder="심볼 진단 (예: KGEN)" class="diag-input" />
@@ -407,7 +408,8 @@
   <summary>탐지 시그널 및 점수 기준 (펼치기)</summary>
   <div style="color: var(--muted); font-size: 11px; line-height: 1.7; margin-top: 8px;">
     <b>Hard Exclude</b> — Binance Spot에 이미 상장 / 선물 상장 N일 미만 / ATH 대비 -90% 이하 / 저점대비 N배 이상 / 유통률 N% 초과 / CEX N곳 미만 / 펀딩 양수율 N% 미만 / OI/MCap N 미만 / 저볼륨<br>
-    <b>가산 시그널 (20종, 합산 ≤110점)</b> — CEX(3) · 유통률(12) · 가격 패턴(8: cv90 5+계단상승 3) · 펀딩 4종(28 · 컨텍스트 패널티) · 매집 3종(19) · 변동성 2종(17: BB압축 10+디버전스 7) · OI/MCap(8) · 유기+OI Spike(10) · 조작 의심(5) · <b>Wyckoff/캔들 4종(20: HL 6+Body 5+매수우위 5+분위 4)</b><br>
+    <b>가산 시그널 (16종, 합산 ≤100점) · 조기 진입 최적화</b> — CEX(3) · 유통률(12) · <b>BB압축(13)⚡⚡</b> · <b>펀딩 양수율 단계화(9)</b>·크기(7)·<b>추세(8)⚡</b>·베이시스(7) · 매집 3종(19) · 디버전스(7) · OI/MCap(8) · 유기+OI Spike(10) · HigherLows(4)🟡 · Body압축(5) · 매수우위(3)🟡<br>
+    <b>컨텍스트 패널티 (완화)</b> — rise14 &gt; 50% 또는 저점대비 &gt; 3.5x 시 펀딩 점수 50% 감점 · <b>후기 진입 페널티</b>: HL+매수우위 ≥5/7 AND BB압축 &lt; 5/13 시 -5pt + ⏰ 배지<br>
     <b>펀딩 컨텍스트 패널티</b> — 14d 상승률 &gt; 30% 또는 저점대비 &gt; 2.5x 시 S6cont/S6size/S7 50% 감점 (후행 신호 무력화)<br>
     <b>알람 배지</b> — 🚨 CRIME (펀딩+ Basis≥0.5% 양수율≥60%) · 🎯 발사임박 (유기+OI Spike) · 🕵 조작 의심 (횡보+양수 펀딩 70%+)
   </div>
@@ -1120,7 +1122,7 @@ function analyzeFunding(history) {
   };
 }
 
-// S7: 펀딩 추세 — 최근 7회 평균 vs 이전 14회 평균 + 분산 압축
+// S7: 펀딩 추세 — 최근 7회 평균 vs 이전 14회 평균 + 분산 압축 (max 8, 가중치 강화)
 function analyzeFundingTrend(history) {
   if (!history || history.length < 14) return { score: 0, diff: 0, recentAvg: 0, priorAvg: 0, stdRecent: 0, stdPrior: 0 };
   const rates = history.map(h => parseFloat(h.fundingRate));
@@ -1136,8 +1138,15 @@ function analyzeFundingTrend(history) {
   const stdRecent = stdOf(recent), stdPrior = stdOf(prior);
   const diff = recentAvg - priorAvg;
   let score = 0;
-  if (diff > 0.00005) score += 3;             // 양수 추세 (recent - prior > 0.005%/8h)
-  if (stdPrior > 0 && stdRecent < stdPrior) score += 2; // 분산 압축 (인위적 통제)
+  // 양수 추세 단계화 (max 5pt)
+  if (diff > 0.0002) score += 5;          // 강한 상승 추세 (0.02%/8h)
+  else if (diff > 0.0001) score += 4;
+  else if (diff > 0.00005) score += 3;
+  else if (diff > 0) score += 1;
+  // 분산 압축 (max 3pt) — 인위적 통제
+  if (stdPrior > 0 && stdRecent < stdPrior * 0.5) score += 3;
+  else if (stdPrior > 0 && stdRecent < stdPrior * 0.7) score += 2;
+  else if (stdPrior > 0 && stdRecent < stdPrior) score += 1;
   return { score, diff, recentAvg, priorAvg, stdRecent, stdPrior };
 }
 
@@ -1245,21 +1254,16 @@ function computeScore(row) {
   }
   b.S3 = s3;
 
-  // S5c-1: long-range CV (max 5)
-  let s5c1 = 0;
-  if (row.cv90 !== null && row.cv90 !== undefined) {
-    if (row.cv90 < 0.10) s5c1 = 5;
-    else if (row.cv90 < 0.15) s5c1 = 3;
-  }
-  b.S5c1 = s5c1;
+  // S5c-1, S5c-2 삭제 (v1.3, 심층 백테스트 등장률 < 20%, 무용)
 
-  // S5c-2: rise range days (max 3, 가중치 절반)
-  b.S5c2 = (row.riseRangeDays / 13) * 3;
-
-  // S5c-3, S5c-4 삭제 (v1.1, 21개 펌프 데이터 0/21 등장)
-
-  // S6 continuity: positive funding ratio (max 9, 가중치 강화)
-  let s6cont = row.fundPosRatio * 9;
+  // S6 continuity: 펀딩 양수율 재설계 (max 9)
+  // 70~80% 양수는 거의 모든 토큰에서 나옴 → 95%+만 진짜 조작
+  const fpr = row.fundPosRatio;
+  let s6cont = 0;
+  if (fpr >= 0.95) s6cont = 9;
+  else if (fpr >= 0.85) s6cont = 5;
+  else if (fpr >= 0.70) s6cont = 2;
+  // 50% 이하는 0pt
 
   // S6 size: avg funding magnitude (max 7), avg in %
   const af = row.avgFundingPct;
@@ -1269,12 +1273,12 @@ function computeScore(row) {
   else if (af >= 0.02) s6size = 3;
   else if (af > 0) s6size = 1;
 
-  // S7: 펀딩 추세 (max 5)
+  // S7: 펀딩 추세 (max 8, 가중치 강화 — 선행 시그널)
   let s7 = row.fundingTrend?.score || 0;
 
-  // 컨텍스트 패널티: rise14 > 30% 또는 gainFromLow > 2.5x 시 펀딩 점수 50% 감점
-  // (고점 랠리 중의 양수 펀딩은 후행 신호 → 매집 신호 아님)
-  const isLateStage = row.rise14 > 30 || row.gainFromLow > 2.5;
+  // 컨텍스트 패널티: rise14 > 50% 또는 gainFromLow > 3.5x 시 펀딩 점수 50% 감점
+  // (완화: 펌프 -10d 시점도 +30%까지 자연스럽게 올라옴)
+  const isLateStage = row.rise14 > 50 || row.gainFromLow > 3.5;
   if (isLateStage) {
     s6cont *= 0.5;
     s6size *= 0.5;
@@ -1297,8 +1301,8 @@ function computeScore(row) {
   // S11: Taker Buy/Sell (max 4)
   b.S11 = row.takerRatio?.score || 0;
 
-  // S12: BB 압축 (max 10, 가중치 강화) — bbScore 8pt 만점 → 10pt로 재스케일
-  b.S12 = (row.bbScore || 0) * (10 / 8);
+  // S12: BB 압축 (max 13, 가장 강한 조기 시그널) — bbScore 8pt → 13pt 재스케일
+  b.S12 = (row.bbScore || 0) * (13 / 8);
 
   // S13: 거래량/변동폭 디버전스 (max 7)
   b.S13 = row.divergenceScore || 0;
@@ -1324,26 +1328,15 @@ function computeScore(row) {
   else if (dead && oiSpike) s15 = 4;
   b.S15 = s15;
 
-  // S16: 조작 의심 — 횡보 가격 + 지속 양수 펀딩 (인위적 가격 유지 시그니처)
-  // rise14 -15%~+25% AND fundPosRatio >= 70% AND gainFromLow <= 2.5x
-  let s16 = 0;
-  const sidewaysPrice = row.rise14 >= -15 && row.rise14 <= 25 && row.gainFromLow <= 2.5;
-  const sustainedPos = row.fundPosRatio >= 0.70;
-  if (sidewaysPrice && sustainedPos) {
-    if (row.fundPosRatio >= 0.90) s16 = 5;       // 90%+ 양수 = 강한 조작
-    else if (row.fundPosRatio >= 0.80) s16 = 4;
-    else s16 = 3;                                 // 70~80% 양수
-  }
-  b.S16 = s16;
+  // S16 삭제 (v1.3, 심층 백테스트에서 0.2/5 무용)
 
-  // S17: Higher Lows 형성 (Wyckoff 매집) — max 6
+  // S17: Higher Lows 형성 (max 4, 후기 발현으로 가중치 ↓)
   // hlSlope = 14일간 저점 평균대비 상승률
   let s17 = 0;
   if (row.hlSlope !== null && row.hlSlope !== undefined) {
-    if (row.hlSlope >= 0.05) s17 = 6;       // 5%+ 저점 상승
-    else if (row.hlSlope >= 0.02) s17 = 4;  // 2%+
-    else if (row.hlSlope >= 0.005) s17 = 2; // 0.5%+
-    else if (row.hlSlope > 0) s17 = 1;
+    if (row.hlSlope >= 0.05) s17 = 4;       // 5%+
+    else if (row.hlSlope >= 0.02) s17 = 3;
+    else if (row.hlSlope >= 0.005) s17 = 1;
   }
   b.S17 = s17;
 
@@ -1358,29 +1351,29 @@ function computeScore(row) {
   }
   b.S18 = s18;
 
-  // S19: 매수 우위 거래량 (양봉 vol / 음봉 vol) — max 5
+  // S19: 매수 우위 거래량 (max 3, 후기 발현으로 가중치 ↓)
   let s19 = 0;
   if (row.greenRedVolRatio !== null && row.greenRedVolRatio !== undefined) {
-    if (row.greenRedVolRatio >= 2.0) s19 = 5;
-    else if (row.greenRedVolRatio >= 1.5) s19 = 4;
-    else if (row.greenRedVolRatio >= 1.3) s19 = 3;
-    else if (row.greenRedVolRatio >= 1.1) s19 = 2;
-    else if (row.greenRedVolRatio >= 1.0) s19 = 1;
+    if (row.greenRedVolRatio >= 2.0) s19 = 3;
+    else if (row.greenRedVolRatio >= 1.5) s19 = 2;
+    else if (row.greenRedVolRatio >= 1.3) s19 = 1;
   }
   b.S19 = s19;
 
-  // S20: 거래량 분위 (90d 분포 하위) — max 4
-  let s20 = 0;
-  if (row.volumePercentile !== null && row.volumePercentile !== undefined) {
-    if (row.volumePercentile <= 0.10) s20 = 4;       // 하위 10% (극단적 유기)
-    else if (row.volumePercentile <= 0.25) s20 = 3;  // 하위 25%
-    else if (row.volumePercentile <= 0.40) s20 = 2;
-    else if (row.volumePercentile <= 0.50) s20 = 1;
-  }
-  b.S20 = s20;
+  // S20 삭제 (v1.3, 피크 임박 시 0pt — 의미 X)
 
   const total = Object.values(b).reduce((a, x) => a + x, 0);
-  return { score: Math.min(Math.round(total), 110), breakdown: b };
+  // 후기 진입 페널티: 후기 시그널만 강하고 조기 시그널 약하면 페널티
+  // (S17+S19 ≥ 5/7 = 70%) AND (S12 < 5/13 = 38%) → -5pt
+  const lateOnly = (s17 + s19) >= 5 && (b.S12 || 0) < 5;
+  const finalScore = lateOnly ? Math.max(0, total - 5) : total;
+  row._lateEntryWarning = lateOnly;
+  return { score: Math.min(Math.round(finalScore), 100), breakdown: b };
+}
+
+// 후기 진입 경고 배지 — 진입 시점 늦었음
+function isLateEntry(row) {
+  return row._lateEntryWarning === true;
 }
 
 // 조작 의심 판별 (배지용)
@@ -1738,6 +1731,7 @@ function render() {
     if (isCrimeAlert(r)) hotBadges.push('<span class="badge crime" title="펀딩 양수 + Basis ≥ 0.5% + 양수율 ≥ 60%">🚨 CRIME</span>');
     if (isAboutToFire(r)) hotBadges.push('<span class="badge fire-alert" title="14d 거래량 < 90d 평균 50% + cv90 < 10% + OI 14d ratio ≥ 1.2">🎯 발사</span>');
     if (isManipSuspect(r)) hotBadges.push('<span class="badge manip" title="가격 횡보 (-15%~+25%, 저점대비≤2.5x) + 펀딩 양수율 ≥ 70%">🕵 조작</span>');
+    if (isLateEntry(r)) hotBadges.push('<span class="badge late" title="후기 시그널(HL/매수우위)만 강하고 조기 시그널(BB압축) 약함 — 진입 시점 늦음">⏰ 후기</span>');
     const watched = state.watchlist.includes(r.symbol);
 
     const oiPct = r.oiTrendPct;
@@ -2741,9 +2735,9 @@ const DEEP_PHASES = [
   { name: '말기', short: '-3d',  offsetDays: 3,  color: '#fb923c' },
   { name: '피크', short: '0d',   offsetDays: 0,  color: '#f87171' }
 ];
-const SIG_KEYS = ['S2','S3','S5c1','S5c2','S6cont','S6size','S7','S8','S9','S10','S11','S12','S13','S14','S15','S16','S17','S18','S19','S20'];
-const SIG_MAX  = {S2:3,S3:12,S5c1:5,S5c2:3,S6cont:9,S6size:7,S7:5,S8:7,S9:9,S10:6,S11:4,S12:10,S13:7,S14:8,S15:10,S16:5,S17:6,S18:5,S19:5,S20:4};
-const SIG_NAME = {S2:'CEX',S3:'유통률',S5c1:'cv90',S5c2:'계단상승',S6cont:'펀딩양수율⚡',S6size:'펀딩크기',S7:'펀딩추세',S8:'베이시스',S9:'OI추세',S10:'L/S편향',S11:'Taker',S12:'BB압축⚡',S13:'디버전스',S14:'OI/MCap',S15:'발사임박',S16:'조작의심',S17:'HigherLows',S18:'Body압축',S19:'매수우위',S20:'거래량분위'};
+const SIG_KEYS = ['S2','S3','S6cont','S6size','S7','S8','S9','S10','S11','S12','S13','S14','S15','S17','S18','S19'];
+const SIG_MAX  = {S2:3,S3:12,S6cont:9,S6size:7,S7:8,S8:7,S9:9,S10:6,S11:4,S12:13,S13:7,S14:8,S15:10,S17:4,S18:5,S19:3};
+const SIG_NAME = {S2:'CEX',S3:'유통률',S6cont:'펀딩양수율⚡',S6size:'펀딩크기',S7:'펀딩추세⚡',S8:'베이시스',S9:'OI추세',S10:'L/S편향',S11:'Taker',S12:'BB압축⚡⚡',S13:'디버전스',S14:'OI/MCap',S15:'발사임박',S17:'HigherLows🟡',S18:'Body압축',S19:'매수우위🟡'};
 
 async function runDeepBacktest() {
   const btn = $('deepBtBtn');
@@ -2982,29 +2976,17 @@ function buildSignalDiagnostics(r) {
           : cm < 0.50 ? '<30% 시 +4pt, <20% 시 +7pt, <10% 시 +11pt'
           : '50%+ → 락업 해제가 많이 진행됨, 매력도 낮음'
   });
-  // S5c1
-  items.push({
-    code: 'S5c1', name: '90d 가격 변동성 (CV)', max: 5, score: b.S5c1 || 0,
-    detail: r.cv90 !== null ? `CV ${(r.cv90*100).toFixed(1)}%` : '데이터 부족',
-    advice: r.cv90 === null ? '캔들 데이터 부족' : r.cv90 < 0.10 ? '✓ 만점 (변동성 압축)' : r.cv90 < 0.15 ? '15% → 10% 미만 시 +2pt' : '횡보 압축 발생 시 +5pt'
-  });
-  // S5c2 (가중치 절반)
-  items.push({
-    code: 'S5c2', name: '계단식 상승일 (2~7%/일)', max: 3, score: b.S5c2 || 0,
-    detail: `최근 13일 중 ${r.riseRangeDays}일`,
-    advice: r.riseRangeDays >= 13 ? '✓ 만점' : `+${13 - r.riseRangeDays}일 추가 시 max 3pt (밈코인 단발 급등 부적합으로 가중치 ↓)`
-  });
-  // S5c-3, S5c-4 삭제됨 (v1.1, 21개 펌프 데이터 0/21 등장)
+  // S5c-1, S5c-2, S5c-3, S5c-4 삭제 (v1.3, 심층 백테스트 무용 판정)
   const fundPenalty = r._fundPenalty;
   const penaltyTag = fundPenalty ? ' <span class="neg" style="font-size:10px;">[50% 감점: rise14>30% or 저점>2.5x — 후행신호]</span>' : '';
   const maxS6cont = fundPenalty ? 4.5 : 9;
   const maxS6size = fundPenalty ? 3.5 : 7;
-  const maxS7 = fundPenalty ? 2.5 : 5;
+  const maxS7 = fundPenalty ? 4 : 8;
   // S6cont
   items.push({
     code: 'S6cont', name: '펀딩 양수 지속률 ⚡' + (fundPenalty ? ' (감점)' : ''), max: maxS6cont, score: b.S6cont || 0,
     detail: `최근 21회 중 ${(r.fundPosRatio*100).toFixed(0)}% 양수${penaltyTag}`,
-    advice: fundPenalty ? '컨텍스트 패널티 적용 — 가격이 횡보로 돌아오면 풀점수 회복' : (r.fundPosRatio >= 1.0 ? '✓ 만점 (가중치 ↑)' : `100% 양수 시 +${(9 - (b.S6cont||0)).toFixed(1)}pt`)
+    advice: fundPenalty ? '컨텍스트 패널티 적용' : (r.fundPosRatio >= 0.95 ? '✓ 만점 (95%+ = 진짜 조작)' : r.fundPosRatio >= 0.85 ? '95%+ 시 +4pt' : r.fundPosRatio >= 0.70 ? '85%+ 시 +3pt, 95%+ 시 +7pt' : '70% 이하 = 일반 토큰. 70%+ 시 +2pt 시작')
   });
   // S6size
   items.push({
@@ -3014,9 +2996,9 @@ function buildSignalDiagnostics(r) {
   });
   // S7
   items.push({
-    code: 'S7', name: '펀딩 추세 (최근↑+분산↓)' + (fundPenalty ? ' (감점)' : ''), max: maxS7, score: b.S7 || 0,
+    code: 'S7', name: '펀딩 추세 (최근↑+분산↓) ⚡' + (fundPenalty ? ' (감점)' : ''), max: maxS7, score: b.S7 || 0,
     detail: (r.fundingTrend ? `Δ ${(r.fundingTrend.diff*100).toFixed(4)}% / σ↓: ${r.fundingTrend.stdRecent < r.fundingTrend.stdPrior ? '예' : '아니오'}` : '-') + penaltyTag,
-    advice: fundPenalty ? '컨텍스트 패널티 적용' : ((b.S7 || 0) >= 5 ? '✓ 만점' : '최근 7회 평균이 이전보다 크고 분산이 작아져야 +5pt')
+    advice: fundPenalty ? '컨텍스트 패널티 적용' : ((b.S7 || 0) >= 8 ? '✓ 만점' : '추세값 단계화 (max 5pt) + 분산압축 단계화 (max 3pt). 강한 상승+분산 절반 압축 시 만점')
   });
   // S8
   items.push({
@@ -3044,7 +3026,7 @@ function buildSignalDiagnostics(r) {
   });
   // S12
   items.push({
-    code: 'S12', name: 'BB 압축 (14d/60d) ⚡', max: 10, score: b.S12 || 0,
+    code: 'S12', name: 'BB 압축 (14d/60d) ⚡⚡ 최강 조기', max: 13, score: b.S12 || 0,
     detail: r.bbRatio !== null ? `${r.bbRatio.toFixed(2)}` : '데이터 부족',
     advice: r.bbRatio === null ? '60일치 데이터 부족' : r.bbRatio < 0.5 ? '✓ 만점' : r.bbRatio < 0.7 ? '<0.5 시 +2pt' : r.bbRatio < 0.85 ? '<0.7 시 +2pt' : r.bbRatio < 1.0 ? '<0.85 시 +2pt' : '14d 변동성이 60d보다 작아져야 (압축)'
   });
@@ -3071,25 +3053,15 @@ function buildSignalDiagnostics(r) {
     advice: okFlags.every(x => x) ? '✓ 만점 — 발사임박 배지' : `${okFlags.filter(x=>x).length}/3 충족. 모두 충족 시 +${10 - (b.S15||0)}pt 및 🎯 발사임박 배지`
   });
 
-  // S16: 조작 의심 (횡보+양수 펀딩)
-  const sideOK = r.rise14 >= -15 && r.rise14 <= 25 && r.gainFromLow <= 2.5;
-  const sustOK = r.fundPosRatio >= 0.70;
-  items.push({
-    code: 'S16', name: '조작 의심 (횡보+양수 펀딩)', max: 5, score: b.S16 || 0,
-    detail: `가격 ${sideOK?'✓':'✗'} (rise14 ${r.rise14.toFixed(0)}%, 저점대비 ${r.gainFromLow.toFixed(2)}x) · 양수율 ${sustOK?'✓':'✗'} (${(r.fundPosRatio*100).toFixed(0)}%)`,
-    advice: (b.S16||0) >= 5 ? '✓ 만점 (90%+ 양수 + 횡보 = 강한 조작)' :
-            (b.S16||0) > 0 ? `${b.S16}pt — 양수율 90%+ 시 +${(5 - b.S16).toFixed(0)}pt` :
-            !sideOK ? '가격이 -15% ~ +25% 범위에서 + 저점대비 2.5x 이하여야 함' :
-            '양수 펀딩 70%+ 지속되면 점수 부여'
-  });
+  // S16 삭제 (v1.3, 백테스트 무용)
 
-  // S17: Higher Lows 형성 (Wyckoff 매집)
+  // S17: Higher Lows (max 4, 후기 발현으로 가중치 ↓)
   items.push({
-    code: 'S17', name: 'Higher Lows 형성 (Wyckoff)', max: 6, score: b.S17 || 0,
+    code: 'S17', name: 'Higher Lows 🟡후기', max: 4, score: b.S17 || 0,
     detail: r.hlSlope !== null && r.hlSlope !== undefined ? `14일 저점 회귀 기울기: ${(r.hlSlope*100).toFixed(2)}% / 평균대비` : '데이터 부족',
-    advice: (b.S17||0) >= 6 ? '✓ 만점 (5%+ 저점 상승 — 강한 매집)' :
-            (b.S17||0) > 0 ? '저점이 더 가파르게 올라가야 가산' :
-            'Higher Lows = 가격 횡보 중 저가가 점진 상승 (RAVE/LAB 시그니처)'
+    advice: (b.S17||0) >= 4 ? '✓ 만점 (5%+ 저점 상승)' :
+            (b.S17||0) > 0 ? '후기 시그널 — 발현 시 발사 임박 의미' :
+            'Higher Lows = 펌프 임박 시점에 두드러짐 (조기 검출엔 약함)'
   });
   // S18: Body 압축
   items.push({
@@ -3099,22 +3071,15 @@ function buildSignalDiagnostics(r) {
             r.bodyRangeRatio !== null && r.bodyRangeRatio < 0.50 ? `<20% 시 +${(5 - (b.S18||0)).toFixed(0)}pt` :
             '캔들 몸통 / 전체 범위 비율이 작아져야 (꼬리 흡수 = 지정가 매수)'
   });
-  // S19: 매수 우위 거래량
+  // S19: 매수 우위 거래량 (max 3, 후기 발현으로 가중치 ↓)
   items.push({
-    code: 'S19', name: '매수 우위 거래량', max: 5, score: b.S19 || 0,
+    code: 'S19', name: '매수 우위 거래량 🟡후기', max: 3, score: b.S19 || 0,
     detail: r.greenRedVolRatio !== null && r.greenRedVolRatio !== undefined ? `양봉vol / 음봉vol = ${r.greenRedVolRatio.toFixed(2)}x` : '데이터 부족',
-    advice: (b.S19||0) >= 5 ? '✓ 만점 (양봉 거래량 2배+)' :
+    advice: (b.S19||0) >= 3 ? '✓ 만점 (양봉 거래량 2배+)' :
             r.greenRedVolRatio >= 1.0 ? '비율 ↑ 시 점수 ↑' :
-            '음봉 거래량이 더 큼 — 매도 압력 우위 (매집 X)'
+            '후기 시그널 — 펌프 임박해야 두드러짐'
   });
-  // S20: 거래량 분위
-  items.push({
-    code: 'S20', name: '거래량 분위 (90d)', max: 4, score: b.S20 || 0,
-    detail: r.volumePercentile !== null && r.volumePercentile !== undefined ? `90d 분포 하위 ${(r.volumePercentile*100).toFixed(0)}%` : '데이터 부족',
-    advice: (b.S20||0) >= 4 ? '✓ 만점 (극단적 유기 — 진정한 RAVE급)' :
-            r.volumePercentile !== null && r.volumePercentile <= 0.50 ? `하위 10% 시 +${(4 - (b.S20||0))}pt` :
-            '14d 거래량이 90d 평균보다 큼 — 유기 상태 X'
-  });
+  // S20 삭제 (v1.3, 피크 임박 시 0pt — 의미 X)
 
   return items;
 }
@@ -3158,10 +3123,10 @@ function getCurrentOpts() {
 }
 
 function gradeOf(score) {
-  if (score >= 90) return { g: 'S', desc: 'RAVE급 매집 완료 신호' };
-  if (score >= 73) return { g: 'A', desc: '강한 후보, 진입 검토' };
-  if (score >= 57) return { g: 'B', desc: '관찰 필요, 추가 확증 대기' };
-  if (score >= 42) return { g: 'C', desc: '신호 약함, 시기상조' };
+  if (score >= 80) return { g: 'S', desc: 'RAVE급 매집 완료 신호' };
+  if (score >= 65) return { g: 'A', desc: '강한 후보, 진입 검토' };
+  if (score >= 50) return { g: 'B', desc: '관찰 필요, 추가 확증 대기' };
+  if (score >= 35) return { g: 'C', desc: '신호 약함, 시기상조' };
   return { g: 'D', desc: '매집 단계 미흡 또는 패턴 불일치' };
 }
 
@@ -3263,7 +3228,7 @@ function renderDiagnosisTab(r) {
       <div class="diag-row" style="margin-top: 6px;">
         <b>RAVE급(85+) 진입 조건:</b><br>
         <span style="margin-left: 12px;">
-          ${r.score >= 90 ? '✓ 이미 충족' : `현재보다 +${90 - r.score}pt 필요. ${weaknesses.slice(0, Math.ceil((90-r.score)/5)).map(w => `[${w.code}]`).join(' + ')} 개선 시 도달 가능`}
+          ${r.score >= 80 ? '✓ 이미 충족' : `현재보다 +${80 - r.score}pt 필요. ${weaknesses.slice(0, Math.ceil((80-r.score)/5)).map(w => `[${w.code}]`).join(' + ')} 개선 시 도달 가능`}
         </span>
       </div>
       ${r.gainFromLow < 2 && r.score < 50 ? `<div class="diag-row" style="margin-top: 6px;"><b>참고:</b> 매집 초기일수록 점수가 낮은 것이 정상. 향후 OI/펀딩 추세 변화 관찰 권장</div>` : ''}
