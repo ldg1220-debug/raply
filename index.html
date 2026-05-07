@@ -385,8 +385,8 @@
 
 <header>
   <div>
-    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v0.9</span></h1>
-    <span class="sub">18-Signal · 단일토큰 진단 · 🔬 역검증 (펌프 사전탐지 검증)</span>
+    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v1.0</span></h1>
+    <span class="sub">18-Signal · 진단 · 역검증 + 자동 권장 세팅 (펌프 데이터 기반 학습)</span>
   </div>
   <div class="controls">
     <input id="diagInput" type="text" placeholder="심볼 진단 (예: KGEN)" class="diag-input" />
@@ -2303,7 +2303,151 @@ async function runBacktest() {
   }
 }
 
-// 펌프 종목 공통 통계 산출 (분포 기반)
+// 누락 사유별 집계
+function analyzeMissedReasons(results) {
+  const reasons = {};
+  for (const r of results) {
+    if (r.wouldTrigger) continue;
+    const reason = r.hardExcludeReason || `점수 < ${$('f_minScore').value}`;
+    // 그룹 키: "저점대비 X+" → "저점대비"
+    let key = reason;
+    if (/^저점대비/.test(reason)) key = '저점대비';
+    else if (/^상장/.test(reason)) key = '상장 일수';
+    else if (/^유통/.test(reason)) key = '유통률';
+    else if (/^ATH/.test(reason)) key = 'ATH 대비';
+    else if (/^CEX/.test(reason)) key = 'CEX 부족';
+    else if (/^펀딩양수율/.test(reason)) key = '펀딩양수율';
+    else if (/^OI\/MCap/.test(reason)) key = 'OI/MCap';
+    else if (/^14d/.test(reason)) key = '14d 변동';
+    else if (/^24h/.test(reason)) key = '24h 변동';
+    else if (/^저볼륨/.test(reason)) key = '저볼륨';
+    else if (/^점수/.test(reason)) key = '점수';
+    reasons[key] = (reasons[key] || 0) + 1;
+  }
+  return reasons;
+}
+
+// 5x+ 펌프 종목 80%를 잡는 임계값 자동 산출
+function suggestOptimalSettings(results) {
+  const big = results.filter(r => r.pumpInfo.pumpRatio >= 5);
+  if (big.length < 3) return null;
+  const sortedAsc = (vals) => vals.filter(v => v !== null && v !== undefined && !isNaN(v)).sort((a,b) => a-b);
+  const sortedDesc = (vals) => sortedAsc(vals).reverse();
+  const pAsc = (arr, pct) => arr.length ? arr[Math.min(arr.length-1, Math.floor(arr.length * pct))] : null;
+  const pDesc = (arr, pct) => arr.length ? arr[Math.min(arr.length-1, Math.floor(arr.length * pct))] : null;
+  // 80% 검출 = 분포에서 80% percentile (max용) 또는 20% percentile (min용)
+  return {
+    maxGain: Math.ceil((pAsc(sortedAsc(big.map(r => r.gainFromLow)), 0.85) || 3) * 10) / 10,
+    minDays: Math.max(30, Math.floor((pAsc(sortedAsc(big.map(r => r.ageDays).filter(v => v)), 0.15) || 60) / 10) * 10),
+    maxCirc: Math.ceil((pAsc(sortedAsc(big.map(r => r.cg?.circMax).filter(v => v)), 0.85) || 0.30) * 100),
+    minCex: Math.max(0, Math.floor((pAsc(sortedAsc(big.map(r => r.cexCount)), 0.10) || 1))),
+    minFundPos: Math.max(0, Math.floor((pAsc(sortedAsc(big.map(r => r.fundPosRatio)), 0.15) || 0.3) * 100 / 10) * 10),
+    minOiMcap: 0, // OI/MCap는 부분 백테스트에서 0이 많아 권장 X
+    minScore: Math.max(15, Math.floor((pAsc(sortedAsc(big.map(r => r.score)), 0.15) || 30))),
+    minRise14: Math.floor((pAsc(sortedAsc(big.map(r => r.rise14)), 0.10) || -30) / 5) * 5,
+    maxRise14: Math.ceil((pAsc(sortedAsc(big.map(r => r.rise14)), 0.90) || 100) / 5) * 5,
+    minVol: Math.floor((pAsc(sortedAsc(big.map(r => r.volume).filter(v => v > 0)), 0.10) || 50000) / 10000) * 10000,
+    bigN: big.length
+  };
+}
+
+// 시그널별 등장 패턴 분석
+function analyzeSignalPatterns(results) {
+  const big = results.filter(r => r.pumpInfo.pumpRatio >= 5);
+  if (!big.length) return [];
+  const sigKeys = ['S2','S3','S5c1','S5c2','S5c3','S5c4','S6cont','S6size','S7','S8','S9','S10','S11','S12','S13','S14','S15','S16'];
+  const sigMax = {S2:3,S3:12,S5c1:5,S5c2:6,S5c3:6,S5c4:5,S6cont:7,S6size:7,S7:5,S8:7,S9:9,S10:6,S11:4,S12:8,S13:7,S14:8,S15:10,S16:5};
+  const sigName = {S2:'CEX',S3:'유통률',S5c1:'cv90',S5c2:'계단상승',S5c3:'양봉율',S5c4:'스무스',S6cont:'펀딩양수율',S6size:'펀딩크기',S7:'펀딩추세',S8:'베이시스',S9:'OI추세',S10:'L/S편향',S11:'Taker',S12:'BB압축',S13:'디버전스',S14:'OI/MCap',S15:'발사임박',S16:'조작의심'};
+  const out = [];
+  for (const k of sigKeys) {
+    const vals = big.map(r => r.scoreBreakdown?.[k] || 0).filter(v => !isNaN(v));
+    const avg = vals.reduce((a,b)=>a+b,0) / vals.length;
+    const pctAtLeastHalf = vals.filter(v => v >= sigMax[k] / 2).length / vals.length * 100;
+    const pctNonZero = vals.filter(v => v > 0).length / vals.length * 100;
+    out.push({ key: k, name: sigName[k], max: sigMax[k], avg, pctNonZero, pctAtLeastHalf });
+  }
+  return out.sort((a,b) => (b.avg/b.max) - (a.avg/a.max));
+}
+
+window.applySuggestedSettings = function(s) {
+  if (!s) return;
+  $('f_maxGain').value = s.maxGain;
+  $('f_minDays').value = s.minDays;
+  $('f_maxCirc').value = s.maxCirc;
+  $('f_minCex').value = s.minCex;
+  $('f_minFundPos').value = s.minFundPos;
+  $('f_minOiMcap').value = s.minOiMcap;
+  $('f_minScore').value = s.minScore;
+  $('f_minRise14').value = s.minRise14;
+  $('f_maxRise14').value = s.maxRise14;
+  $('f_minVol').value = s.minVol;
+  alert(`권장 세팅 적용 완료. (5x+ 종목 ${s.bigN}개 중 ~85% 검출 기준)`);
+  $('bt-modal').classList.remove('show');
+};
+
+function renderRecommendations(results, opt) {
+  const reasons = analyzeMissedReasons(results);
+  const sug = suggestOptimalSettings(results);
+  const sigPatterns = analyzeSignalPatterns(results);
+
+  // 누락 사유 정렬
+  const reasonRows = Object.entries(reasons).sort((a,b) => b[1] - a[1]).map(([k,v]) =>
+    `<tr><td>${k}</td><td>${v}건</td><td class="muted" style="font-size:10px;">${(v / results.length * 100).toFixed(0)}%</td></tr>`
+  ).join('');
+
+  let suggestHtml = '';
+  if (sug) {
+    const cmp = (cur, sugVal, label, suffix='') => {
+      const same = String(cur) === String(sugVal);
+      return `<tr><td>${label}</td><td>${cur}${suffix}</td><td class="${same?'muted':'pos'}">${sugVal}${suffix}</td></tr>`;
+    };
+    suggestHtml = `
+      <div class="diag-section" style="border-color: var(--accent);">
+        <h4 style="color: var(--accent);">📊 백테스트 기반 자동 권장 세팅 (5x+ 종목 ${sug.bigN}개 중 ~85% 검출 기준)</h4>
+        <table style="width:100%; font-size:11px;">
+          <thead><tr style="color:var(--muted);"><th style="text-align:left;">항목</th><th>현재</th><th>권장</th></tr></thead>
+          <tbody>
+            ${cmp($('f_maxGain').value, sug.maxGain, '저점대비 최대', 'x')}
+            ${cmp($('f_minDays').value, sug.minDays, '최소 상장일', 'd')}
+            ${cmp($('f_maxCirc').value, sug.maxCirc, '유통률 상한', '%')}
+            ${cmp($('f_minCex').value, sug.minCex, '최소 CEX')}
+            ${cmp($('f_minFundPos').value, sug.minFundPos, '펀딩양수율', '%')}
+            ${cmp($('f_minScore').value, sug.minScore, '최소 점수')}
+            ${cmp($('f_minRise14').value, sug.minRise14, '14d 하한', '%')}
+            ${cmp($('f_maxRise14').value, sug.maxRise14, '14d 상한', '%')}
+            ${cmp($('f_minVol').value, sug.minVol.toLocaleString(), '최소 거래대금')}
+          </tbody>
+        </table>
+        <button class="preset-btn" style="margin-top:10px;" onclick='applySuggestedSettings(${JSON.stringify(sug)})'>✓ 권장 세팅 적용</button>
+        <div class="muted" style="font-size:10px; margin-top:6px;">* 너무 느슨해지지 않도록 maxGain/minDays/maxCirc는 보수적 라운딩 적용</div>
+      </div>
+    `;
+  }
+
+  // 시그널 패턴 표 (5x+ 펌프 종목에서 빈번한 시그널)
+  const sigTop = sigPatterns.slice(0, 8).map(s =>
+    `<tr><td><b>${s.key}</b> ${s.name}</td><td>${s.avg.toFixed(1)}/${s.max}</td><td class="${s.pctAtLeastHalf >= 50 ? 'pos' : ''}">${s.pctAtLeastHalf.toFixed(0)}%</td><td class="${s.pctNonZero >= 70 ? 'pos' : ''}">${s.pctNonZero.toFixed(0)}%</td></tr>`
+  ).join('');
+
+  return `
+    ${suggestHtml}
+    <div class="diag-section">
+      <h4>❌ 누락 사유 분포 (전체 ${results.length}개 중)</h4>
+      <table style="width:100%; font-size:11px;">
+        <thead><tr style="color:var(--muted);"><th style="text-align:left;">사유</th><th>건수</th><th>비중</th></tr></thead>
+        <tbody>${reasonRows || '<tr><td colspan="3" class="muted">없음</td></tr>'}</tbody>
+      </table>
+    </div>
+    <div class="diag-section">
+      <h4>📈 5x+ 펌프 종목에서 자주 나타난 시그널 Top 8</h4>
+      <table style="width:100%; font-size:11px;">
+        <thead><tr style="color:var(--muted);"><th style="text-align:left;">시그널</th><th>평균/최대</th><th>≥반점</th><th>≥1점</th></tr></thead>
+        <tbody>${sigTop}</tbody>
+      </table>
+      <div class="muted" style="font-size:10px; margin-top:6px;">* "≥반점" 비율이 높을수록 펌프 시그니처에 일관되게 등장. 가중치 ↑ 후보. "≥1점"은 단순 발현 빈도.</div>
+    </div>
+  `;
+}
 function analyzePumpFeatures(rows) {
   if (!rows.length) return null;
   const vals = (key) => rows.map(r => r[key]).filter(v => v !== null && v !== undefined && !isNaN(v));
@@ -2431,6 +2575,7 @@ function renderBacktestResults(results, opt) {
       </div>
       <div class="muted" style="font-size: 11px;">검출률이 높을수록 스캐너 성능 우수. 누락된 종목은 어떤 시그널이 부족했는지 확인해 가중치 조정 가능.</div>
     </div>
+    ${renderRecommendations(results, opt)}
     ${featuresHtml}
     <table style="width:100%; font-size:11px; margin-top: 12px;">
       <thead><tr>
