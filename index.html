@@ -386,8 +386,8 @@
 
 <header>
   <div>
-    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v1.3</span></h1>
-    <span class="sub">16-Signal · 조기 진입 최적화 (BB압축 13·펀딩추세 8) · 후기 시그널 페널티 (⏰배지)</span>
+    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v1.4</span></h1>
+    <span class="sub">16-Signal · 조기 진입 최적화 · ⛔ 과거 펌프 이력/피크 대비 하락 컷 추가</span>
   </div>
   <div class="controls">
     <input id="diagInput" type="text" placeholder="심볼 진단 (예: KGEN)" class="diag-input" />
@@ -475,6 +475,16 @@
     <label>OI/MCap 최소 비율</label>
     <input type="number" id="f_minOiMcap" list="dl_minOiMcap" step="0.05" value="0" min="0" />
     <datalist id="dl_minOiMcap"><option value="0">0</option><option value="0.1">0.1</option><option value="0.2">0.2 (RAVE급)</option><option value="0.3">0.3</option></datalist>
+  </div>
+  <div class="filter">
+    <label>과거 펌프 이력 최대 (180d max/min)</label>
+    <input type="number" id="f_maxPriorPump" list="dl_maxPriorPump" step="0.5" value="5" min="0" title="180일 내 max/min 비율 — 이 값 이상이면 이미 펌프-덤프 끝난 토큰" />
+    <datalist id="dl_maxPriorPump"><option value="0">0 (제한없음)</option><option value="3">3 (타이트)</option><option value="5">5</option><option value="10">10 (느슨)</option><option value="20">20</option></datalist>
+  </div>
+  <div class="filter">
+    <label>피크 대비 최대 하락 % (180d)</label>
+    <input type="number" id="f_maxDrawdown" list="dl_maxDrawdown" step="5" value="50" min="0" title="180일 피크 대비 하락률 — 이 값 이상 떨어졌으면 펌프-덤프 종료 토큰" />
+    <datalist id="dl_maxDrawdown"><option value="0">0 (제한없음)</option><option value="30">30%</option><option value="50">50%</option><option value="70">70%</option><option value="90">90%</option></datalist>
   </div>
   <div class="filter">
     <label>CoinGecko 매칭</label>
@@ -958,6 +968,15 @@ function analyzeKlines(klines) {
   const currentPrice = closes[n - 1];
   const gainFromLow = recentLow > 0 ? currentPrice / recentLow : 1;
 
+  // 180-day historical peak/low — 이미 펌프-덤프 끝난 토큰 식별용
+  const highs = candles.map(c => c.h);
+  const tail180Low = lows.slice(Math.max(0, n - 180));
+  const tail180High = highs.slice(Math.max(0, n - 180));
+  const histLow = Math.min(...tail180Low);
+  const histHigh = Math.max(...tail180High);
+  const historicalPeakRatio = histLow > 0 ? histHigh / histLow : 1; // 180d 내 max/min
+  const drawdownFromPeak = histHigh > 0 ? (currentPrice / histHigh - 1) * 100 : 0; // 음수: 피크 대비 하락률
+
   // Recent 14 days analysis
   const rec14 = closes.slice(-14);
   let up = 0;
@@ -1094,6 +1113,7 @@ function analyzeKlines(klines) {
   return {
     rise14, upRatio, smoothness, avgMove, maxMove,
     riseRangeDays, gainFromLow, cv90,
+    historicalPeakRatio, drawdownFromPeak,
     bbRatio, bbScore,
     volRatio, rangeRatio, divergenceScore,
     volQuietRatio,
@@ -1225,6 +1245,14 @@ function hardExclude(row, opt) {
   if (row.volume < opt.minVol) return `저볼륨 (<$${opt.minVol})`;
   if (row.ageDays !== null && row.ageDays < opt.minDays) return `상장 ${row.ageDays}d (<${opt.minDays})`;
   if (row.gainFromLow >= opt.maxGain) return `저점대비 ${opt.maxGain}x+`;
+  // 과거 피크 ratio: 이미 펌프-덤프 끝난 토큰 제외 (예: $1→$20→$2 = 20x)
+  if (opt.maxPriorPump > 0 && row.historicalPeakRatio >= opt.maxPriorPump) {
+    return `과거 ${row.historicalPeakRatio.toFixed(1)}x 펌프 이력 (≥${opt.maxPriorPump}x)`;
+  }
+  // 피크 대비 하락률 (이미 -50% 이상 떨어진 토큰)
+  if (opt.maxDrawdown > 0 && row.drawdownFromPeak <= -opt.maxDrawdown) {
+    return `피크 대비 ${row.drawdownFromPeak.toFixed(0)}%`;
+  }
   if (row.cexCount < opt.minCex) return `CEX ${row.cexCount}/${opt.minCex} 미달`;
   if (row.fundPosRatio < opt.minFundPos) return `펀딩양수율 ${(row.fundPosRatio*100).toFixed(0)}% (<${(opt.minFundPos*100).toFixed(0)}%)`;
   if (row.cg) {
@@ -1489,7 +1517,9 @@ async function runScan() {
       maxCirc: parseFloat($('f_maxCirc').value) / 100,
       minCex: parseInt($('f_minCex').value),
       minFundPos: parseFloat($('f_minFundPos').value) / 100,
-      minOiMcap: parseFloat($('f_minOiMcap').value)
+      minOiMcap: parseFloat($('f_minOiMcap').value),
+      maxPriorPump: parseFloat($('f_maxPriorPump').value) || 0,
+      maxDrawdown: parseFloat($('f_maxDrawdown').value) || 0
     };
 
     log('Phase 1: Universe & 거래소 데이터 병렬 로드');
@@ -1606,6 +1636,8 @@ async function runScan() {
             oi: oi * price,
             oiMcap: cg && cg.marketCap > 0 ? (oi * price) / cg.marketCap : null,
             gainFromLow: a.gainFromLow,
+            historicalPeakRatio: a.historicalPeakRatio,
+            drawdownFromPeak: a.drawdownFromPeak,
             cex,
             cexCount,
             cg,
@@ -2159,7 +2191,7 @@ async function diagnoseToken(input) {
       hlSlope: a.hlSlope, bodyRangeRatio: a.bodyRangeRatio, greenRedVolRatio: a.greenRedVolRatio, volumePercentile: a.volumePercentile,
       volume: vol, oi: oi * price,
       oiMcap: cg && cg.marketCap > 0 ? (oi * price) / cg.marketCap : null,
-      gainFromLow: a.gainFromLow, cex, cexCount, cg,
+      gainFromLow: a.gainFromLow, historicalPeakRatio: a.historicalPeakRatio, drawdownFromPeak: a.drawdownFromPeak, cex, cexCount, cg,
       fundingTrend, basisAnalysis, basis: basisAnalysis.basis,
       oiTrend, oiTrendPct: oiTrend.ratio !== null ? (oiTrend.ratio - 1) * 100 : null,
       lsBias, lsBiasDiff: lsBias.diff, takerRatio,
@@ -2243,7 +2275,7 @@ async function backtestRow(symbol, base, ageDays, evalEndTime, cgLookup, cexSets
     hlSlope: a.hlSlope, bodyRangeRatio: a.bodyRangeRatio, greenRedVolRatio: a.greenRedVolRatio, volumePercentile: a.volumePercentile,
     volume: quoteVolUsd, oi: oiUsd,
     oiMcap: cgLookup && cgLookup.marketCap > 0 && oiUsd > 0 ? oiUsd / cgLookup.marketCap : null,
-    gainFromLow: a.gainFromLow, cex, cexCount, cg: cgLookup,
+    gainFromLow: a.gainFromLow, historicalPeakRatio: a.historicalPeakRatio, drawdownFromPeak: a.drawdownFromPeak, cex, cexCount, cg: cgLookup,
     fundingTrend, basisAnalysis: { basis: 0, score: 0 }, basis: 0, // 베이시스는 과거 추정 X
     oiTrend, oiTrendPct: oiTrend.ratio !== null ? (oiTrend.ratio - 1) * 100 : null,
     lsBias, lsBiasDiff: lsBias.diff, takerRatio,
@@ -3089,6 +3121,8 @@ function diagnoseHardExclude(r, opt) {
   if (r.volume < opt.minVol) list.push({ violated: true, reason: `저볼륨 $${fmtNum(r.volume,0)} < $${fmtNum(opt.minVol,0)}` });
   if (r.ageDays !== null && r.ageDays < opt.minDays) list.push({ violated: true, reason: `상장 ${r.ageDays}d < ${opt.minDays}d` });
   if (r.gainFromLow >= opt.maxGain) list.push({ violated: true, reason: `저점대비 ${r.gainFromLow.toFixed(2)}x ≥ ${opt.maxGain}x` });
+  if (opt.maxPriorPump > 0 && r.historicalPeakRatio >= opt.maxPriorPump) list.push({ violated: true, reason: `과거 펌프 ${r.historicalPeakRatio.toFixed(1)}x ≥ ${opt.maxPriorPump}x (이미 해먹은 토큰)` });
+  if (opt.maxDrawdown > 0 && r.drawdownFromPeak <= -opt.maxDrawdown) list.push({ violated: true, reason: `피크 대비 ${r.drawdownFromPeak.toFixed(0)}% (≤ -${opt.maxDrawdown}%)` });
   if (r.cexCount < opt.minCex) list.push({ violated: true, reason: `CEX ${r.cexCount}/${opt.minCex}곳 미달` });
   if (r.fundPosRatio < opt.minFundPos) list.push({ violated: true, reason: `펀딩 양수율 ${(r.fundPosRatio*100).toFixed(0)}% < ${(opt.minFundPos*100).toFixed(0)}%` });
   if (r.cg) {
@@ -3118,7 +3152,9 @@ function getCurrentOpts() {
     maxCirc: parseFloat($('f_maxCirc').value) / 100,
     minCex: parseInt($('f_minCex').value),
     minFundPos: parseFloat($('f_minFundPos').value) / 100,
-    minOiMcap: parseFloat($('f_minOiMcap').value)
+    minOiMcap: parseFloat($('f_minOiMcap').value),
+    maxPriorPump: parseFloat($('f_maxPriorPump').value) || 0,
+    maxDrawdown: parseFloat($('f_maxDrawdown').value) || 0
   };
 }
 
@@ -3276,13 +3312,13 @@ document.querySelector('#bt-modal .modal-overlay').addEventListener('click', () 
 // ============================================================
 // 프리셋 (시스템 + 사용자 다중 저장)
 // ============================================================
-const FILTER_FIELDS = ['f_funding','f_maxRise14','f_minRise14','f_maxDaily','f_minVol','f_minDays','f_minScore','f_maxGain','f_maxCirc','f_minCex','f_minFundPos','f_minOiMcap','f_cg'];
+const FILTER_FIELDS = ['f_funding','f_maxRise14','f_minRise14','f_maxDaily','f_minVol','f_minDays','f_minScore','f_maxGain','f_maxCirc','f_minCex','f_minFundPos','f_minOiMcap','f_maxPriorPump','f_maxDrawdown','f_cg'];
 const PRESETS_KEY = 'raply.presets.v2';
 const LAST_KEY = 'raply.presets.last';
 const SYS_PRESETS = {
-  default: { f_funding:0, f_maxRise14:50, f_minRise14:-15, f_maxDaily:50, f_minVol:100000, f_minDays:120, f_minScore:35, f_maxGain:2.5, f_maxCirc:30, f_minCex:2, f_minFundPos:50, f_minOiMcap:0, f_cg:'on' },
-  tight:   { f_funding:0.005, f_maxRise14:30, f_minRise14:-10, f_maxDaily:30, f_minVol:200000, f_minDays:120, f_minScore:50, f_maxGain:1.8, f_maxCirc:20, f_minCex:3, f_minFundPos:70, f_minOiMcap:0.2, f_cg:'on' },
-  loose:   { f_funding:0, f_maxRise14:150, f_minRise14:-30, f_maxDaily:50, f_minVol:50000, f_minDays:90, f_minScore:25, f_maxGain:5, f_maxCirc:50, f_minCex:1, f_minFundPos:30, f_minOiMcap:0, f_cg:'on' }
+  default: { f_funding:0, f_maxRise14:50, f_minRise14:-15, f_maxDaily:50, f_minVol:100000, f_minDays:120, f_minScore:35, f_maxGain:2.5, f_maxCirc:30, f_minCex:2, f_minFundPos:50, f_minOiMcap:0, f_maxPriorPump:5, f_maxDrawdown:50, f_cg:'on' },
+  tight:   { f_funding:0.005, f_maxRise14:30, f_minRise14:-10, f_maxDaily:30, f_minVol:200000, f_minDays:120, f_minScore:50, f_maxGain:1.8, f_maxCirc:20, f_minCex:3, f_minFundPos:70, f_minOiMcap:0.2, f_maxPriorPump:3, f_maxDrawdown:30, f_cg:'on' },
+  loose:   { f_funding:0, f_maxRise14:150, f_minRise14:-30, f_maxDaily:50, f_minVol:50000, f_minDays:90, f_minScore:25, f_maxGain:5, f_maxCirc:50, f_minCex:1, f_minFundPos:30, f_minOiMcap:0, f_maxPriorPump:10, f_maxDrawdown:70, f_cg:'on' }
 };
 function applyPreset(values) {
   for (const id of FILTER_FIELDS) {
