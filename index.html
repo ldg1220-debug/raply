@@ -385,8 +385,8 @@
 
 <header>
   <div>
-    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v1.0</span></h1>
-    <span class="sub">18-Signal · 진단 · 역검증 + 자동 권장 세팅 (펌프 데이터 기반 학습)</span>
+    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v1.1</span></h1>
+    <span class="sub">20-Signal (S5c3/S5c4 삭제, S17~S20 추가) · max 110 · Wyckoff·Body압축·매수우위·거래량분위</span>
   </div>
   <div class="controls">
     <input id="diagInput" type="text" placeholder="심볼 진단 (예: KGEN)" class="diag-input" />
@@ -406,7 +406,7 @@
   <summary>탐지 시그널 및 점수 기준 (펼치기)</summary>
   <div style="color: var(--muted); font-size: 11px; line-height: 1.7; margin-top: 8px;">
     <b>Hard Exclude</b> — Binance Spot에 이미 상장 / 선물 상장 N일 미만 / ATH 대비 -90% 이하 / 저점대비 N배 이상 / 유통률 N% 초과 / CEX N곳 미만 / 펀딩 양수율 N% 미만 / OI/MCap N 미만 / 저볼륨<br>
-    <b>가산 시그널 (18종, 합산 ≤100점)</b> — CEX(3) · 유통률(12) · 가격 패턴 4종(22) · 펀딩 4종(26 · 컨텍스트 패널티 적용) · 매집 3종(19) · 변동성 2종(15) · OI/MCap(8) · 유기+OI Spike(10) · 조작 의심(5)<br>
+    <b>가산 시그널 (20종, 합산 ≤110점)</b> — CEX(3) · 유통률(12) · 가격 패턴(8: cv90 5+계단상승 3) · 펀딩 4종(28 · 컨텍스트 패널티) · 매집 3종(19) · 변동성 2종(17: BB압축 10+디버전스 7) · OI/MCap(8) · 유기+OI Spike(10) · 조작 의심(5) · <b>Wyckoff/캔들 4종(20: HL 6+Body 5+매수우위 5+분위 4)</b><br>
     <b>펀딩 컨텍스트 패널티</b> — 14d 상승률 &gt; 30% 또는 저점대비 &gt; 2.5x 시 S6cont/S6size/S7 50% 감점 (후행 신호 무력화)<br>
     <b>알람 배지</b> — 🚨 CRIME (펀딩+ Basis≥0.5% 양수율≥60%) · 🎯 발사임박 (유기+OI Spike) · 🕵 조작 의심 (횡보+양수 펀딩 70%+)
   </div>
@@ -1035,12 +1035,66 @@ function analyzeKlines(klines) {
     volQuietRatio = v90 > 0 ? v14 / v90 : null;
   }
 
+  // S17: Higher Lows 형성 (Wyckoff 매집 핵심) — 최근 14d 저가의 회귀 기울기
+  // 정규화: slope * 14 / mean(lows) → 단위는 "14일간 평균 대비 저가 상승률"
+  let hlSlope = null;
+  if (candles.length >= 14) {
+    const last14 = candles.slice(-14);
+    const lowsArr = last14.map(c => c.l);
+    const lowMean = lowsArr.reduce((a, b) => a + b, 0) / 14;
+    if (lowMean > 0) {
+      // simple linear regression: y = a + b*x
+      const xs = lowsArr.map((_, i) => i);
+      const xMean = (14 - 1) / 2;
+      let num = 0, den = 0;
+      for (let i = 0; i < 14; i++) {
+        num += (xs[i] - xMean) * (lowsArr[i] - lowMean);
+        den += (xs[i] - xMean) ** 2;
+      }
+      const slope = den > 0 ? num / den : 0;
+      hlSlope = (slope * 14) / lowMean; // 14일간 저점이 평균 대비 X% 상승
+    }
+  }
+
+  // S18: Body 압축 (꼬리 큰 횡보) — avg|c-o| / avg(h-l)
+  let bodyRangeRatio = null;
+  if (candles.length >= 14) {
+    const last14 = candles.slice(-14);
+    const avgBody = last14.reduce((a, c) => a + Math.abs(c.c - c.o), 0) / 14;
+    const avgRange = last14.reduce((a, c) => a + (c.h - c.l), 0) / 14;
+    bodyRangeRatio = avgRange > 0 ? avgBody / avgRange : null;
+  }
+
+  // S19: 매수 우위 거래량 — sum(vol on green) / sum(vol on red)
+  let greenRedVolRatio = null;
+  if (candles.length >= 14) {
+    const last14 = candles.slice(-14);
+    let greenVol = 0, redVol = 0;
+    for (const c of last14) {
+      if (c.c >= c.o) greenVol += c.v; else redVol += c.v;
+    }
+    greenRedVolRatio = redVol > 0 ? greenVol / redVol : (greenVol > 0 ? 99 : null);
+  }
+
+  // S20: 거래량 분위 — 14d 평균 vol이 90d 분포에서 차지하는 percentile (낮을수록 유기)
+  let volumePercentile = null;
+  if (candles.length >= 60) {
+    const tail14 = candles.slice(-14);
+    const tail90 = candles.slice(-Math.min(90, candles.length));
+    const v14 = tail14.reduce((a, c) => a + c.v, 0) / tail14.length;
+    const sorted = tail90.map(c => c.v).sort((a, b) => a - b);
+    let rank = 0;
+    for (const v of sorted) { if (v < v14) rank++; else break; }
+    volumePercentile = rank / sorted.length; // 0~1
+  }
+
   return {
     rise14, upRatio, smoothness, avgMove, maxMove,
     riseRangeDays, gainFromLow, cv90,
     bbRatio, bbScore,
     volRatio, rangeRatio, divergenceScore,
     volQuietRatio,
+    hlSlope, bodyRangeRatio, greenRedVolRatio, volumePercentile,
     closes14: rec14,
     candles14: candles.slice(-14),
     candlesAll: candles
@@ -1198,17 +1252,13 @@ function computeScore(row) {
   }
   b.S5c1 = s5c1;
 
-  // S5c-2: rise range days (max 6)
-  b.S5c2 = (row.riseRangeDays / 13) * 6;
+  // S5c-2: rise range days (max 3, 가중치 절반)
+  b.S5c2 = (row.riseRangeDays / 13) * 3;
 
-  // S5c-3: up ratio (max 6)
-  b.S5c3 = Math.max(0, (row.upRatio - 0.5) * 12);
+  // S5c-3, S5c-4 삭제 (v1.1, 21개 펌프 데이터 0/21 등장)
 
-  // S5c-4: smoothness (max 5)
-  b.S5c4 = row.smoothness * 5;
-
-  // S6 continuity: positive funding ratio (max 7)
-  let s6cont = row.fundPosRatio * 7;
+  // S6 continuity: positive funding ratio (max 9, 가중치 강화)
+  let s6cont = row.fundPosRatio * 9;
 
   // S6 size: avg funding magnitude (max 7), avg in %
   const af = row.avgFundingPct;
@@ -1246,8 +1296,8 @@ function computeScore(row) {
   // S11: Taker Buy/Sell (max 4)
   b.S11 = row.takerRatio?.score || 0;
 
-  // S12: BB 압축 (max 8)
-  b.S12 = row.bbScore || 0;
+  // S12: BB 압축 (max 10, 가중치 강화) — bbScore 8pt 만점 → 10pt로 재스케일
+  b.S12 = (row.bbScore || 0) * (10 / 8);
 
   // S13: 거래량/변동폭 디버전스 (max 7)
   b.S13 = row.divergenceScore || 0;
@@ -1285,8 +1335,51 @@ function computeScore(row) {
   }
   b.S16 = s16;
 
+  // S17: Higher Lows 형성 (Wyckoff 매집) — max 6
+  // hlSlope = 14일간 저점 평균대비 상승률
+  let s17 = 0;
+  if (row.hlSlope !== null && row.hlSlope !== undefined) {
+    if (row.hlSlope >= 0.05) s17 = 6;       // 5%+ 저점 상승
+    else if (row.hlSlope >= 0.02) s17 = 4;  // 2%+
+    else if (row.hlSlope >= 0.005) s17 = 2; // 0.5%+
+    else if (row.hlSlope > 0) s17 = 1;
+  }
+  b.S17 = s17;
+
+  // S18: Body 압축 (꼬리 큰 횡보) — max 5
+  // bodyRangeRatio = avg|c-o| / avg(h-l)
+  let s18 = 0;
+  if (row.bodyRangeRatio !== null && row.bodyRangeRatio !== undefined) {
+    if (row.bodyRangeRatio < 0.20) s18 = 5;       // 매우 압축
+    else if (row.bodyRangeRatio < 0.30) s18 = 4;
+    else if (row.bodyRangeRatio < 0.40) s18 = 3;
+    else if (row.bodyRangeRatio < 0.50) s18 = 2;
+  }
+  b.S18 = s18;
+
+  // S19: 매수 우위 거래량 (양봉 vol / 음봉 vol) — max 5
+  let s19 = 0;
+  if (row.greenRedVolRatio !== null && row.greenRedVolRatio !== undefined) {
+    if (row.greenRedVolRatio >= 2.0) s19 = 5;
+    else if (row.greenRedVolRatio >= 1.5) s19 = 4;
+    else if (row.greenRedVolRatio >= 1.3) s19 = 3;
+    else if (row.greenRedVolRatio >= 1.1) s19 = 2;
+    else if (row.greenRedVolRatio >= 1.0) s19 = 1;
+  }
+  b.S19 = s19;
+
+  // S20: 거래량 분위 (90d 분포 하위) — max 4
+  let s20 = 0;
+  if (row.volumePercentile !== null && row.volumePercentile !== undefined) {
+    if (row.volumePercentile <= 0.10) s20 = 4;       // 하위 10% (극단적 유기)
+    else if (row.volumePercentile <= 0.25) s20 = 3;  // 하위 25%
+    else if (row.volumePercentile <= 0.40) s20 = 2;
+    else if (row.volumePercentile <= 0.50) s20 = 1;
+  }
+  b.S20 = s20;
+
   const total = Object.values(b).reduce((a, x) => a + x, 0);
-  return { score: Math.min(Math.round(total), 100), breakdown: b };
+  return { score: Math.min(Math.round(total), 110), breakdown: b };
 }
 
 // 조작 의심 판별 (배지용)
@@ -1511,6 +1604,10 @@ async function runScan() {
             rangeRatio: a.rangeRatio,
             divergenceScore: a.divergenceScore,
             volQuietRatio: a.volQuietRatio,
+            hlSlope: a.hlSlope,
+            bodyRangeRatio: a.bodyRangeRatio,
+            greenRedVolRatio: a.greenRedVolRatio,
+            volumePercentile: a.volumePercentile,
             volume: item.vol,
             oi: oi * price,
             oiMcap: cg && cg.marketCap > 0 ? (oi * price) / cg.marketCap : null,
@@ -2064,6 +2161,7 @@ async function diagnoseToken(input) {
       cv90: a.cv90, bbRatio: a.bbRatio, bbScore: a.bbScore,
       volRatio: a.volRatio, rangeRatio: a.rangeRatio,
       divergenceScore: a.divergenceScore, volQuietRatio: a.volQuietRatio,
+      hlSlope: a.hlSlope, bodyRangeRatio: a.bodyRangeRatio, greenRedVolRatio: a.greenRedVolRatio, volumePercentile: a.volumePercentile,
       volume: vol, oi: oi * price,
       oiMcap: cg && cg.marketCap > 0 ? (oi * price) / cg.marketCap : null,
       gainFromLow: a.gainFromLow, cex, cexCount, cg,
@@ -2147,6 +2245,7 @@ async function backtestRow(symbol, base, ageDays, evalEndTime, cgLookup, cexSets
     cv90: a.cv90, bbRatio: a.bbRatio, bbScore: a.bbScore,
     volRatio: a.volRatio, rangeRatio: a.rangeRatio,
     divergenceScore: a.divergenceScore, volQuietRatio: a.volQuietRatio,
+    hlSlope: a.hlSlope, bodyRangeRatio: a.bodyRangeRatio, greenRedVolRatio: a.greenRedVolRatio, volumePercentile: a.volumePercentile,
     volume: quoteVolUsd, oi: oiUsd,
     oiMcap: cgLookup && cgLookup.marketCap > 0 && oiUsd > 0 ? oiUsd / cgLookup.marketCap : null,
     gainFromLow: a.gainFromLow, cex, cexCount, cg: cgLookup,
@@ -2661,34 +2760,23 @@ function buildSignalDiagnostics(r) {
     detail: r.cv90 !== null ? `CV ${(r.cv90*100).toFixed(1)}%` : '데이터 부족',
     advice: r.cv90 === null ? '캔들 데이터 부족' : r.cv90 < 0.10 ? '✓ 만점 (변동성 압축)' : r.cv90 < 0.15 ? '15% → 10% 미만 시 +2pt' : '횡보 압축 발생 시 +5pt'
   });
-  // S5c2
+  // S5c2 (가중치 절반)
   items.push({
-    code: 'S5c2', name: '계단식 상승일 (2~7%/일)', max: 6, score: b.S5c2 || 0,
+    code: 'S5c2', name: '계단식 상승일 (2~7%/일)', max: 3, score: b.S5c2 || 0,
     detail: `최근 13일 중 ${r.riseRangeDays}일`,
-    advice: r.riseRangeDays >= 13 ? '✓ 만점' : `+${13 - r.riseRangeDays}일 추가 시 max 6pt`
+    advice: r.riseRangeDays >= 13 ? '✓ 만점' : `+${13 - r.riseRangeDays}일 추가 시 max 3pt (밈코인 단발 급등 부적합으로 가중치 ↓)`
   });
-  // S5c3
-  items.push({
-    code: 'S5c3', name: '양봉 비율', max: 6, score: b.S5c3 || 0,
-    detail: `${(r.upRatio*100).toFixed(0)}%`,
-    advice: r.upRatio >= 1.0 ? '✓ 만점' : `100% 양봉 시 max 6pt (현재 ${(r.upRatio*100).toFixed(0)}%)`
-  });
-  // S5c4
-  items.push({
-    code: 'S5c4', name: '스무스니스', max: 5, score: b.S5c4 || 0,
-    detail: `${(r.smoothness*100).toFixed(0)}%`,
-    advice: '평균 일변동/최대 일변동. 80%+ 시 +1pt 이상'
-  });
+  // S5c-3, S5c-4 삭제됨 (v1.1, 21개 펌프 데이터 0/21 등장)
   const fundPenalty = r._fundPenalty;
   const penaltyTag = fundPenalty ? ' <span class="neg" style="font-size:10px;">[50% 감점: rise14>30% or 저점>2.5x — 후행신호]</span>' : '';
-  const maxS6cont = fundPenalty ? 3.5 : 7;
+  const maxS6cont = fundPenalty ? 4.5 : 9;
   const maxS6size = fundPenalty ? 3.5 : 7;
   const maxS7 = fundPenalty ? 2.5 : 5;
   // S6cont
   items.push({
-    code: 'S6cont', name: '펀딩 양수 지속률' + (fundPenalty ? ' (감점)' : ''), max: maxS6cont, score: b.S6cont || 0,
+    code: 'S6cont', name: '펀딩 양수 지속률 ⚡' + (fundPenalty ? ' (감점)' : ''), max: maxS6cont, score: b.S6cont || 0,
     detail: `최근 21회 중 ${(r.fundPosRatio*100).toFixed(0)}% 양수${penaltyTag}`,
-    advice: fundPenalty ? '컨텍스트 패널티 적용 — 가격이 횡보로 돌아오면 풀점수 회복' : (r.fundPosRatio >= 1.0 ? '✓ 만점' : `100% 양수 시 +${(7 - (b.S6cont||0)).toFixed(1)}pt`)
+    advice: fundPenalty ? '컨텍스트 패널티 적용 — 가격이 횡보로 돌아오면 풀점수 회복' : (r.fundPosRatio >= 1.0 ? '✓ 만점 (가중치 ↑)' : `100% 양수 시 +${(9 - (b.S6cont||0)).toFixed(1)}pt`)
   });
   // S6size
   items.push({
@@ -2728,7 +2816,7 @@ function buildSignalDiagnostics(r) {
   });
   // S12
   items.push({
-    code: 'S12', name: 'BB 압축 (14d/60d)', max: 8, score: b.S12 || 0,
+    code: 'S12', name: 'BB 압축 (14d/60d) ⚡', max: 10, score: b.S12 || 0,
     detail: r.bbRatio !== null ? `${r.bbRatio.toFixed(2)}` : '데이터 부족',
     advice: r.bbRatio === null ? '60일치 데이터 부족' : r.bbRatio < 0.5 ? '✓ 만점' : r.bbRatio < 0.7 ? '<0.5 시 +2pt' : r.bbRatio < 0.85 ? '<0.7 시 +2pt' : r.bbRatio < 1.0 ? '<0.85 시 +2pt' : '14d 변동성이 60d보다 작아져야 (압축)'
   });
@@ -2765,6 +2853,39 @@ function buildSignalDiagnostics(r) {
             (b.S16||0) > 0 ? `${b.S16}pt — 양수율 90%+ 시 +${(5 - b.S16).toFixed(0)}pt` :
             !sideOK ? '가격이 -15% ~ +25% 범위에서 + 저점대비 2.5x 이하여야 함' :
             '양수 펀딩 70%+ 지속되면 점수 부여'
+  });
+
+  // S17: Higher Lows 형성 (Wyckoff 매집)
+  items.push({
+    code: 'S17', name: 'Higher Lows 형성 (Wyckoff)', max: 6, score: b.S17 || 0,
+    detail: r.hlSlope !== null && r.hlSlope !== undefined ? `14일 저점 회귀 기울기: ${(r.hlSlope*100).toFixed(2)}% / 평균대비` : '데이터 부족',
+    advice: (b.S17||0) >= 6 ? '✓ 만점 (5%+ 저점 상승 — 강한 매집)' :
+            (b.S17||0) > 0 ? '저점이 더 가파르게 올라가야 가산' :
+            'Higher Lows = 가격 횡보 중 저가가 점진 상승 (RAVE/LAB 시그니처)'
+  });
+  // S18: Body 압축
+  items.push({
+    code: 'S18', name: 'Body 압축 (꼬리 큰 횡보)', max: 5, score: b.S18 || 0,
+    detail: r.bodyRangeRatio !== null && r.bodyRangeRatio !== undefined ? `Body/Range = ${(r.bodyRangeRatio*100).toFixed(0)}%` : '데이터 부족',
+    advice: (b.S18||0) >= 5 ? '✓ 만점 (몸통 매우 작음 — 흡수)' :
+            r.bodyRangeRatio !== null && r.bodyRangeRatio < 0.50 ? `<20% 시 +${(5 - (b.S18||0)).toFixed(0)}pt` :
+            '캔들 몸통 / 전체 범위 비율이 작아져야 (꼬리 흡수 = 지정가 매수)'
+  });
+  // S19: 매수 우위 거래량
+  items.push({
+    code: 'S19', name: '매수 우위 거래량', max: 5, score: b.S19 || 0,
+    detail: r.greenRedVolRatio !== null && r.greenRedVolRatio !== undefined ? `양봉vol / 음봉vol = ${r.greenRedVolRatio.toFixed(2)}x` : '데이터 부족',
+    advice: (b.S19||0) >= 5 ? '✓ 만점 (양봉 거래량 2배+)' :
+            r.greenRedVolRatio >= 1.0 ? '비율 ↑ 시 점수 ↑' :
+            '음봉 거래량이 더 큼 — 매도 압력 우위 (매집 X)'
+  });
+  // S20: 거래량 분위
+  items.push({
+    code: 'S20', name: '거래량 분위 (90d)', max: 4, score: b.S20 || 0,
+    detail: r.volumePercentile !== null && r.volumePercentile !== undefined ? `90d 분포 하위 ${(r.volumePercentile*100).toFixed(0)}%` : '데이터 부족',
+    advice: (b.S20||0) >= 4 ? '✓ 만점 (극단적 유기 — 진정한 RAVE급)' :
+            r.volumePercentile !== null && r.volumePercentile <= 0.50 ? `하위 10% 시 +${(4 - (b.S20||0))}pt` :
+            '14d 거래량이 90d 평균보다 큼 — 유기 상태 X'
   });
 
   return items;
@@ -2809,10 +2930,10 @@ function getCurrentOpts() {
 }
 
 function gradeOf(score) {
-  if (score >= 85) return { g: 'S', desc: 'RAVE급 매집 완료 신호' };
-  if (score >= 70) return { g: 'A', desc: '강한 후보, 진입 검토' };
-  if (score >= 55) return { g: 'B', desc: '관찰 필요, 추가 확증 대기' };
-  if (score >= 40) return { g: 'C', desc: '신호 약함, 시기상조' };
+  if (score >= 90) return { g: 'S', desc: 'RAVE급 매집 완료 신호' };
+  if (score >= 73) return { g: 'A', desc: '강한 후보, 진입 검토' };
+  if (score >= 57) return { g: 'B', desc: '관찰 필요, 추가 확증 대기' };
+  if (score >= 42) return { g: 'C', desc: '신호 약함, 시기상조' };
   return { g: 'D', desc: '매집 단계 미흡 또는 패턴 불일치' };
 }
 
@@ -2914,7 +3035,7 @@ function renderDiagnosisTab(r) {
       <div class="diag-row" style="margin-top: 6px;">
         <b>RAVE급(85+) 진입 조건:</b><br>
         <span style="margin-left: 12px;">
-          ${r.score >= 85 ? '✓ 이미 충족' : `현재보다 +${85 - r.score}pt 필요. ${weaknesses.slice(0, Math.ceil((85-r.score)/5)).map(w => `[${w.code}]`).join(' + ')} 개선 시 도달 가능`}
+          ${r.score >= 90 ? '✓ 이미 충족' : `현재보다 +${90 - r.score}pt 필요. ${weaknesses.slice(0, Math.ceil((90-r.score)/5)).map(w => `[${w.code}]`).join(' + ')} 개선 시 도달 가능`}
         </span>
       </div>
       ${r.gainFromLow < 2 && r.score < 50 ? `<div class="diag-row" style="margin-top: 6px;"><b>참고:</b> 매집 초기일수록 점수가 낮은 것이 정상. 향후 OI/펀딩 추세 변화 관찰 권장</div>` : ''}
