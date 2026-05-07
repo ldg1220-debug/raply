@@ -2120,8 +2120,10 @@ async function backtestRow(symbol, base, ageDays, evalEndTime, cgLookup, cexSets
   const lsBias = analyzeLSBias(lsPos, lsAcc);
   const takerRatio = analyzeTakerRatio(takerHist);
 
-  // 평가일 종가 사용
+  // 평가일 종가 + 24h 거래대금 (kline의 quote volume = USDT)
+  const lastKline = klines[klines.length - 1];
   const lastClose = a.closes14[a.closes14.length - 1];
+  const quoteVolUsd = lastKline ? (parseFloat(lastKline[7]) || 0) : 0;
   const fundingPct = fundAnalysis.lastPct;
   // OI 값: 평가일에 해당하는 OI 히스토리 마지막값 (USD 단위 변환)
   const lastOiVal = oiHist.length ? parseFloat(oiHist[oiHist.length - 1].sumOpenInterestValue || 0) : 0;
@@ -2145,7 +2147,7 @@ async function backtestRow(symbol, base, ageDays, evalEndTime, cgLookup, cexSets
     cv90: a.cv90, bbRatio: a.bbRatio, bbScore: a.bbScore,
     volRatio: a.volRatio, rangeRatio: a.rangeRatio,
     divergenceScore: a.divergenceScore, volQuietRatio: a.volQuietRatio,
-    volume: 0, oi: oiUsd,
+    volume: quoteVolUsd, oi: oiUsd,
     oiMcap: cgLookup && cgLookup.marketCap > 0 && oiUsd > 0 ? oiUsd / cgLookup.marketCap : null,
     gainFromLow: a.gainFromLow, cex, cexCount, cg: cgLookup,
     fundingTrend, basisAnalysis: { basis: 0, score: 0 }, basis: 0, // 베이시스는 과거 추정 X
@@ -2192,7 +2194,8 @@ function detectPump(klines, lookbackDays = 180, minRatio = 3) {
 
   const baseDaysAgo = (wn - 1) - baseStart;
   const peakDaysAgo = (wn - 1) - peakIdx;
-  const fullBacktest = baseDaysAgo <= 28;
+  // 평가 시점이 피크 -7일이라 그 시점이 OI 데이터 30일 보존 범위 안에 있어야 전체 백테스트
+  const fullBacktest = (peakDaysAgo + 7) <= 28;
 
   return {
     pumpRatio,
@@ -2271,9 +2274,9 @@ async function runBacktest() {
       while (idx2 < pumpCandidates.length) {
         const i = idx2++;
         const p = pumpCandidates[i];
-        const evalDate = p.lowDate - 86400000; // 저점 1일 전 (펌프 시작 직전)
+        // 평가 시점: 피크 -7일 (매집 정점, 발사 직전)
+        const evalDate = p.peakDate - 7 * DAY_MS;
         const cg = useCG ? CoinGecko.lookup(cgMap, p.base, cgPlatMap) : null;
-        const today = Date.now();
         const ageDays = p.onboardDate ? Math.floor((evalDate - p.onboardDate) / DAY_MS) : null;
         try {
           const row = await backtestRow(p.symbol, p.base, ageDays, evalDate, cg, cexSets);
@@ -2300,6 +2303,107 @@ async function runBacktest() {
   }
 }
 
+// 펌프 종목 공통 통계 산출 (분포 기반)
+function analyzePumpFeatures(rows) {
+  if (!rows.length) return null;
+  const vals = (key) => rows.map(r => r[key]).filter(v => v !== null && v !== undefined && !isNaN(v));
+  const median = arr => { if (!arr.length) return null; const s = [...arr].sort((a,b)=>a-b); return s[Math.floor(s.length/2)]; };
+  const mean = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null;
+  const pctile = (arr, p) => { if (!arr.length) return null; const s = [...arr].sort((a,b)=>a-b); return s[Math.floor(s.length * p)]; };
+  const pctOf = (arr, pred) => arr.length ? arr.filter(pred).length / arr.length * 100 : 0;
+
+  return {
+    n: rows.length,
+    avgScore: mean(rows.map(r => r.score)),
+    medianScore: median(rows.map(r => r.score)),
+    avgVolume: mean(vals('volume')),
+    medianVolume: median(vals('volume')),
+    avgFundPos: mean(vals('fundPosRatio')),
+    avgFundSize: mean(vals('avgFundingPct')),
+    avgCirc: mean(rows.map(r => r.cg?.circMax).filter(v => v !== null && v !== undefined)),
+    avgOiMcap: mean(vals('oiMcap')),
+    avgCexCount: mean(vals('cexCount')),
+    avgRise14: mean(vals('rise14')),
+    avgGainFromLow: mean(vals('gainFromLow')),
+    avgCv90: mean(vals('cv90')),
+    avgVolQuiet: mean(vals('volQuietRatio')),
+    avgBbRatio: mean(vals('bbRatio')),
+    avgOiTrend: mean(rows.map(r => r.oiTrend?.ratio).filter(v => v)),
+    pctCexAtLeast1: pctOf(rows, r => r.cexCount >= 1),
+    pctCexAtLeast2: pctOf(rows, r => r.cexCount >= 2),
+    pctCircUnder30: pctOf(rows, r => r.cg?.circMax !== null && r.cg?.circMax < 0.30),
+    pctCircUnder20: pctOf(rows, r => r.cg?.circMax !== null && r.cg?.circMax < 0.20),
+    pctFundPos70: pctOf(rows, r => r.fundPosRatio >= 0.70),
+    pctFundPos90: pctOf(rows, r => r.fundPosRatio >= 0.90),
+    pctOiMcap10: pctOf(rows, r => r.oiMcap !== null && r.oiMcap >= 0.10),
+    pctOiMcap20: pctOf(rows, r => r.oiMcap !== null && r.oiMcap >= 0.20),
+    pctVolQuiet: pctOf(rows, r => r.volQuietRatio !== null && r.volQuietRatio < 0.5),
+    pctSidewaysPrice: pctOf(rows, r => r.rise14 >= -15 && r.rise14 <= 25 && r.gainFromLow <= 2.5),
+    pctScoreOver50: pctOf(rows, r => r.score >= 50),
+    pctScoreOver35: pctOf(rows, r => r.score >= 35),
+    pctScoreOver25: pctOf(rows, r => r.score >= 25)
+  };
+}
+
+function renderPumpFeatures(big, all, bigN, allN) {
+  if (!big || bigN === 0) {
+    return `<div class="diag-section" style="border-color: var(--warn);"><h4 style="color: var(--warn);">⚠ 10x+ 펌프 종목 0개</h4><div class="muted" style="font-size:11px;">컷 낮춰서 다시 시도하거나, 일부 토큰이 Binance Futures 미상장 가능성</div></div>`;
+  }
+  const fmt = (v, d=2, suffix='') => v === null || v === undefined ? '-' : v.toFixed(d) + suffix;
+  const pct = v => v === null || v === undefined ? '-' : v.toFixed(0) + '%';
+  const grade10x = (k, val, target, isPct=false, lower=false) => {
+    if (val === null || val === undefined) return '<span class="muted">N/A</span>';
+    const ok = lower ? val <= target : val >= target;
+    return `<span class="${ok ? 'pos' : 'neg'}">${isPct ? pct(val) : fmt(val,2)}</span>`;
+  };
+  return `
+    <div class="diag-section" style="border-color: #c084fc;">
+      <h4 style="color: #c084fc;">🔬 10x+ 펌프 종목 공통 특징 (n=${bigN}) — 백테스트 시점(피크 -7일)</h4>
+      <table style="width:100%; font-size:11px; margin-top: 6px;">
+        <thead><tr style="color:var(--muted);"><th style="text-align:left;">지표</th><th>10x+ 평균</th><th>전체(${allN}) 평균</th><th>해석</th></tr></thead>
+        <tbody>
+          <tr><td><b>점수</b> (피크 -7일)</td><td>${fmt(big.avgScore,1)}</td><td>${fmt(all.avgScore,1)}</td><td class="muted">컷 ${$('f_minScore').value} 대비</td></tr>
+          <tr><td>거래대금 (USDT)</td><td>$${fmtM(big.avgVolume)}M</td><td>$${fmtM(all.avgVolume)}M</td><td class="muted">평균</td></tr>
+          <tr><td><b>유통률</b> (CG)</td><td>${big.avgCirc !== null ? (big.avgCirc*100).toFixed(0)+'%' : '-'}</td><td>${all.avgCirc !== null ? (all.avgCirc*100).toFixed(0)+'%' : '-'}</td><td class="muted">RAVE급 &lt; 20%</td></tr>
+          <tr><td><b>펀딩 양수율</b></td><td>${pct(big.avgFundPos*100)}</td><td>${pct(all.avgFundPos*100)}</td><td class="muted">최근 21회</td></tr>
+          <tr><td>펀딩 평균 크기 (8h)</td><td>${fmt(big.avgFundSize,3,'%')}</td><td>${fmt(all.avgFundSize,3,'%')}</td><td class="muted">+: 롱 비용</td></tr>
+          <tr><td><b>OI/MCap</b></td><td>${fmt(big.avgOiMcap)}</td><td>${fmt(all.avgOiMcap)}</td><td class="muted">RAVE급 ≥ 0.20</td></tr>
+          <tr><td>CEX 상장 수</td><td>${fmt(big.avgCexCount,1)}/4</td><td>${fmt(all.avgCexCount,1)}/4</td><td class="muted">중소 4곳 중</td></tr>
+          <tr><td>14d 상승률</td><td>${fmt(big.avgRise14,0,'%')}</td><td>${fmt(all.avgRise14,0,'%')}</td><td class="muted">평가 시점</td></tr>
+          <tr><td>저점대비 배수</td><td>${fmt(big.avgGainFromLow,2,'x')}</td><td>${fmt(all.avgGainFromLow,2,'x')}</td><td class="muted">평가 시점 90d 저점</td></tr>
+          <tr><td>cv90 (가격 압축)</td><td>${big.avgCv90 !== null ? (big.avgCv90*100).toFixed(1)+'%' : '-'}</td><td>${all.avgCv90 !== null ? (all.avgCv90*100).toFixed(1)+'%' : '-'}</td><td class="muted">RAVE급 &lt; 10%</td></tr>
+          <tr><td>14d/90d 거래량비</td><td>${fmt(big.avgVolQuiet)}</td><td>${fmt(all.avgVolQuiet)}</td><td class="muted">유기 &lt; 0.5</td></tr>
+          <tr><td>BB 압축비</td><td>${fmt(big.avgBbRatio)}</td><td>${fmt(all.avgBbRatio)}</td><td class="muted">압축 &lt; 0.7</td></tr>
+          <tr><td>OI 14d ratio</td><td>${fmt(big.avgOiTrend)}</td><td>${fmt(all.avgOiTrend)}</td><td class="muted">매집 ≥ 1.2</td></tr>
+        </tbody>
+      </table>
+      <h4 style="color: #c084fc; margin-top: 14px;">조건별 충족 비율 (10x+ 종목 중)</h4>
+      <table style="width:100%; font-size:11px; margin-top: 6px;">
+        <thead><tr style="color:var(--muted);"><th style="text-align:left;">조건</th><th>10x+ 충족률</th><th>전체</th></tr></thead>
+        <tbody>
+          <tr><td>CEX 1곳 이상 상장</td><td>${pct(big.pctCexAtLeast1)}</td><td>${pct(all.pctCexAtLeast1)}</td></tr>
+          <tr><td>CEX 2곳 이상</td><td>${pct(big.pctCexAtLeast2)}</td><td>${pct(all.pctCexAtLeast2)}</td></tr>
+          <tr><td>유통률 &lt; 30%</td><td>${pct(big.pctCircUnder30)}</td><td>${pct(all.pctCircUnder30)}</td></tr>
+          <tr><td>유통률 &lt; 20% (RAVE급)</td><td>${pct(big.pctCircUnder20)}</td><td>${pct(all.pctCircUnder20)}</td></tr>
+          <tr><td><b>펀딩 양수율 ≥ 70%</b></td><td>${pct(big.pctFundPos70)}</td><td>${pct(all.pctFundPos70)}</td></tr>
+          <tr><td><b>펀딩 양수율 ≥ 90%</b></td><td>${pct(big.pctFundPos90)}</td><td>${pct(all.pctFundPos90)}</td></tr>
+          <tr><td>OI/MCap ≥ 0.10</td><td>${pct(big.pctOiMcap10)}</td><td>${pct(all.pctOiMcap10)}</td></tr>
+          <tr><td>OI/MCap ≥ 0.20 (RAVE급)</td><td>${pct(big.pctOiMcap20)}</td><td>${pct(all.pctOiMcap20)}</td></tr>
+          <tr><td>유기 (14d/90d &lt; 0.5)</td><td>${pct(big.pctVolQuiet)}</td><td>${pct(all.pctVolQuiet)}</td></tr>
+          <tr><td>횡보 가격 (S16 조건)</td><td>${pct(big.pctSidewaysPrice)}</td><td>${pct(all.pctSidewaysPrice)}</td></tr>
+          <tr style="border-top:1px solid var(--border);"><td><b>점수 ≥ 50</b></td><td>${pct(big.pctScoreOver50)}</td><td>${pct(all.pctScoreOver50)}</td></tr>
+          <tr><td><b>점수 ≥ 35 (현 컷)</b></td><td>${pct(big.pctScoreOver35)}</td><td>${pct(all.pctScoreOver35)}</td></tr>
+          <tr><td><b>점수 ≥ 25</b></td><td>${pct(big.pctScoreOver25)}</td><td>${pct(all.pctScoreOver25)}</td></tr>
+        </tbody>
+      </table>
+      <div class="muted" style="font-size:10px; margin-top:6px; line-height:1.5;">
+        * 10x+ 그룹의 충족률이 높은 조건일수록 펌프 시그니처에 부합. 가중치 조정 근거로 활용.<br>
+        * 부분 백테스트 종목은 OI/L-S/Taker가 0이라 평균이 낮게 나올 수 있음.
+      </div>
+    </div>
+  `;
+}
+
 function renderBacktestResults(results, opt) {
   if (results.length === 0) {
     $('bt-body').innerHTML = '<div class="muted">결과 없음</div>';
@@ -2308,6 +2412,12 @@ function renderBacktestResults(results, opt) {
   const triggered = results.filter(r => r.wouldTrigger).length;
   const triggerRate = (triggered / results.length * 100).toFixed(0);
   const avgScore = (results.reduce((a, r) => a + r.score, 0) / results.length).toFixed(1);
+
+  // 10x+ 종목 공통 특징 분석
+  const big = results.filter(r => r.pumpInfo.pumpRatio >= 10);
+  const stats = analyzePumpFeatures(big);
+  const allStats = analyzePumpFeatures(results);
+  const featuresHtml = renderPumpFeatures(stats, allStats, big.length, results.length);
 
   const html = `
     <div class="diag-section" style="text-align: center;">
@@ -2321,11 +2431,13 @@ function renderBacktestResults(results, opt) {
       </div>
       <div class="muted" style="font-size: 11px;">검출률이 높을수록 스캐너 성능 우수. 누락된 종목은 어떤 시그널이 부족했는지 확인해 가중치 조정 가능.</div>
     </div>
+    ${featuresHtml}
     <table style="width:100%; font-size:11px; margin-top: 12px;">
       <thead><tr>
         <th style="text-align:left;">Symbol</th>
         <th>펌프배수</th>
         <th>저점→피크</th>
+        <th>평가 Vol(M)</th>
         <th>점수</th>
         <th>검출?</th>
         <th>백테스트</th>
@@ -2348,6 +2460,7 @@ function renderBacktestResults(results, opt) {
             <td><b>${r.symbol}</b></td>
             <td>${p.pumpRatio.toFixed(1)}x</td>
             <td>${p.lowDaysAgo}d → ${p.peakDaysAgo}d</td>
+            <td>${fmtM(r.volume)}</td>
             <td><span class="diag-grade grade-${grade.g}" style="font-size:11px; padding:2px 6px;">${r.score}/${grade.g}</span></td>
             <td>${triggerCell}</td>
             <td>${btType}</td>
