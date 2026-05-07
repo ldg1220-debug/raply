@@ -2160,36 +2160,45 @@ async function backtestRow(symbol, base, ageDays, evalEndTime, cgLookup, cexSets
   return row;
 }
 
-// 펌프 패턴 검출: 최근 30일 내 5x+ 펌프 종목 자동 식별
-function detectPump(klines) {
+// 펌프 패턴 검출: 최근 N일 내 5x+ 펌프 종목 자동 식별 (RAVE/LAB처럼 이미 덤프된 경우도 포함)
+function detectPump(klines, lookbackDays = 180) {
   if (!klines || klines.length < 30) return null;
   const candles = klines.map(k => ({ t: k[0], o: parseFloat(k[1]), h: parseFloat(k[2]), l: parseFloat(k[3]), c: parseFloat(k[4]) }));
   const n = candles.length;
-  // 최근 60일 캔들에서 가장 낮은 저가 찾기
-  const window = candles.slice(Math.max(0, n - 60));
+  const window = candles.slice(Math.max(0, n - lookbackDays));
+  const wn = window.length;
+  if (wn < 14) return null;
+
+  // 1. 윈도우 내 최고점 찾기
+  let peakIdx = 0, peakPrice = window[0].h;
+  for (let i = 0; i < wn; i++) {
+    if (window[i].h > peakPrice) { peakPrice = window[i].h; peakIdx = i; }
+  }
+  // 2. 최고점 이전 구간에서 최저점 찾기 (펌프 직전 베이스)
+  if (peakIdx < 3) return null; // 너무 초반 피크는 매집 데이터 부족
   let lowIdx = 0, lowPrice = window[0].l;
-  for (let i = 0; i < window.length; i++) {
+  for (let i = 0; i <= peakIdx; i++) {
     if (window[i].l < lowPrice) { lowPrice = window[i].l; lowIdx = i; }
   }
-  // 그 후로 고가 최대값
-  const afterLow = window.slice(lowIdx);
-  if (afterLow.length < 3) return null;
-  let maxHigh = lowPrice, maxHighIdx = lowIdx;
-  for (let i = 1; i < afterLow.length; i++) {
-    if (afterLow[i].h > maxHigh) { maxHigh = afterLow[i].h; maxHighIdx = lowIdx + i; }
-  }
-  const pumpRatio = lowPrice > 0 ? maxHigh / lowPrice : 1;
+  const pumpRatio = lowPrice > 0 ? peakPrice / lowPrice : 1;
   if (pumpRatio < 5) return null;
-  // 펌프 시작 시점 = 저점 캔들의 시간
-  const offsetFromEnd = (window.length - 1) - lowIdx;
-  if (offsetFromEnd > 30) return null; // 30일 넘게 전이면 OI 데이터 못 씀
+  // 3. 저점부터 피크까지 7일 이상 (단발 스파이크 제외)
+  if (peakIdx - lowIdx < 5) return null;
+
+  const lowDaysAgo = (wn - 1) - lowIdx;
+  const peakDaysAgo = (wn - 1) - peakIdx;
+  // OI 데이터 범위 체크: 저점이 30일 이내면 전체 시그널 가용, 아니면 부분
+  const fullBacktest = lowDaysAgo <= 28;
+
   return {
     pumpRatio,
     lowDate: window[lowIdx].t,
-    peakDate: window[maxHighIdx].t,
+    peakDate: window[peakIdx].t,
     lowPrice,
-    peakPrice: maxHigh,
-    daysAgo: offsetFromEnd
+    peakPrice,
+    lowDaysAgo,
+    peakDaysAgo,
+    fullBacktest
   };
 }
 
@@ -2221,8 +2230,8 @@ async function runBacktest() {
         const i = idx++;
         const t = targets[i];
         try {
-          const klines = await Binance.loadKlines(t.symbol, 70);
-          const pump = detectPump(klines);
+          const klines = await Binance.loadKlines(t.symbol, 180);
+          const pump = detectPump(klines, 180);
           if (pump) {
             pumpCandidates.push({ symbol: t.symbol, base: t.base, onboardDate: t.onboardDate, hasSpot: t.hasSpot, ...pump });
           }
@@ -2240,7 +2249,9 @@ async function runBacktest() {
     }
 
     pumpCandidates.sort((a, b) => b.pumpRatio - a.pumpRatio);
-    $('bt-body').innerHTML = `<div class="muted">Phase 2: ${pumpCandidates.length}개 펌프 종목 사전 시점 백테스트 중...</div>`;
+    const fullN = pumpCandidates.filter(p => p.fullBacktest).length;
+    const partN = pumpCandidates.length - fullN;
+    $('bt-body').innerHTML = `<div class="muted">Phase 2: ${pumpCandidates.length}개 펌프 종목 (전체 ${fullN} · 부분 ${partN}) 백테스트 중...</div>`;
 
     // Phase 2: 각 펌프 종목에 대해 펌프 7일 전 시점 백테스트
     const opt = getCurrentOpts();
@@ -2304,27 +2315,32 @@ function renderBacktestResults(results, opt) {
       <thead><tr>
         <th style="text-align:left;">Symbol</th>
         <th>펌프배수</th>
-        <th>펌프 N일전</th>
+        <th>저점→피크</th>
         <th>점수</th>
         <th>검출?</th>
+        <th>백테스트</th>
         <th>위반사유</th>
-        <th>주요 강점/약점</th>
+        <th>강점</th>
       </tr></thead>
       <tbody>
         ${results.map(r => {
-          const pumpAgoStr = `${r.pumpInfo.daysAgo}d 전`;
+          const p = r.pumpInfo;
           const triggerCell = r.wouldTrigger
             ? '<span class="pos">✓ 사전탐지</span>'
             : '<span class="neg">✗ 누락</span>';
           const breakdown = r.scoreBreakdown || {};
           const top = Object.entries(breakdown).filter(([k,v]) => typeof v === 'number' && v >= 4).sort((a,b) => b[1] - a[1]).slice(0, 3).map(([k,v]) => `${k}:${v.toFixed(0)}`).join(' ');
           const grade = gradeOf(r.score);
+          const btType = p.fullBacktest
+            ? '<span class="pos" style="font-size:10px;">전체</span>'
+            : '<span class="warn" style="font-size:10px;" title="OI/L-S 데이터 30일 보존 한계 — 가격·펀딩만">부분</span>';
           return `<tr style="cursor:pointer;" onclick="diagToggleWatchOpen('${r.symbol}')">
             <td><b>${r.symbol}</b></td>
-            <td>${r.pumpInfo.pumpRatio.toFixed(1)}x</td>
-            <td>${pumpAgoStr}</td>
+            <td>${p.pumpRatio.toFixed(1)}x</td>
+            <td>${p.lowDaysAgo}d → ${p.peakDaysAgo}d</td>
             <td><span class="diag-grade grade-${grade.g}" style="font-size:11px; padding:2px 6px;">${r.score}/${grade.g}</span></td>
             <td>${triggerCell}</td>
+            <td>${btType}</td>
             <td class="muted" style="font-size:10px;">${r.hardExcludeReason || (r.wouldTrigger ? '-' : `점수 < ${opt.minScore}`)}</td>
             <td class="muted" style="font-size:10px;">${top || '-'}</td>
           </tr>`;
@@ -2332,9 +2348,11 @@ function renderBacktestResults(results, opt) {
       </tbody>
     </table>
     <div class="muted" style="font-size:10px; margin-top: 12px; line-height: 1.5;">
-      * 백테스트 한계: CG 시총·유통률·CEX 상장은 현재 스냅샷 사용. 베이시스(S8)는 과거값 추정 불가로 0pt 처리.<br>
-      * 평가 시점: 90일 저점 1일 전 (펌프 시작 직전 추정).<br>
-      * 행 클릭 시 워치리스트에 추가됨.
+      * <b>전체 백테스트</b>: 저점이 30일 이내 — 17/18 시그널 복원 (S8 베이시스만 미가용)<br>
+      * <b>부분 백테스트</b>: 저점이 30일 초과 (RAVE/LAB 등) — 가격·펀딩 시그널만, OI/L-S/Taker는 0pt 처리되어 점수 저평가<br>
+      * CG 시총·유통률·ATH·CEX 상장은 항상 현재 스냅샷 (당시 값과 다를 수 있음)<br>
+      * 평가 시점: 펌프 직전 베이스 저점의 1일 전<br>
+      * 행 클릭 시 워치리스트에 추가됨
     </div>
   `;
   $('bt-body').innerHTML = html;
