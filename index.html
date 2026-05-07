@@ -175,6 +175,7 @@
   .badge.fire { background: rgba(248,113,113,.15); color: var(--danger); border-color: var(--danger); }
   .badge.crime { background: rgba(239,68,68,.20); color: #fca5a5; border-color: #ef4444; font-weight: 700; }
   .badge.fire-alert { background: rgba(168,85,247,.20); color: #d8b4fe; border-color: #a855f7; font-weight: 700; }
+  .badge.manip { background: rgba(56,189,248,.20); color: #7dd3fc; border-color: #38bdf8; font-weight: 700; }
   .preset-divider { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
   .preset-select { padding: 5px 8px; background: var(--card); border: 1px solid var(--border); border-radius: 5px; color: var(--text); font-size: 11px; min-width: 140px; }
   .diag-input { padding: 6px 10px; background: var(--card); border: 1px solid var(--border); border-radius: 5px; color: var(--text); font-size: 12px; width: 160px; text-transform: uppercase; }
@@ -384,8 +385,8 @@
 
 <header>
   <div>
-    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v0.7</span></h1>
-    <span class="sub">17-Signal (재조정) · 단일토큰 진단 · 워치리스트 추가</span>
+    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v0.8</span></h1>
+    <span class="sub">18-Signal · 펀딩 컨텍스트 패널티 · 🕵 조작 의심 (S16) · 단일토큰 진단</span>
   </div>
   <div class="controls">
     <input id="diagInput" type="text" placeholder="심볼 진단 (예: KGEN)" class="diag-input" />
@@ -403,8 +404,9 @@
   <summary>탐지 시그널 및 점수 기준 (펼치기)</summary>
   <div style="color: var(--muted); font-size: 11px; line-height: 1.7; margin-top: 8px;">
     <b>Hard Exclude</b> — Binance Spot에 이미 상장 / 선물 상장 N일 미만 / ATH 대비 -90% 이하 / 저점대비 N배 이상 / 유통률 N% 초과 / CEX N곳 미만 / 펀딩 양수율 N% 미만 / OI/MCap N 미만 / 저볼륨<br>
-    <b>가산 시그널 (17종, 합산 ≤100점)</b> — CEX(3, 1곳 이상 고정) · 유통률(12) · 가격 패턴 4종(22) · 펀딩 4종(26: 양수율7+크기7+추세5+베이시스7) · 매집 3종(19: OI 9+L/S 6+Taker 4) · 변동성 2종(15) · OI/MCap(8) · 유기+OI Spike(10)<br>
-    <b>알람 배지</b> — 🚨 CRIME (펀딩+ Basis≥0.5% 양수율≥60%) · 🎯 발사임박 (14d Vol &lt; 90d 평균 50% + cv90 &lt; 10% + OI 14d ratio ≥ 1.2)
+    <b>가산 시그널 (18종, 합산 ≤100점)</b> — CEX(3) · 유통률(12) · 가격 패턴 4종(22) · 펀딩 4종(26 · 컨텍스트 패널티 적용) · 매집 3종(19) · 변동성 2종(15) · OI/MCap(8) · 유기+OI Spike(10) · 조작 의심(5)<br>
+    <b>펀딩 컨텍스트 패널티</b> — 14d 상승률 &gt; 30% 또는 저점대비 &gt; 2.5x 시 S6cont/S6size/S7 50% 감점 (후행 신호 무력화)<br>
+    <b>알람 배지</b> — 🚨 CRIME (펀딩+ Basis≥0.5% 양수율≥60%) · 🎯 발사임박 (유기+OI Spike) · 🕵 조작 의심 (횡보+양수 펀딩 70%+)
   </div>
 </details>
 
@@ -1181,7 +1183,7 @@ function computeScore(row) {
   b.S5c4 = row.smoothness * 5;
 
   // S6 continuity: positive funding ratio (max 7)
-  b.S6cont = row.fundPosRatio * 7;
+  let s6cont = row.fundPosRatio * 7;
 
   // S6 size: avg funding magnitude (max 7), avg in %
   const af = row.avgFundingPct;
@@ -1190,12 +1192,24 @@ function computeScore(row) {
   else if (af >= 0.05) s6size = 5;
   else if (af >= 0.02) s6size = 3;
   else if (af > 0) s6size = 1;
-  b.S6size = s6size;
 
   // S7: 펀딩 추세 (max 5)
-  b.S7 = row.fundingTrend?.score || 0;
+  let s7 = row.fundingTrend?.score || 0;
 
-  // S8: 베이시스 (max 4)
+  // 컨텍스트 패널티: rise14 > 30% 또는 gainFromLow > 2.5x 시 펀딩 점수 50% 감점
+  // (고점 랠리 중의 양수 펀딩은 후행 신호 → 매집 신호 아님)
+  const isLateStage = row.rise14 > 30 || row.gainFromLow > 2.5;
+  if (isLateStage) {
+    s6cont *= 0.5;
+    s6size *= 0.5;
+    s7 *= 0.5;
+  }
+  b.S6cont = s6cont;
+  b.S6size = s6size;
+  b.S7 = s7;
+  row._fundPenalty = isLateStage; // 진단 표시용
+
+  // S8: 베이시스 (max 7)
   b.S8 = row.basisAnalysis?.score || 0;
 
   // S9: OI 매집 추세 (max 9)
@@ -1234,8 +1248,27 @@ function computeScore(row) {
   else if (dead && oiSpike) s15 = 4;
   b.S15 = s15;
 
+  // S16: 조작 의심 — 횡보 가격 + 지속 양수 펀딩 (인위적 가격 유지 시그니처)
+  // rise14 -15%~+25% AND fundPosRatio >= 70% AND gainFromLow <= 2.5x
+  let s16 = 0;
+  const sidewaysPrice = row.rise14 >= -15 && row.rise14 <= 25 && row.gainFromLow <= 2.5;
+  const sustainedPos = row.fundPosRatio >= 0.70;
+  if (sidewaysPrice && sustainedPos) {
+    if (row.fundPosRatio >= 0.90) s16 = 5;       // 90%+ 양수 = 강한 조작
+    else if (row.fundPosRatio >= 0.80) s16 = 4;
+    else s16 = 3;                                 // 70~80% 양수
+  }
+  b.S16 = s16;
+
   const total = Object.values(b).reduce((a, x) => a + x, 0);
   return { score: Math.min(Math.round(total), 100), breakdown: b };
+}
+
+// 조작 의심 판별 (배지용)
+function isManipSuspect(row) {
+  return row.rise14 >= -15 && row.rise14 <= 25
+      && row.gainFromLow <= 2.5
+      && row.fundPosRatio >= 0.70;
 }
 
 // Crime 배지: 펀딩 양수 + basis ≥ 0.5% + 양수율 ≥ 60%
@@ -1581,6 +1614,7 @@ function render() {
     else if (r.avgFundingPct >= 0.05) hotBadges.push('<span class="badge hot">↑</span>');
     if (isCrimeAlert(r)) hotBadges.push('<span class="badge crime" title="펀딩 양수 + Basis ≥ 0.5% + 양수율 ≥ 60%">🚨 CRIME</span>');
     if (isAboutToFire(r)) hotBadges.push('<span class="badge fire-alert" title="14d 거래량 < 90d 평균 50% + cv90 < 10% + OI 14d ratio ≥ 1.2">🎯 발사</span>');
+    if (isManipSuspect(r)) hotBadges.push('<span class="badge manip" title="가격 횡보 (-15%~+25%, 저점대비≤2.5x) + 펀딩 양수율 ≥ 70%">🕵 조작</span>');
     const watched = state.watchlist.includes(r.symbol);
 
     const oiPct = r.oiTrendPct;
@@ -2085,23 +2119,28 @@ function buildSignalDiagnostics(r) {
     detail: `${(r.smoothness*100).toFixed(0)}%`,
     advice: '평균 일변동/최대 일변동. 80%+ 시 +1pt 이상'
   });
+  const fundPenalty = r._fundPenalty;
+  const penaltyTag = fundPenalty ? ' <span class="neg" style="font-size:10px;">[50% 감점: rise14>30% or 저점>2.5x — 후행신호]</span>' : '';
+  const maxS6cont = fundPenalty ? 3.5 : 7;
+  const maxS6size = fundPenalty ? 3.5 : 7;
+  const maxS7 = fundPenalty ? 2.5 : 5;
   // S6cont
   items.push({
-    code: 'S6cont', name: '펀딩 양수 지속률', max: 7, score: b.S6cont || 0,
-    detail: `최근 21회 중 ${(r.fundPosRatio*100).toFixed(0)}% 양수`,
-    advice: r.fundPosRatio >= 1.0 ? '✓ 만점' : `100% 양수 시 +${(7 - (b.S6cont||0)).toFixed(1)}pt`
+    code: 'S6cont', name: '펀딩 양수 지속률' + (fundPenalty ? ' (감점)' : ''), max: maxS6cont, score: b.S6cont || 0,
+    detail: `최근 21회 중 ${(r.fundPosRatio*100).toFixed(0)}% 양수${penaltyTag}`,
+    advice: fundPenalty ? '컨텍스트 패널티 적용 — 가격이 횡보로 돌아오면 풀점수 회복' : (r.fundPosRatio >= 1.0 ? '✓ 만점' : `100% 양수 시 +${(7 - (b.S6cont||0)).toFixed(1)}pt`)
   });
   // S6size
   items.push({
-    code: 'S6size', name: '평균 펀딩 크기', max: 7, score: b.S6size || 0,
-    detail: `평균 ${r.avgFundingPct.toFixed(3)}% / 8h`,
-    advice: r.avgFundingPct >= 0.10 ? '✓ 만점' : r.avgFundingPct >= 0.05 ? '0.10%+ 시 +2pt' : r.avgFundingPct >= 0.02 ? '0.05%+ 시 +2pt, 0.10%+ 시 +4pt' : '0.02%+ 시 +1pt 시작'
+    code: 'S6size', name: '평균 펀딩 크기' + (fundPenalty ? ' (감점)' : ''), max: maxS6size, score: b.S6size || 0,
+    detail: `평균 ${r.avgFundingPct.toFixed(3)}% / 8h${penaltyTag}`,
+    advice: fundPenalty ? '컨텍스트 패널티 적용' : (r.avgFundingPct >= 0.10 ? '✓ 만점' : r.avgFundingPct >= 0.05 ? '0.10%+ 시 +2pt' : r.avgFundingPct >= 0.02 ? '0.05%+ 시 +2pt, 0.10%+ 시 +4pt' : '0.02%+ 시 +1pt 시작')
   });
   // S7
   items.push({
-    code: 'S7', name: '펀딩 추세 (최근↑+분산↓)', max: 5, score: b.S7 || 0,
-    detail: r.fundingTrend ? `Δ ${(r.fundingTrend.diff*100).toFixed(4)}% / σ↓: ${r.fundingTrend.stdRecent < r.fundingTrend.stdPrior ? '예' : '아니오'}` : '-',
-    advice: (b.S7 || 0) >= 5 ? '✓ 만점' : '최근 7회 평균이 이전보다 크고 분산이 작아져야 +5pt'
+    code: 'S7', name: '펀딩 추세 (최근↑+분산↓)' + (fundPenalty ? ' (감점)' : ''), max: maxS7, score: b.S7 || 0,
+    detail: (r.fundingTrend ? `Δ ${(r.fundingTrend.diff*100).toFixed(4)}% / σ↓: ${r.fundingTrend.stdRecent < r.fundingTrend.stdPrior ? '예' : '아니오'}` : '-') + penaltyTag,
+    advice: fundPenalty ? '컨텍스트 패널티 적용' : ((b.S7 || 0) >= 5 ? '✓ 만점' : '최근 7회 평균이 이전보다 크고 분산이 작아져야 +5pt')
   });
   // S8
   items.push({
@@ -2154,6 +2193,18 @@ function buildSignalDiagnostics(r) {
     code: 'S15', name: '유기(Quiet) + OI Spike 콤보', max: 10, score: b.S15 || 0,
     detail: `거래량 ${quietOK?'✓':'✗'}(${r.volQuietRatio !== null ? r.volQuietRatio.toFixed(2) : '?'}<0.5) · 변동성 ${deadOK?'✓':'✗'}(cv ${r.cv90!==null?(r.cv90*100).toFixed(1)+'%':'?'}<10%) · OI ${oiSpikeOK?'✓':'✗'}(${r.oiTrend?.ratio?r.oiTrend.ratio.toFixed(2)+'x':'?'}≥1.2)`,
     advice: okFlags.every(x => x) ? '✓ 만점 — 발사임박 배지' : `${okFlags.filter(x=>x).length}/3 충족. 모두 충족 시 +${10 - (b.S15||0)}pt 및 🎯 발사임박 배지`
+  });
+
+  // S16: 조작 의심 (횡보+양수 펀딩)
+  const sideOK = r.rise14 >= -15 && r.rise14 <= 25 && r.gainFromLow <= 2.5;
+  const sustOK = r.fundPosRatio >= 0.70;
+  items.push({
+    code: 'S16', name: '조작 의심 (횡보+양수 펀딩)', max: 5, score: b.S16 || 0,
+    detail: `가격 ${sideOK?'✓':'✗'} (rise14 ${r.rise14.toFixed(0)}%, 저점대비 ${r.gainFromLow.toFixed(2)}x) · 양수율 ${sustOK?'✓':'✗'} (${(r.fundPosRatio*100).toFixed(0)}%)`,
+    advice: (b.S16||0) >= 5 ? '✓ 만점 (90%+ 양수 + 횡보 = 강한 조작)' :
+            (b.S16||0) > 0 ? `${b.S16}pt — 양수율 90%+ 시 +${(5 - b.S16).toFixed(0)}pt` :
+            !sideOK ? '가격이 -15% ~ +25% 범위에서 + 저점대비 2.5x 이하여야 함' :
+            '양수 펀딩 70%+ 지속되면 점수 부여'
   });
 
   return items;
@@ -2233,6 +2284,8 @@ function renderDiagnosisTab(r) {
   if (r.fundPosRatio >= 0.8 && r.basis >= 0.3) comments.push('지속 양수 펀딩 + 양수 베이시스 — 의도적 가격 유지 의심');
   if (isCrimeAlert(r)) comments.push('🚨 CRIME 배지 발동 — 펀딩+베이시스+양수율 3중 조건 충족');
   if (isAboutToFire(r)) comments.push('🎯 발사임박 배지 발동 — 유기 + OI Spike 콤보');
+  if (isManipSuspect(r)) comments.push('🕵 조작 의심 — 횡보 가격 + 양수 펀딩 지속 (인위적 가격 유지)');
+  if (r._fundPenalty) comments.push('⚠ 펀딩 점수 50% 감점 — 14d +30% 초과 또는 저점대비 2.5x 초과 (후행 신호)');
 
   const sigsHtml = sigs.map(s => `
     <div class="diag-row">
