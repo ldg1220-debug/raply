@@ -385,12 +385,13 @@
 
 <header>
   <div>
-    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v0.8</span></h1>
-    <span class="sub">18-Signal · 펀딩 컨텍스트 패널티 · 🕵 조작 의심 (S16) · 단일토큰 진단</span>
+    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v0.9</span></h1>
+    <span class="sub">18-Signal · 단일토큰 진단 · 🔬 역검증 (펌프 사전탐지 검증)</span>
   </div>
   <div class="controls">
     <input id="diagInput" type="text" placeholder="심볼 진단 (예: KGEN)" class="diag-input" />
     <button id="diagBtn">🔍 진단</button>
+    <button id="backtestBtn">🔬 역검증</button>
     <button id="watchBtn">★ Watchlist</button>
     <button id="scanBtn" class="primary">스캔 시작</button>
   </div>
@@ -556,6 +557,23 @@
   </div>
 </div>
 
+<!-- Backtest Modal -->
+<div id="bt-modal" class="modal">
+  <div class="modal-overlay"></div>
+  <div class="modal-box" style="max-width: 1100px;">
+    <div class="modal-header">
+      <div>
+        <h2>🔬 역검증 — 최근 펌프 종목 사전 탐지 가능성</h2>
+        <div class="meta">최근 30일 내 5x+ 펌프 종목을 자동 탐색 후, 펌프 7일 전 시점으로 점수 계산</div>
+      </div>
+      <button class="close-btn" id="bt-close">×</button>
+    </div>
+    <div class="modal-body" id="bt-body" style="padding: 16px;">
+      <div class="muted">대기 중...</div>
+    </div>
+  </div>
+</div>
+
 <div id="log"></div>
 
 <script>
@@ -688,8 +706,9 @@ const Binance = {
     const arr = await getJSON(this.FUT_PREM);
     return new Map(arr.map(p => [p.symbol, p]));
   },
-  async loadKlines(symbol, limit = 100) {
-    return getJSON(`${this.FUT_KLINE}?symbol=${symbol}&interval=1d&limit=${limit}`);
+  async loadKlines(symbol, limit = 100, endTime = null) {
+    const ep = endTime ? `&endTime=${endTime}` : '';
+    return getJSON(`${this.FUT_KLINE}?symbol=${symbol}&interval=1d&limit=${limit}${ep}`);
   },
   async loadOI(symbol) {
     try {
@@ -697,29 +716,34 @@ const Binance = {
       return parseFloat(r.openInterest) || 0;
     } catch { return 0; }
   },
-  async loadFundingHistory(symbol, limit = 21) {
+  async loadFundingHistory(symbol, limit = 21, endTime = null) {
     try {
-      return await getJSON(`${this.FUT_FUND}?symbol=${symbol}&limit=${limit}`);
+      const ep = endTime ? `&endTime=${endTime}` : '';
+      return await getJSON(`${this.FUT_FUND}?symbol=${symbol}&limit=${limit}${ep}`);
     } catch { return []; }
   },
-  async loadOIHistory(symbol, period = '4h', limit = 84) {
+  async loadOIHistory(symbol, period = '4h', limit = 84, endTime = null) {
     try {
-      return await getJSON(`${this.FUT_OIHIST}?symbol=${symbol}&period=${period}&limit=${limit}`);
+      const sp = endTime ? `&startTime=${endTime - 30*86400000}&endTime=${endTime}` : '';
+      return await getJSON(`${this.FUT_OIHIST}?symbol=${symbol}&period=${period}&limit=${limit}${sp}`);
     } catch { return []; }
   },
-  async loadLSPosition(symbol, period = '4h', limit = 42) {
+  async loadLSPosition(symbol, period = '4h', limit = 42, endTime = null) {
     try {
-      return await getJSON(`${this.FUT_LS_POS}?symbol=${symbol}&period=${period}&limit=${limit}`);
+      const sp = endTime ? `&startTime=${endTime - 14*86400000}&endTime=${endTime}` : '';
+      return await getJSON(`${this.FUT_LS_POS}?symbol=${symbol}&period=${period}&limit=${limit}${sp}`);
     } catch { return []; }
   },
-  async loadLSAccount(symbol, period = '4h', limit = 42) {
+  async loadLSAccount(symbol, period = '4h', limit = 42, endTime = null) {
     try {
-      return await getJSON(`${this.FUT_LS_ACC}?symbol=${symbol}&period=${period}&limit=${limit}`);
+      const sp = endTime ? `&startTime=${endTime - 14*86400000}&endTime=${endTime}` : '';
+      return await getJSON(`${this.FUT_LS_ACC}?symbol=${symbol}&period=${period}&limit=${limit}${sp}`);
     } catch { return []; }
   },
-  async loadTakerRatio(symbol, period = '4h', limit = 42) {
+  async loadTakerRatio(symbol, period = '4h', limit = 42, endTime = null) {
     try {
-      return await getJSON(`${this.FUT_TAKER}?symbol=${symbol}&period=${period}&limit=${limit}`);
+      const sp = endTime ? `&startTime=${endTime - 14*86400000}&endTime=${endTime}` : '';
+      return await getJSON(`${this.FUT_TAKER}?symbol=${symbol}&period=${period}&limit=${limit}${sp}`);
     } catch { return []; }
   }
 };
@@ -2072,6 +2096,256 @@ async function diagnoseToken(input) {
   }
 }
 
+// ============================================================
+// 역검증 (Backtest)
+// ============================================================
+const DAY_MS = 86400000;
+
+// 임의 시점에서 단일 토큰의 row 객체 생성
+async function backtestRow(symbol, base, ageDays, evalEndTime, cgLookup, cexSets) {
+  const [klines, fundHist, oiHist, lsPos, lsAcc, takerHist] = await Promise.all([
+    Binance.loadKlines(symbol, 100, evalEndTime),
+    Binance.loadFundingHistory(symbol, 21, evalEndTime),
+    Binance.loadOIHistory(symbol, '4h', 84, evalEndTime),
+    Binance.loadLSPosition(symbol, '4h', 42, evalEndTime),
+    Binance.loadLSAccount(symbol, '4h', 42, evalEndTime),
+    Binance.loadTakerRatio(symbol, '4h', 42, evalEndTime)
+  ]);
+  const a = analyzeKlines(klines);
+  if (!a) return null;
+  const fundAnalysis = analyzeFunding(fundHist);
+  const fundingTrend = analyzeFundingTrend(fundHist);
+  const oiTrend = analyzeOITrend(oiHist);
+  const lsBias = analyzeLSBias(lsPos, lsAcc);
+  const takerRatio = analyzeTakerRatio(takerHist);
+
+  // 평가일 종가 사용
+  const lastClose = a.closes14[a.closes14.length - 1];
+  const fundingPct = fundAnalysis.lastPct;
+  // OI 값: 평가일에 해당하는 OI 히스토리 마지막값 (USD 단위 변환)
+  const lastOiVal = oiHist.length ? parseFloat(oiHist[oiHist.length - 1].sumOpenInterestValue || 0) : 0;
+  const oiUsd = lastOiVal || 0;
+
+  const cex = {
+    bitget: cexSets.bitget.has(base),
+    gate: cexSets.gate.has(base),
+    mexc: cexSets.mexc.has(base),
+    bybit: cexSets.bybit.has(base)
+  };
+  const cexCount = (cex.bitget?1:0)+(cex.gate?1:0)+(cex.mexc?1:0)+(cex.bybit?1:0);
+
+  const row = {
+    symbol, base, ageDays, price: lastClose,
+    change24: 0, // 평가일 24h 변동은 추정 어려움
+    rise14: a.rise14, funding: fundingPct,
+    avgFundingPct: fundAnalysis.avgPct, fundPosRatio: fundAnalysis.posRatio,
+    fundingApr: fundingPct * 3 * 365, upRatio: a.upRatio,
+    smoothness: a.smoothness, riseRangeDays: a.riseRangeDays,
+    cv90: a.cv90, bbRatio: a.bbRatio, bbScore: a.bbScore,
+    volRatio: a.volRatio, rangeRatio: a.rangeRatio,
+    divergenceScore: a.divergenceScore, volQuietRatio: a.volQuietRatio,
+    volume: 0, oi: oiUsd,
+    oiMcap: cgLookup && cgLookup.marketCap > 0 && oiUsd > 0 ? oiUsd / cgLookup.marketCap : null,
+    gainFromLow: a.gainFromLow, cex, cexCount, cg: cgLookup,
+    fundingTrend, basisAnalysis: { basis: 0, score: 0 }, basis: 0, // 베이시스는 과거 추정 X
+    oiTrend, oiTrendPct: oiTrend.ratio !== null ? (oiTrend.ratio - 1) * 100 : null,
+    lsBias, lsBiasDiff: lsBias.diff, takerRatio,
+    closes14: a.closes14, candles14: a.candles14,
+    fundHistory: fundAnalysis.history, fundRates: fundAnalysis.rates, oiHistRaw: oiHist,
+    circRatio: cgLookup && cgLookup.circMax !== null ? cgLookup.circMax * 100 : null,
+    athChange: cgLookup && cgLookup.athChangePct !== null ? cgLookup.athChangePct : null
+  };
+  const { score, breakdown } = computeScore(row);
+  row.score = score; row.scoreBreakdown = breakdown;
+  return row;
+}
+
+// 펌프 패턴 검출: 최근 30일 내 5x+ 펌프 종목 자동 식별
+function detectPump(klines) {
+  if (!klines || klines.length < 30) return null;
+  const candles = klines.map(k => ({ t: k[0], o: parseFloat(k[1]), h: parseFloat(k[2]), l: parseFloat(k[3]), c: parseFloat(k[4]) }));
+  const n = candles.length;
+  // 최근 60일 캔들에서 가장 낮은 저가 찾기
+  const window = candles.slice(Math.max(0, n - 60));
+  let lowIdx = 0, lowPrice = window[0].l;
+  for (let i = 0; i < window.length; i++) {
+    if (window[i].l < lowPrice) { lowPrice = window[i].l; lowIdx = i; }
+  }
+  // 그 후로 고가 최대값
+  const afterLow = window.slice(lowIdx);
+  if (afterLow.length < 3) return null;
+  let maxHigh = lowPrice, maxHighIdx = lowIdx;
+  for (let i = 1; i < afterLow.length; i++) {
+    if (afterLow[i].h > maxHigh) { maxHigh = afterLow[i].h; maxHighIdx = lowIdx + i; }
+  }
+  const pumpRatio = lowPrice > 0 ? maxHigh / lowPrice : 1;
+  if (pumpRatio < 5) return null;
+  // 펌프 시작 시점 = 저점 캔들의 시간
+  const offsetFromEnd = (window.length - 1) - lowIdx;
+  if (offsetFromEnd > 30) return null; // 30일 넘게 전이면 OI 데이터 못 씀
+  return {
+    pumpRatio,
+    lowDate: window[lowIdx].t,
+    peakDate: window[maxHighIdx].t,
+    lowPrice,
+    peakPrice: maxHigh,
+    daysAgo: offsetFromEnd
+  };
+}
+
+async function runBacktest() {
+  const btn = $('backtestBtn');
+  btn.disabled = true; btn.textContent = '🔬 검증 중...';
+  $('bt-modal').classList.add('show');
+  $('bt-body').innerHTML = '<div class="muted">Phase 1: 펌프 종목 탐색 중 (선물 전체 klines 로드)...</div>';
+
+  try {
+    const useCG = $('f_cg').value === 'on';
+    const [universe, cexSets, cgMarkets, cgPlatforms] = await Promise.all([
+      Binance.loadUniverse(),
+      CexLoader.loadAll(),
+      useCG ? CoinGecko.loadMarkets() : Promise.resolve([]),
+      useCG ? CoinGecko.loadPlatforms() : Promise.resolve([])
+    ]);
+    const cgMap = useCG ? CoinGecko.buildSymbolMap(cgMarkets) : new Map();
+    const cgPlatMap = useCG ? CoinGecko.buildPlatformMap(cgPlatforms) : new Map();
+
+    // Phase 1: 모든 선물 토큰 klines 로드 → 펌프 검출
+    const targets = universe.allPerps;
+    const pumpCandidates = [];
+    let done = 0;
+    const CONCURRENCY = 10;
+    let idx = 0;
+    async function pumpWorker() {
+      while (idx < targets.length) {
+        const i = idx++;
+        const t = targets[i];
+        try {
+          const klines = await Binance.loadKlines(t.symbol, 70);
+          const pump = detectPump(klines);
+          if (pump) {
+            pumpCandidates.push({ symbol: t.symbol, base: t.base, onboardDate: t.onboardDate, hasSpot: t.hasSpot, ...pump });
+          }
+        } catch(e) {}
+        done++;
+        if (done % 20 === 0) $('bt-body').innerHTML = `<div class="muted">Phase 1: 펌프 탐색 ${done}/${targets.length} · 발견 ${pumpCandidates.length}개</div>`;
+      }
+    }
+    await Promise.all(Array.from({length: CONCURRENCY}, pumpWorker));
+    log(`펌프 탐색 완료: ${pumpCandidates.length}개`);
+
+    if (pumpCandidates.length === 0) {
+      $('bt-body').innerHTML = '<div class="muted">최근 30일 내 5x+ 펌프 종목 없음</div>';
+      return;
+    }
+
+    pumpCandidates.sort((a, b) => b.pumpRatio - a.pumpRatio);
+    $('bt-body').innerHTML = `<div class="muted">Phase 2: ${pumpCandidates.length}개 펌프 종목 사전 시점 백테스트 중...</div>`;
+
+    // Phase 2: 각 펌프 종목에 대해 펌프 7일 전 시점 백테스트
+    const opt = getCurrentOpts();
+    const results = [];
+    let done2 = 0; let idx2 = 0;
+    async function btWorker() {
+      while (idx2 < pumpCandidates.length) {
+        const i = idx2++;
+        const p = pumpCandidates[i];
+        const evalDate = p.lowDate - 86400000; // 저점 1일 전 (펌프 시작 직전)
+        const cg = useCG ? CoinGecko.lookup(cgMap, p.base, cgPlatMap) : null;
+        const today = Date.now();
+        const ageDays = p.onboardDate ? Math.floor((evalDate - p.onboardDate) / DAY_MS) : null;
+        try {
+          const row = await backtestRow(p.symbol, p.base, ageDays, evalDate, cg, cexSets);
+          if (row) {
+            row.pumpInfo = p;
+            row.wouldTrigger = row.score >= opt.minScore && !hardExclude(row, opt);
+            row.hardExcludeReason = hardExclude(row, opt);
+            results.push(row);
+          }
+        } catch(e) { log(`${p.symbol} 백테스트 실패: ${e.message}`); }
+        done2++;
+        if (done2 % 3 === 0) $('bt-body').innerHTML = `<div class="muted">Phase 2: 백테스트 ${done2}/${pumpCandidates.length}</div>`;
+      }
+    }
+    await Promise.all(Array.from({length: 5}, btWorker));
+
+    // Phase 3: 결과 렌더
+    results.sort((a, b) => b.pumpInfo.pumpRatio - a.pumpInfo.pumpRatio);
+    renderBacktestResults(results, opt);
+  } catch (e) {
+    $('bt-body').innerHTML = `<div class="neg">오류: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '🔬 역검증';
+  }
+}
+
+function renderBacktestResults(results, opt) {
+  if (results.length === 0) {
+    $('bt-body').innerHTML = '<div class="muted">결과 없음</div>';
+    return;
+  }
+  const triggered = results.filter(r => r.wouldTrigger).length;
+  const triggerRate = (triggered / results.length * 100).toFixed(0);
+  const avgScore = (results.reduce((a, r) => a + r.score, 0) / results.length).toFixed(1);
+
+  const html = `
+    <div class="diag-section" style="text-align: center;">
+      <div style="font-size: 12px; color: var(--muted);">검증 결과 (펌프 1일 전 시점 점수)</div>
+      <div style="margin: 8px 0; display: flex; justify-content: center; gap: 24px; flex-wrap: wrap;">
+        <div><span style="font-size: 24px; font-weight: 700;">${results.length}</span><div class="muted" style="font-size: 11px;">5x+ 펌프 종목</div></div>
+        <div><span style="font-size: 24px; font-weight: 700; color: var(--accent);">${triggered}</span><div class="muted" style="font-size: 11px;">사전 검출됨</div></div>
+        <div><span style="font-size: 24px; font-weight: 700; color: var(--accent);">${triggerRate}%</span><div class="muted" style="font-size: 11px;">검출률</div></div>
+        <div><span style="font-size: 24px; font-weight: 700;">${avgScore}</span><div class="muted" style="font-size: 11px;">평균 점수</div></div>
+        <div><span style="font-size: 24px; font-weight: 700;">${opt.minScore}</span><div class="muted" style="font-size: 11px;">현재 컷오프</div></div>
+      </div>
+      <div class="muted" style="font-size: 11px;">검출률이 높을수록 스캐너 성능 우수. 누락된 종목은 어떤 시그널이 부족했는지 확인해 가중치 조정 가능.</div>
+    </div>
+    <table style="width:100%; font-size:11px; margin-top: 12px;">
+      <thead><tr>
+        <th style="text-align:left;">Symbol</th>
+        <th>펌프배수</th>
+        <th>펌프 N일전</th>
+        <th>점수</th>
+        <th>검출?</th>
+        <th>위반사유</th>
+        <th>주요 강점/약점</th>
+      </tr></thead>
+      <tbody>
+        ${results.map(r => {
+          const pumpAgoStr = `${r.pumpInfo.daysAgo}d 전`;
+          const triggerCell = r.wouldTrigger
+            ? '<span class="pos">✓ 사전탐지</span>'
+            : '<span class="neg">✗ 누락</span>';
+          const breakdown = r.scoreBreakdown || {};
+          const top = Object.entries(breakdown).filter(([k,v]) => typeof v === 'number' && v >= 4).sort((a,b) => b[1] - a[1]).slice(0, 3).map(([k,v]) => `${k}:${v.toFixed(0)}`).join(' ');
+          const grade = gradeOf(r.score);
+          return `<tr style="cursor:pointer;" onclick="diagToggleWatchOpen('${r.symbol}')">
+            <td><b>${r.symbol}</b></td>
+            <td>${r.pumpInfo.pumpRatio.toFixed(1)}x</td>
+            <td>${pumpAgoStr}</td>
+            <td><span class="diag-grade grade-${grade.g}" style="font-size:11px; padding:2px 6px;">${r.score}/${grade.g}</span></td>
+            <td>${triggerCell}</td>
+            <td class="muted" style="font-size:10px;">${r.hardExcludeReason || (r.wouldTrigger ? '-' : `점수 < ${opt.minScore}`)}</td>
+            <td class="muted" style="font-size:10px;">${top || '-'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    <div class="muted" style="font-size:10px; margin-top: 12px; line-height: 1.5;">
+      * 백테스트 한계: CG 시총·유통률·CEX 상장은 현재 스냅샷 사용. 베이시스(S8)는 과거값 추정 불가로 0pt 처리.<br>
+      * 평가 시점: 90일 저점 1일 전 (펌프 시작 직전 추정).<br>
+      * 행 클릭 시 워치리스트에 추가됨.
+    </div>
+  `;
+  $('bt-body').innerHTML = html;
+}
+
+window.diagToggleWatchOpen = function(symbol) {
+  const watched = toggleWatch(symbol);
+  alert(`${symbol} ${watched ? '워치리스트에 추가됨' : '워치리스트에서 제거됨'}`);
+  render();
+};
+
 // 시그널별 현재값/만점/갭/개선 메시지
 function buildSignalDiagnostics(r) {
   const b = r.scoreBreakdown || {};
@@ -2393,6 +2667,10 @@ $('diagBtn').addEventListener('click', () => diagnoseToken($('diagInput').value)
 $('diagInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') diagnoseToken($('diagInput').value);
 });
+
+$('backtestBtn').addEventListener('click', runBacktest);
+$('bt-close').addEventListener('click', () => $('bt-modal').classList.remove('show'));
+document.querySelector('#bt-modal .modal-overlay').addEventListener('click', () => $('bt-modal').classList.remove('show'));
 
 // ============================================================
 // 프리셋 (시스템 + 사용자 다중 저장)
