@@ -386,8 +386,8 @@
 
 <header>
   <div>
-    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v1.4</span></h1>
-    <span class="sub">16-Signal · 조기 진입 최적화 · ⛔ 과거 펌프 이력/피크 대비 하락 컷 추가</span>
+    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v1.5</span></h1>
+    <span class="sub">17-Signal · S21 RAVE 시그니처 콤보 (BB+펀딩+추세 동시) · 백테스트 라이브 환산 점수</span>
   </div>
   <div class="controls">
     <input id="diagInput" type="text" placeholder="심볼 진단 (예: KGEN)" class="diag-input" />
@@ -408,7 +408,7 @@
   <summary>탐지 시그널 및 점수 기준 (펼치기)</summary>
   <div style="color: var(--muted); font-size: 11px; line-height: 1.7; margin-top: 8px;">
     <b>Hard Exclude</b> — Binance Spot에 이미 상장 / 선물 상장 N일 미만 / ATH 대비 -90% 이하 / 저점대비 N배 이상 / 유통률 N% 초과 / CEX N곳 미만 / 펀딩 양수율 N% 미만 / OI/MCap N 미만 / 저볼륨<br>
-    <b>가산 시그널 (16종, 합산 ≤100점) · 조기 진입 최적화</b> — CEX(3) · 유통률(12) · <b>BB압축(13)⚡⚡</b> · <b>펀딩 양수율 단계화(9)</b>·크기(7)·<b>추세(8)⚡</b>·베이시스(7) · 매집 3종(19) · 디버전스(7) · OI/MCap(8) · 유기+OI Spike(10) · HigherLows(4)🟡 · Body압축(5) · 매수우위(3)🟡<br>
+    <b>가산 시그널 (17종, 합산 ≤100점) · 조기 진입 최적화</b> — CEX(3) · 유통률(12) · <b>BB압축(13)⚡⚡</b> · <b>펀딩 양수율 단계화(9)</b>·크기(7)·<b>추세(8)⚡</b>·베이시스(7) · 매집 3종(19) · 디버전스(7) · OI/MCap(8) · 유기+OI Spike(10) · HigherLows(4)🟡 · Body압축(5) · 매수우위(3)🟡 · <b>S21 RAVE 시그니처 콤보(15)</b><br>
     <b>컨텍스트 패널티 (완화)</b> — rise14 &gt; 50% 또는 저점대비 &gt; 3.5x 시 펀딩 점수 50% 감점 · <b>후기 진입 페널티</b>: HL+매수우위 ≥5/7 AND BB압축 &lt; 5/13 시 -5pt + ⏰ 배지<br>
     <b>펀딩 컨텍스트 패널티</b> — 14d 상승률 &gt; 30% 또는 저점대비 &gt; 2.5x 시 S6cont/S6size/S7 50% 감점 (후행 신호 무력화)<br>
     <b>알람 배지</b> — 🚨 CRIME (펀딩+ Basis≥0.5% 양수율≥60%) · 🎯 발사임박 (유기+OI Spike) · 🕵 조작 의심 (횡보+양수 펀딩 70%+)
@@ -1388,6 +1388,29 @@ function computeScore(row) {
   }
   b.S19 = s19;
 
+  // S21: RAVE 시그니처 콤보 (max 15) — BB압축 + 펀딩양수율 + 펀딩추세 동시 발현
+  // 조합의 특수성을 보상 (각각 임계값 절반 이상 시 충족)
+  const c12 = (row.bbScore || 0) >= 4;        // BB압축 절반 이상 (4/8)
+  const c6c = row.fundPosRatio >= 0.55;       // 펀딩양수율 55%+
+  const c7  = (row.fundingTrend?.score || 0) >= 3; // 펀딩추세 3+
+  const comboCount = (c12 ? 1 : 0) + (c6c ? 1 : 0) + (c7 ? 1 : 0);
+  let s21 = 0;
+  if (comboCount === 3) s21 = 15;       // 완벽한 시그니처
+  else if (comboCount === 2) s21 = 7;   // 부분 시그니처
+  b.S21 = s21;
+
+  // 데이터 가용성 메타 (백테스트 정규화용)
+  const isBacktest = row.isBacktest === true;
+  // 항상 가용: S2,S3,S6cont,S6size,S7,S12,S17,S18,S19,S21
+  // 백테스트 부분 (OI/L-S 30일 한계 위반 시): S8,S9,S10,S11,S13,S14,S15 미가용
+  // S8(베이시스): 백테스트 항상 0
+  let availableMax = 100;
+  if (isBacktest) {
+    availableMax -= 7; // S8
+    if (!row.fullBacktest) availableMax -= (9+6+4+7+8+10); // S9,S10,S11,S13,S14,S15
+  }
+  row._availableMax = availableMax;
+
   // S20 삭제 (v1.3, 피크 임박 시 0pt — 의미 X)
 
   const total = Object.values(b).reduce((a, x) => a + x, 0);
@@ -2228,7 +2251,7 @@ async function diagnoseToken(input) {
 const DAY_MS = 86400000;
 
 // 임의 시점에서 단일 토큰의 row 객체 생성
-async function backtestRow(symbol, base, ageDays, evalEndTime, cgLookup, cexSets) {
+async function backtestRow(symbol, base, ageDays, evalEndTime, cgLookup, cexSets, fullBacktest = true) {
   const [klines, fundHist, oiHist, lsPos, lsAcc, takerHist] = await Promise.all([
     Binance.loadKlines(symbol, 100, evalEndTime),
     Binance.loadFundingHistory(symbol, 21, evalEndTime),
@@ -2282,10 +2305,18 @@ async function backtestRow(symbol, base, ageDays, evalEndTime, cgLookup, cexSets
     closes14: a.closes14, candles14: a.candles14,
     fundHistory: fundAnalysis.history, fundRates: fundAnalysis.rates, oiHistRaw: oiHist,
     circRatio: cgLookup && cgLookup.circMax !== null ? cgLookup.circMax * 100 : null,
-    athChange: cgLookup && cgLookup.athChangePct !== null ? cgLookup.athChangePct : null
+    athChange: cgLookup && cgLookup.athChangePct !== null ? cgLookup.athChangePct : null,
+    isBacktest: true,
+    fullBacktest
   };
   const { score, breakdown } = computeScore(row);
   row.score = score; row.scoreBreakdown = breakdown;
+  // 백테스트 라이브 환산 점수
+  if (row._availableMax && row._availableMax < 100) {
+    row.liveEquivalentScore = Math.min(100, Math.round(score * 100 / row._availableMax));
+  } else {
+    row.liveEquivalentScore = score;
+  }
   return row;
 }
 
@@ -2405,10 +2436,10 @@ async function runBacktest() {
         const cg = useCG ? CoinGecko.lookup(cgMap, p.base, cgPlatMap) : null;
         const ageDays = p.onboardDate ? Math.floor((evalDate - p.onboardDate) / DAY_MS) : null;
         try {
-          const row = await backtestRow(p.symbol, p.base, ageDays, evalDate, cg, cexSets);
+          const row = await backtestRow(p.symbol, p.base, ageDays, evalDate, cg, cexSets, p.fullBacktest);
           if (row) {
             row.pumpInfo = p;
-            row.wouldTrigger = row.score >= opt.minScore && !hardExclude(row, opt);
+            row.wouldTrigger = (row.liveEquivalentScore || row.score) >= opt.minScore && !hardExclude(row, opt);
             row.hardExcludeReason = hardExclude(row, opt);
             results.push(row);
           }
@@ -2732,7 +2763,7 @@ function renderBacktestResults(results, opt) {
             <td>${p.pumpRatio.toFixed(1)}x</td>
             <td>${p.lowDaysAgo}d → ${p.peakDaysAgo}d</td>
             <td>${fmtM(r.volume)}</td>
-            <td><span class="diag-grade grade-${grade.g}" style="font-size:11px; padding:2px 6px;">${r.score}/${grade.g}</span></td>
+            <td><span class="diag-grade grade-${gradeOf(r.liveEquivalentScore || r.score).g}" style="font-size:11px; padding:2px 6px;">${r.score}${r.liveEquivalentScore && r.liveEquivalentScore !== r.score ? ` <span style="opacity:0.7;">(라이브 ${r.liveEquivalentScore})</span>` : ''}</span></td>
             <td>${triggerCell}</td>
             <td>${btType}</td>
             <td class="muted" style="font-size:10px;">${r.hardExcludeReason || (r.wouldTrigger ? '-' : `점수 < ${opt.minScore}`)}</td>
@@ -2828,8 +2859,11 @@ async function runDeepBacktest() {
           const ageDays = p.onboardDate ? Math.floor((evalDate - p.onboardDate) / DAY_MS) : null;
           if (ageDays !== null && ageDays < 7) continue; // 상장 직후 평가 X
           try {
-            const row = await backtestRow(p.symbol, p.base, ageDays, evalDate, cg, cexSets);
-            if (row) phaseResults.push({ phase: phase.name, offset: phase.offsetDays, score: row.score, breakdown: row.scoreBreakdown, row });
+            // 심층 시점별 fullBacktest 재계산: 평가 시점이 30일 이내면 OI 가용
+            const evalDaysAgo = (Date.now() - evalDate) / DAY_MS;
+            const phaseFullBacktest = evalDaysAgo <= 28;
+            const row = await backtestRow(p.symbol, p.base, ageDays, evalDate, cg, cexSets, phaseFullBacktest);
+            if (row) phaseResults.push({ phase: phase.name, offset: phase.offsetDays, score: row.score, liveScore: row.liveEquivalentScore, breakdown: row.scoreBreakdown, row });
           } catch(e) {}
         }
         if (phaseResults.length >= 2) {
@@ -2875,10 +2909,13 @@ function renderDeepResults(evolutions) {
     }
   }
 
-  // 평균 점수 진화
+  // 평균 점수 진화 (라이브 환산 우선)
   const phaseScoreAvg = {};
   for (const phase of DEEP_PHASES) {
-    const scores = evolutions.map(e => e.phases.find(p => p.phase === phase.name)?.score).filter(s => s !== undefined);
+    const scores = evolutions.map(e => {
+      const ph = e.phases.find(p => p.phase === phase.name);
+      return ph ? (ph.liveScore || ph.score) : undefined;
+    }).filter(s => s !== undefined);
     phaseScoreAvg[phase.name] = scores.length ? scores.reduce((a,b)=>a+b,0)/scores.length : 0;
   }
 
@@ -2920,11 +2957,12 @@ function renderDeepResults(evolutions) {
     const phaseCells = DEEP_PHASES.map(ph => {
       const found = e.phases.find(p => p.phase === ph.name);
       if (!found) return '<td class="muted">-</td>';
-      const grade = gradeOf(found.score);
-      return `<td><span class="diag-grade grade-${grade.g}" style="font-size:10px; padding:1px 4px;">${found.score}</span></td>`;
+      const liveS = found.liveScore || found.score;
+      const grade = gradeOf(liveS);
+      return `<td><span class="diag-grade grade-${grade.g}" style="font-size:10px; padding:1px 4px;" title="raw: ${found.score} / live 환산: ${liveS}">${liveS}</span></td>`;
     }).join('');
-    const peakScore = e.phases.find(p => p.phase === '피크')?.score || 0;
-    const earlyScore = e.phases.find(p => p.phase === '초입')?.score || 0;
+    const peakScore = (e.phases.find(p => p.phase === '피크')?.liveScore) || (e.phases.find(p => p.phase === '피크')?.score) || 0;
+    const earlyScore = (e.phases.find(p => p.phase === '초입')?.liveScore) || (e.phases.find(p => p.phase === '초입')?.score) || 0;
     const delta = peakScore - earlyScore;
     return `<tr style="cursor:pointer;" onclick="diagToggleWatchOpen('${e.symbol}')">
       <td><b>${e.symbol}</b></td>
@@ -3113,6 +3151,20 @@ function buildSignalDiagnostics(r) {
   });
   // S20 삭제 (v1.3, 피크 임박 시 0pt — 의미 X)
 
+  // S21: RAVE 시그니처 콤보
+  const c12 = (r.bbScore || 0) >= 4;
+  const c6c = r.fundPosRatio >= 0.55;
+  const c7  = (r.fundingTrend?.score || 0) >= 3;
+  const cc = (c12?1:0)+(c6c?1:0)+(c7?1:0);
+  items.push({
+    code: 'S21', name: '⭐ RAVE 시그니처 콤보 (BB+펀딩+추세)', max: 15, score: b.S21 || 0,
+    detail: `BB압축 ${c12?'✓':'✗'} · 펀딩양수율 ${c6c?'✓':'✗'} · 펀딩추세 ${c7?'✓':'✗'} (${cc}/3 충족)`,
+    advice: cc === 3 ? '✓ 만점 (RAVE급 시그니처 완벽)' :
+            cc === 2 ? '7pt — 1개 더 충족 시 +8pt (만점)' :
+            cc === 1 ? '0pt — 2개 더 충족 시 +7pt' :
+            '0pt — 세 조건 중 최소 2개 충족 필요'
+  });
+
   return items;
 }
 
@@ -3215,6 +3267,7 @@ function renderDiagnosisTab(r) {
         <span style="font-size: 36px; font-weight: 700;">${r.score}</span>
         <span style="font-size: 18px; color: var(--muted);">/100</span>
         <span class="diag-grade grade-${grade.g}">${grade.g}</span>
+        ${r.liveEquivalentScore && r.liveEquivalentScore !== r.score ? `<div class="muted" style="font-size:11px; margin-top:4px;">백테스트 환산 (가용 max ${r._availableMax || 100}/100): 라이브 ≈ <b>${r.liveEquivalentScore}</b></div>` : ''}
       </div>
       <div style="font-size: 13px;">${grade.desc}</div>
       ${comments.length ? `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; line-height: 1.6; color: var(--text);">${comments.map(c => '• ' + c).join('<br>')}</div>` : ''}
