@@ -1534,10 +1534,11 @@ function analyzeDumpSignals(row) {
   const max180 = Math.max(...highs);
   const athProx = curr / max180;
   let d1 = 0;
-  if (athProx >= 0.99) d1 = 15;
+  if (athProx >= 0.99)      d1 = 15;
   else if (athProx >= 0.95) d1 = 12;
-  else if (athProx >= 0.90) d1 = 8;
-  else if (athProx >= 0.80) d1 = 4;
+  else if (athProx >= 0.90) d1 = 9;
+  else if (athProx >= 0.85) d1 = 6;
+  else if (athProx >= 0.80) d1 = 3;
   sigs.push({ key: 'D1', name: 'ATH 근접도', score: d1, max: 15, detail: `기준가 / 180d max = ${(athProx*100).toFixed(1)}%` });
 
   // D2: Parabolic 가격 (3~7일 누적 상승률) — max 18
@@ -1581,40 +1582,44 @@ function analyzeDumpSignals(row) {
   sigs.push({ key: 'D4', name: '펀딩 극단치', score: d4, max: 12, detail: `현재 펀딩 ${fundPct.toFixed(4)}%/8h (연 ${(fundPct * 3 * 365).toFixed(0)}%)` });
 
   // D5: 위꼬리 거부 — max 10
-  // 라이브: 어제 봉(완성) 위꼬리 비율 (진행중 봉 제외)
+  // body가 의미있는 크기일 때만 (noise/doji 봉의 가짜 위꼬리 차단)
   const refCdl = refCandle;
   const body = Math.abs(refCdl.c - refCdl.o);
+  const fullRange = refCdl.h - refCdl.l;
   const upperWick = refCdl.h - Math.max(refCdl.c, refCdl.o);
-  const wickRatio = body > 0 ? upperWick / body : (upperWick > 0 ? 99 : 0);
+  const wickRatio = body > 0 ? upperWick / body : 0;
+  // 조건: body가 전체 봉의 25%+ AND body가 close의 1%+ (의미있는 봉만)
+  const meaningfulBody = fullRange > 0 && body / fullRange >= 0.25 && body / Math.max(refCdl.c, 1e-9) >= 0.01;
+  // 위꼬리 자체가 close의 3%+ 이어야 fail-safe로 간주
+  const meaningfulWick = upperWick / Math.max(refCdl.c, 1e-9) >= 0.03;
   let d5 = 0;
-  if (wickRatio >= 2 && body > 0) d5 = 10;
-  else if (wickRatio >= 1)        d5 = 6;
-  else if (upperWick > 0)         d5 = 2;   // 위꼬리 조금이라도 있으면 소점
-  sigs.push({ key: 'D5', name: '위꼬리 거부', score: d5, max: 10, detail: `upper wick / body = ${wickRatio.toFixed(1)}x${isLive ? ' (어제봉)' : ''}` });
+  if (meaningfulBody && meaningfulWick) {
+    if (wickRatio >= 2)      d5 = 10;
+    else if (wickRatio >= 1) d5 = 6;
+    else if (wickRatio >= 0.5) d5 = 3;
+  }
+  sigs.push({ key: 'D5', name: '위꼬리 거부', score: d5, max: 10, detail: `wick/body = ${wickRatio.toFixed(1)}x · body/range = ${fullRange>0?(body/fullRange*100).toFixed(0):0}%${isLive ? ' (어제봉)' : ''}` });
 
-  // D6: BB 확장 (압축 풀림) — max 10
-  // 14d cv / 60d cv > 1.5 — 완성봉 기준으로 슬라이스
+  // D6: 캔들 폭 확장 (Range Expansion) — max 10
+  // 일봉 daily range (h-l)/c — 최근 7d 평균 vs 30d 평균
+  // close CV는 점진적 상승 추세 못 잡음 → 캔들 자체 폭(변동성)으로 변경
   let bbExpand = null;
-  if (refIdx >= 59) {
-    const cvOf = (arr) => {
-      const m = arr.reduce((a, b) => a + b, 0) / arr.length;
-      if (m <= 0) return 0;
-      const v = arr.reduce((a, b) => a + (b - m) ** 2, 0) / arr.length;
-      return Math.sqrt(v) / m;
-    };
-    const cv14 = cvOf(closes.slice(refIdx - 13, refIdx + 1));
-    const cv60 = cvOf(closes.slice(refIdx - 59, refIdx + 1));
-    bbExpand = cv60 > 0 ? cv14 / cv60 : null;
+  if (refIdx >= 30) {
+    const dailyRange = (c) => c.l > 0 ? (c.h - c.l) / c.l : 0;
+    const last7 = candles.slice(refIdx - 6, refIdx + 1).map(dailyRange);
+    const last30 = candles.slice(refIdx - 29, refIdx + 1).map(dailyRange);
+    const r7 = last7.reduce((a, b) => a + b, 0) / last7.length;
+    const r30 = last30.reduce((a, b) => a + b, 0) / last30.length;
+    bbExpand = r30 > 0 ? r7 / r30 : null;
   }
   let d6 = 0;
   if (bbExpand !== null) {
-    // 피크 근처: cv14/cv60 = 1.3~2x 가 전형적
-    if (bbExpand >= 2.5)      d6 = 10;
+    if (bbExpand >= 2.5)      d6 = 10;  // 최근 봉이 평균의 2.5x 이상 큰 폭
     else if (bbExpand >= 1.8) d6 = 7;
-    else if (bbExpand >= 1.3) d6 = 4;
-    else if (bbExpand >= 1.1) d6 = 2;
+    else if (bbExpand >= 1.4) d6 = 4;
+    else if (bbExpand >= 1.15) d6 = 2;
   }
-  sigs.push({ key: 'D6', name: 'BB 확장 (압축풀림)', score: d6, max: 10, detail: bbExpand !== null ? `14d/60d cv = ${bbExpand.toFixed(2)}x` : '데이터 부족' });
+  sigs.push({ key: 'D6', name: '캔들 폭 확장 (Range Exp)', score: d6, max: 10, detail: bbExpand !== null ? `7d/30d daily range = ${bbExpand.toFixed(2)}x` : '데이터 부족' });
 
   // D7: 일일 변동 폭증 — max 8
   // 완성봉 기준: refIdx vs refIdx-1 종가
