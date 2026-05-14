@@ -1498,10 +1498,11 @@ function analyzeDumpSignals(row) {
   if (refIdx - 7 >= 0) cumGain7 = (closes[refIdx] / closes[refIdx - 7] - 1) * 100;
   if (refIdx - 3 >= 0) cumGain3 = (closes[refIdx] / closes[refIdx - 3] - 1) * 100;
   let d2 = 0;
-  if (cumGain3 >= 100 || cumGain7 >= 200) d2 = 18;
-  else if (cumGain3 >= 50 || cumGain7 >= 100) d2 = 14;
-  else if (cumGain3 >= 30 || cumGain7 >= 60) d2 = 10;
-  else if (cumGain3 >= 15 || cumGain7 >= 30) d2 = 5;
+  // 실제 crime 토큰 피크: 3d +25~50% / 7d +50~100% 가 전형적
+  if (cumGain3 >= 50  || cumGain7 >= 100) d2 = 18;
+  else if (cumGain3 >= 25  || cumGain7 >= 50)  d2 = 14;
+  else if (cumGain3 >= 12  || cumGain7 >= 25)  d2 = 9;
+  else if (cumGain3 >= 5   || cumGain7 >= 12)  d2 = 4;
   sigs.push({ key: 'D2', name: 'Parabolic (3d/7d 누적)', score: d2, max: 18, detail: `3d ${cumGain3.toFixed(0)}% · 7d ${cumGain7.toFixed(0)}%` });
 
   // D3: 거래량 급증 — max 12
@@ -1514,19 +1515,21 @@ function analyzeDumpSignals(row) {
   const refVol = vols[refIdx] || 0;
   const volSpike = avgVol30 > 0 ? refVol / avgVol30 : 0;
   let d3 = 0;
-  if (volSpike >= 10) d3 = 12;
-  else if (volSpike >= 5) d3 = 9;
-  else if (volSpike >= 3) d3 = 6;
-  else if (volSpike >= 2) d3 = 3;
+  // 실제 crime 토큰 피크: vol 3~5x가 전형적, 10x는 극단 Climax
+  if (volSpike >= 5)   d3 = 12;
+  else if (volSpike >= 3)   d3 = 9;
+  else if (volSpike >= 2)   d3 = 6;
+  else if (volSpike >= 1.5) d3 = 3;
   sigs.push({ key: 'D3', name: '거래량 급증', score: d3, max: 12, detail: `기준봉 vol / 직전30d 평균 = ${volSpike.toFixed(1)}x${isLive ? ' (어제봉 기준)' : ''}` });
 
   // D4: 펀딩 극단치 — max 12
   const fundPct = row.funding || 0;
   let d4 = 0;
-  if (fundPct >= 0.30) d4 = 12;         // 0.30%/8h = annualized 328%
-  else if (fundPct >= 0.15) d4 = 9;
-  else if (fundPct >= 0.08) d4 = 6;
-  else if (fundPct >= 0.05) d4 = 3;
+  // 실제 crime 토큰 피크: 0.05~0.15%/8h 범위 → 0.30%는 초극단으로 너무 드묾
+  if (fundPct >= 0.15)      d4 = 12;
+  else if (fundPct >= 0.08) d4 = 9;
+  else if (fundPct >= 0.05) d4 = 6;
+  else if (fundPct >= 0.03) d4 = 3;
   sigs.push({ key: 'D4', name: '펀딩 극단치', score: d4, max: 12, detail: `현재 펀딩 ${fundPct.toFixed(4)}%/8h (연 ${(fundPct * 3 * 365).toFixed(0)}%)` });
 
   // D5: 위꼬리 거부 — max 10
@@ -1536,9 +1539,9 @@ function analyzeDumpSignals(row) {
   const upperWick = refCdl.h - Math.max(refCdl.c, refCdl.o);
   const wickRatio = body > 0 ? upperWick / body : (upperWick > 0 ? 99 : 0);
   let d5 = 0;
-  if (wickRatio >= 3 && body > 0) d5 = 10;
-  else if (wickRatio >= 2) d5 = 7;
-  else if (wickRatio >= 1) d5 = 3;
+  if (wickRatio >= 2 && body > 0) d5 = 10;
+  else if (wickRatio >= 1)        d5 = 6;
+  else if (upperWick > 0)         d5 = 2;   // 위꼬리 조금이라도 있으면 소점
   sigs.push({ key: 'D5', name: '위꼬리 거부', score: d5, max: 10, detail: `upper wick / body = ${wickRatio.toFixed(1)}x${isLive ? ' (어제봉)' : ''}` });
 
   // D6: BB 확장 (압축 풀림) — max 10
@@ -1557,10 +1560,11 @@ function analyzeDumpSignals(row) {
   }
   let d6 = 0;
   if (bbExpand !== null) {
-    if (bbExpand >= 3) d6 = 10;
-    else if (bbExpand >= 2) d6 = 7;
-    else if (bbExpand >= 1.5) d6 = 4;
-    else if (bbExpand >= 1.2) d6 = 2;
+    // 피크 근처: cv14/cv60 = 1.3~2x 가 전형적
+    if (bbExpand >= 2.5)      d6 = 10;
+    else if (bbExpand >= 1.8) d6 = 7;
+    else if (bbExpand >= 1.3) d6 = 4;
+    else if (bbExpand >= 1.1) d6 = 2;
   }
   sigs.push({ key: 'D6', name: 'BB 확장 (압축풀림)', score: d6, max: 10, detail: bbExpand !== null ? `14d/60d cv = ${bbExpand.toFixed(2)}x` : '데이터 부족' });
 
@@ -1569,31 +1573,51 @@ function analyzeDumpSignals(row) {
   const prevClose = refIdx - 1 >= 0 ? closes[refIdx - 1] : closes[refIdx];
   const dailyMove = prevClose > 0 ? Math.abs((closes[refIdx] - prevClose) / prevClose) * 100 : 0;
   let d7 = 0;
-  if (dailyMove >= 40) d7 = 8;
-  else if (dailyMove >= 25) d7 = 6;
-  else if (dailyMove >= 15) d7 = 3;
+  // 실제 crime 토큰 피크: 10~25% 일일 변동 전형적
+  if (dailyMove >= 20)      d7 = 8;
+  else if (dailyMove >= 12) d7 = 6;
+  else if (dailyMove >= 7)  d7 = 3;
   sigs.push({ key: 'D7', name: '일일 변동 폭증', score: d7, max: 8, detail: `${dailyMove.toFixed(1)}% (전일대비)` });
 
-  // D8: OI 분배 시작 (최근 3일 OI가 7일전 대비 ↓) — max 10
-  // 가용성: OI 데이터 있어야 함 (oiHistRaw에서 추출)
+  // D8: OI 과열 & 분배 — max 10
+  // 피크 당일: OI는 최고점 근처 (아직 분배 전) → "OI 과열" 조건으로 점수
+  // 피크 이후: OI 감소 시작 → "OI 분배" 조건으로도 점수
+  // 두 조건 중 높은 것 사용
   const oiHist = row.oiHistRaw || [];
   let d8 = 0;
   let oiDeclineDetail = '데이터 없음';
   if (oiHist.length >= 7) {
     const oiVals = oiHist.map(h => parseFloat(h.sumOpenInterestValue || h.sumOpenInterest || 0)).filter(v => v > 0);
     if (oiVals.length >= 7) {
-      const recent3 = oiVals.slice(-3).reduce((a, b) => a + b, 0) / 3;
-      const past7 = oiVals.slice(-10, -7).reduce((a, b) => a + b, 0) / Math.max(1, oiVals.slice(-10, -7).length);
-      if (past7 > 0) {
-        const decline = (recent3 / past7 - 1) * 100;
-        oiDeclineDetail = `최근 3d 평균 / 7d 전 = ${decline >= 0 ? '+' : ''}${decline.toFixed(1)}%`;
-        if (decline <= -30) d8 = 10;
-        else if (decline <= -15) d8 = 6;
-        else if (decline <= -5) d8 = 3;
+      const recent3avg = oiVals.slice(-3).reduce((a, b) => a + b, 0) / 3;
+      const past7avg = oiVals.slice(-10, -7).reduce((a, b) => a + b, 0) / Math.max(1, oiVals.slice(-10, -7).length);
+      const oi30avg = oiVals.slice(-Math.min(30, oiVals.length)).reduce((a, b) => a + b, 0) / Math.min(30, oiVals.length);
+      const oiPeakAll = Math.max(...oiVals);
+      if (past7avg > 0) {
+        const change = (recent3avg / past7avg - 1) * 100;
+        const oiHeat = oi30avg > 0 ? (recent3avg / oi30avg - 1) * 100 : 0;  // 30d 평균 대비 현재 OI
+        const nearPeak = oiPeakAll > 0 ? recent3avg / oiPeakAll : 0;  // 역대 최고 대비 현재 위치
+
+        let d8Dist = 0, d8Heat = 0;
+        // 분배 (OI 감소): 피크 이후 발현
+        if (change <= -20)      d8Dist = 10;
+        else if (change <= -10) d8Dist = 7;
+        else if (change <= -5)  d8Dist = 4;
+        // 과열 (OI 급등 & 고점 근처): 피크 당일 발현
+        if (nearPeak >= 0.95 && oiHeat >= 30)      d8Heat = 10;  // 역대 최고 근처 + 30d avg 대비 30%↑
+        else if (nearPeak >= 0.85 && oiHeat >= 20) d8Heat = 7;
+        else if (oiHeat >= 30)                      d8Heat = 5;
+        else if (oiHeat >= 15)                      d8Heat = 3;
+
+        d8 = Math.max(d8Dist, d8Heat);
+        const label = d8Dist >= d8Heat
+          ? `OI 분배: 최근3d 평균 ${change >= 0 ? '+' : ''}${change.toFixed(1)}% (vs 7d전)`
+          : `OI 과열: 30d평균 대비 +${oiHeat.toFixed(0)}%, 역대피크 ${(nearPeak*100).toFixed(0)}%`;
+        oiDeclineDetail = label;
       }
     }
   }
-  sigs.push({ key: 'D8', name: 'OI 분배 (피크 후 ↓)', score: d8, max: 10, detail: oiDeclineDetail });
+  sigs.push({ key: 'D8', name: 'OI 과열 / 분배', score: d8, max: 10, detail: oiDeclineDetail });
 
   // D9: RAVE 시그니처 충돌 — 매수우위/HL 강함 but BB 확장 = 끝물 시그널 — max 5
   let d9 = 0;
@@ -1605,12 +1629,13 @@ function analyzeDumpSignals(row) {
 
   const total = sigs.reduce((a, s) => a + s.score, 0);
   const final = Math.min(Math.round(total), 100);
+  // 재조정된 grade 기준 (실제 crime 피크 ≈ 65~80, 매집 초기 ≈ 15~30)
   let topRisk = 'safe';
-  if (final >= 90) topRisk = 'apex';
-  else if (final >= 70) topRisk = 'critical';
-  else if (final >= 50) topRisk = 'high';
-  else if (final >= 30) topRisk = 'moderate';
-  else if (final >= 15) topRisk = 'low';
+  if (final >= 80)      topRisk = 'apex';
+  else if (final >= 60) topRisk = 'critical';
+  else if (final >= 40) topRisk = 'high';
+  else if (final >= 22) topRisk = 'moderate';
+  else if (final >= 10) topRisk = 'low';
   return { score: final, signals: sigs, topRisk, athProximity: athProx };
 }
 
@@ -1644,12 +1669,13 @@ function renderDumpTab(r) {
 
   // 가이드라인
   const guides = [];
-  if (dump.signals.find(s => s.key === 'D2' && s.score >= 14)) guides.push('🔥 가격이 단기간 폭등 (Parabolic) — 분배 단계 진입 가능성');
-  if (dump.signals.find(s => s.key === 'D4' && s.score >= 9)) guides.push('🔥 펀딩 극단치 — 롱이 너무 많아 청산 위험');
-  if (dump.signals.find(s => s.key === 'D5' && s.score >= 7)) guides.push('🔥 위꼬리 거부 — 매도 압력 등장');
-  if (dump.signals.find(s => s.key === 'D8' && s.score >= 6)) guides.push('🔥 OI 분배 — 세력이 포지션 정리 중');
-  if (dump.signals.find(s => s.key === 'D6' && s.score >= 7)) guides.push('⚠ BB 확장 — 매집 끝, 변동성 폭발 단계');
-  if (dump.signals.find(s => s.key === 'D3' && s.score >= 9)) guides.push('⚠ 거래량 급증 — Climax (정점) 가능');
+  if (dump.signals.find(s => s.key === 'D2' && s.score >= 9))  guides.push('🔥 단기 폭등 (Parabolic) — 분배 단계 진입 가능성 높음');
+  if (dump.signals.find(s => s.key === 'D4' && s.score >= 6))  guides.push('🔥 펀딩 고열 — 롱 과다로 청산 압력 증가');
+  if (dump.signals.find(s => s.key === 'D5' && s.score >= 6))  guides.push('🔥 위꼬리 거부 — 세력 출구 매도 가능성');
+  if (dump.signals.find(s => s.key === 'D8' && s.score >= 7))  guides.push('🔥 OI 과열/분배 — 세력 포지션 정리 중');
+  if (dump.signals.find(s => s.key === 'D3' && s.score >= 9))  guides.push('🔥 거래량 Climax — FOMO 개미 흡수 후 반전 가능');
+  if (dump.signals.find(s => s.key === 'D1' && s.score >= 12)) guides.push('⚠ 180일 신고가 근접 — 진입 위험 구간');
+  if (dump.signals.find(s => s.key === 'D6' && s.score >= 4))  guides.push('⚠ BB 확장 — 매집 해소, 변동성 폭발 단계');
 
   const apexBanner = dump.topRisk === 'apex' ? `
     <div style="
@@ -1684,7 +1710,7 @@ function renderDumpTab(r) {
       ${sigRows}
       <div class="muted" style="font-size: 10px; margin-top: 8px; line-height: 1.5;">
         D1 ATH 근접도 (15) · D2 Parabolic (18) · D3 거래량 급증 (12) · D4 펀딩 극단치 (12) ·
-        D5 위꼬리 거부 (10) · D6 BB 확장 (10) · D7 일일 변동 (8) · D8 OI 분배 (10) ·
+        D5 위꼬리 거부 (10) · D6 BB 확장 (10) · D7 일일 변동 (8) · D8 OI 과열/분배 (10) ·
         D9 후기시그널+BB확장 (5)
       </div>
     </div>
@@ -3456,7 +3482,7 @@ function renderDeepResults(evolutions) {
     }
   }
   const DUMP_SIG_MAX = { D1:15, D2:18, D3:12, D4:12, D5:10, D6:10, D7:8, D8:10, D9:5 };
-  const DUMP_SIG_NAME = { D1:'ATH 근접도', D2:'Parabolic', D3:'거래량 급증', D4:'펀딩 극단', D5:'위꼬리', D6:'BB 확장', D7:'일일변동', D8:'OI 분배', D9:'후기+BB' };
+  const DUMP_SIG_NAME = { D1:'ATH 근접도', D2:'Parabolic', D3:'거래량 급증', D4:'펀딩 극단', D5:'위꼬리', D6:'BB 확장', D7:'일일변동', D8:'OI 과열/분배', D9:'후기+BB' };
 
   // 시그널 분류: 초입 vs 말기 등장률 차이로 분류
   const sigCategorized = SIG_KEYS.map(k => {
