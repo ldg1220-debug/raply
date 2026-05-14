@@ -543,11 +543,14 @@
     <tr>
       <th data-sort="symbol">Symbol</th>
       <th data-sort="ageDays">상장(d)</th>
+      <th data-sort="mcVal">MC(M)</th>
+      <th data-sort="fdvVal">FDV(M)</th>
       <th data-sort="price">Price</th>
       <th data-sort="change24">24h%</th>
       <th data-sort="rise14">14d%</th>
       <th data-sort="cexCount">CEX</th>
       <th data-sort="circRatio">Circ%</th>
+      <th data-sort="top10Pct">Top10%</th>
       <th data-sort="athChange">ATH%</th>
       <th data-sort="funding">Fund% (8h)</th>
       <th data-sort="fundPosRatio">Fund7d+</th>
@@ -970,6 +973,51 @@ const GoPlus = {
     } catch (e) { return null; }
   }
 };
+
+// 결과 테이블의 Top10 셀을 비동기로 채움 (GoPlus, EVM only, 캐시 12h)
+async function loadTop10ForRows(rows) {
+  const concurrency = 4;
+  let idx = 0;
+  async function worker() {
+    while (idx < rows.length) {
+      const r = rows[idx++];
+      if (r._top10Pct !== undefined) continue;
+      const primary = r.cg && r.cg.platforms ? GoPlus.pickPrimary(r.cg.platforms) : null;
+      if (!primary || !primary.chainId) {
+        r._top10Pct = null; r.top10Pct = null;
+        updateTop10Cell(r.symbol, null);
+        continue;
+      }
+      try {
+        const sec = await GoPlus.fetchSecurity(primary.chainId, primary.address);
+        const holders = sec?.holders || [];
+        if (!holders.length) {
+          r._top10Pct = null; r.top10Pct = null;
+          updateTop10Cell(r.symbol, null);
+        } else {
+          const pct = holders.slice(0, 10).reduce((a, h) => a + parseFloat(h.percent || 0), 0) * 100;
+          r._top10Pct = pct; r.top10Pct = pct;
+          updateTop10Cell(r.symbol, pct);
+        }
+      } catch(e) {
+        r._top10Pct = null; r.top10Pct = null;
+        updateTop10Cell(r.symbol, null);
+      }
+    }
+  }
+  await Promise.all(Array.from({length: concurrency}, worker));
+}
+
+function updateTop10Cell(symbol, pct) {
+  const cell = document.querySelector(`.top10-cell[data-sym="${symbol}"]`);
+  if (!cell) return;
+  if (pct === null) {
+    cell.innerHTML = '<span class="muted" title="EVM 체인 아님 또는 데이터 없음">N/A</span>';
+  } else {
+    const cls = pct >= 70 ? 'neg' : pct >= 50 ? 'warn' : pct >= 30 ? '' : 'pos';
+    cell.innerHTML = `<span class="${cls}" title="Top 10 홀더 점유율 (GoPlus)">${pct.toFixed(0)}%</span>`;
+  }
+}
 
 // ============================================================
 // SECTION 6: Kline analysis
@@ -2188,6 +2236,9 @@ async function runScan() {
     }
 
     render();
+
+    // 비동기로 Top10 홀더 데이터 채우기 (GoPlus, EVM 체인만)
+    loadTop10ForRows(rows);
   } catch (e) {
     log(`스캔 실패: ${e.message}`);
     setStatus(`오류: ${e.message}`);
@@ -2251,15 +2302,27 @@ function render() {
     const oiPct = r.oiTrendPct;
     const lsD = r.lsBiasDiff;
     const bbR = r.bbRatio;
+    const mcVal = (r.cg && r.cg.marketCap) ? r.cg.marketCap / 1e6 : null;
+    const fdvVal = (r.cg && r.cg.maxSupply && r.price) ? (r.cg.maxSupply * r.price) / 1e6 : null;
+    r.mcVal = mcVal; r.fdvVal = fdvVal;
+    const top10Pct = r._top10Pct; // async-populated cache
+    const top10Cls = top10Pct === undefined ? 'muted'
+                    : top10Pct >= 70 ? 'neg'
+                    : top10Pct >= 50 ? 'warn'
+                    : top10Pct >= 30 ? '' : 'pos';
+    r.top10Pct = top10Pct ?? null;
     return `
       <tr class="${rowCls}" data-sym="${r.symbol}">
         <td class="sym">${signalChips(r)} ${r.symbol}${hotBadges.join('')}</td>
         <td>${r.ageDays ?? '-'}</td>
+        <td>${mcVal !== null ? `<span title="시가총액 $${fmtM(r.cg.marketCap)}M">${mcVal >= 100 ? mcVal.toFixed(0) : mcVal.toFixed(1)}</span>` : '<span class="muted">?</span>'}</td>
+        <td>${fdvVal !== null ? `<span title="완전희석가치 (max supply × price) = $${fmtM(fdvVal*1e6)}M">${fdvVal >= 100 ? fdvVal.toFixed(0) : fdvVal.toFixed(1)}</span>` : '<span class="muted">?</span>'}</td>
         <td>${fmtNum(r.price, 6)}</td>
         <td>${fmtPct(r.change24)}</td>
         <td>${fmtPct(r.rise14)}</td>
         <td>${cexIcons(r)}</td>
         <td>${r.cg && r.cg.circMax !== null ? `<span title="유통: ${fmtNum(r.cg.circulating,0)} / 최대: ${fmtNum(r.cg.maxSupply,0)}\n락업: ${fmtNum((r.cg.maxSupply||0)-(r.cg.circulating||0),0)} (${(100-r.circRatio).toFixed(0)}%)\n시총: $${fmtM(r.cg.marketCap)}M\nFDV: $${fmtM((r.cg.maxSupply||0)*r.price)}M\nMC순위: ${r.cg.mcRank ? '#'+r.cg.mcRank : '-'}" class="${r.circRatio < 30 ? 'pos' : (r.circRatio > 50 ? 'neg' : '')}">${r.circRatio.toFixed(0)}%</span>` : '<span class="muted">?</span>'}</td>
+        <td class="top10-cell" data-sym="${r.symbol}">${top10Pct !== undefined ? (top10Pct === null ? '<span class="muted" title="EVM 체인 아님 또는 데이터 없음">N/A</span>' : `<span class="${top10Cls}" title="Top 10 홀더 점유율 (GoPlus)">${top10Pct.toFixed(0)}%</span>`) : '<span class="muted">…</span>'}</td>
         <td>${r.athChange !== null ? fmtPct(r.athChange, 0) : '<span class="muted">?</span>'}</td>
         <td>${fmtPct(r.funding, 4)}</td>
         <td>${(r.fundPosRatio * 100).toFixed(0)}% <span class="muted" style="font-size:10px;">${r.avgFundingPct.toFixed(3)}</span></td>
@@ -2328,13 +2391,14 @@ function candleSVG(candles, w = 800, h = 180) {
 function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   if (!candles || candles.length === 0) return '<div class="muted">캔들 데이터 없음</div>';
   const totalH = ch + vh + 20;
-  const highs = candles.map(c => c.h), lows = candles.map(c => c.l), vols = candles.map(c => c.v);
+  const highs = candles.map(c => c.h), lows = candles.map(c => c.l), vols = candles.map(c => c.v), closes = candles.map(c => c.c);
   const maxP = Math.max(...highs), minP = Math.min(...lows);
   const rangeP = maxP - minP || 1;
   const maxV = Math.max(...vols, 1);
   const barW = w / candles.length;
   const toY = p => ch - ((p - minP) / rangeP) * ch;
   const toVY = v => ch + 10 + (vh - (v / maxV) * vh);
+  const cxOf = i => i * barW + barW * 0.5;
 
   // 가격 캔들
   const priceParts = candles.map((c, i) => {
@@ -2349,6 +2413,62 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
     const wickStroke = barW > 3 ? 1 : 0.6;
     return `<line x1="${cx}" y1="${toY(c.h)}" x2="${cx}" y2="${toY(c.l)}" stroke="${color}" stroke-width="${wickStroke}"/><rect x="${x}" y="${bodyTop}" width="${bw}" height="${bodyH}" fill="${color}"/>`;
   }).join('');
+
+  // 이동평균선 SMA
+  const sma = (arr, period) => {
+    const out = new Array(arr.length).fill(null);
+    if (arr.length < period) return out;
+    let sum = 0;
+    for (let i = 0; i < period; i++) sum += arr[i];
+    out[period - 1] = sum / period;
+    for (let i = period; i < arr.length; i++) {
+      sum += arr[i] - arr[i - period];
+      out[i] = sum / period;
+    }
+    return out;
+  };
+  // VWMA (volume-weighted moving average)
+  const vwma = (closeArr, volArr, period) => {
+    const out = new Array(closeArr.length).fill(null);
+    if (closeArr.length < period) return out;
+    let pvSum = 0, vSum = 0;
+    for (let i = 0; i < period; i++) { pvSum += closeArr[i] * volArr[i]; vSum += volArr[i]; }
+    out[period - 1] = vSum > 0 ? pvSum / vSum : null;
+    for (let i = period; i < closeArr.length; i++) {
+      pvSum += closeArr[i] * volArr[i] - closeArr[i - period] * volArr[i - period];
+      vSum  += volArr[i] - volArr[i - period];
+      out[i] = vSum > 0 ? pvSum / vSum : null;
+    }
+    return out;
+  };
+  const polyline = (vals, color, strokeW, dash) => {
+    const pts = [];
+    for (let i = 0; i < vals.length; i++) {
+      if (vals[i] === null || vals[i] === undefined) continue;
+      pts.push(`${cxOf(i).toFixed(2)},${toY(vals[i]).toFixed(2)}`);
+    }
+    if (pts.length < 2) return '';
+    return `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="${strokeW}" ${dash ? `stroke-dasharray="${dash}"` : ''} opacity="0.95"/>`;
+  };
+  const ma7   = sma(closes, 7);
+  const ma25  = sma(closes, 25);
+  const ma99  = sma(closes, 99);
+  const vwma100 = vwma(closes, vols, 100);
+  const maLayer =
+      polyline(ma7,    '#fbbf24', 1.4) +    // 노랑
+      polyline(ma25,   '#60a5fa', 1.4) +    // 파랑
+      polyline(ma99,   '#a78bfa', 1.4) +    // 보라
+      polyline(vwma100,'#ec4899', 2.4);     // 핑크 (굵게)
+
+  // 범례
+  const legend = `
+    <g font-size="10" font-family="monospace">
+      <rect x="6" y="6" width="170" height="56" fill="#0b0e14" opacity="0.7" rx="3"/>
+      <text x="12" y="18" fill="#fbbf24">— MA7</text>
+      <text x="12" y="30" fill="#60a5fa">— MA25</text>
+      <text x="12" y="42" fill="#a78bfa">— MA99</text>
+      <text x="12" y="54" fill="#ec4899" font-weight="bold">━ VWMA100</text>
+    </g>`;
 
   // 볼륨 바
   const volParts = candles.map((c, i) => {
@@ -2374,7 +2494,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   const fmt = d => `${d.getMonth()+1}/${d.getDate()}`;
   const xLabels = `<text x="4" y="${totalH - 4}" fill="#8b99a8" font-size="10">${fmt(firstDate)}</text><text x="${w-4}" y="${totalH - 4}" fill="#8b99a8" font-size="10" text-anchor="end">${fmt(lastDate)}</text>`;
 
-  return `<svg width="100%" viewBox="0 0 ${w} ${totalH}" preserveAspectRatio="none" style="display:block;">${grid}${priceParts}<line x1="0" y1="${ch+5}" x2="${w}" y2="${ch+5}" stroke="#243045" stroke-width="0.5"/>${volParts}${xLabels}<text x="4" y="${ch+9}" fill="#8b99a8" font-size="9">Vol</text></svg>`;
+  return `<svg width="100%" viewBox="0 0 ${w} ${totalH}" preserveAspectRatio="none" style="display:block;">${grid}${priceParts}${maLayer}${legend}<line x1="0" y1="${ch+5}" x2="${w}" y2="${ch+5}" stroke="#243045" stroke-width="0.5"/>${volParts}${xLabels}<text x="4" y="${ch+9}" fill="#8b99a8" font-size="9">Vol</text></svg>`;
 }
 
 function fundingBarSVG(rates, w = 800, h = 100) {
