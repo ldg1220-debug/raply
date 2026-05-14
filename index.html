@@ -2497,25 +2497,38 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   return `<svg width="100%" viewBox="0 0 ${w} ${totalH}" preserveAspectRatio="none" style="display:block;">${grid}${priceParts}${maLayer}${legend}<line x1="0" y1="${ch+5}" x2="${w}" y2="${ch+5}" stroke="#243045" stroke-width="0.5"/>${volParts}${xLabels}<text x="4" y="${ch+9}" fill="#8b99a8" font-size="9">Vol</text></svg>`;
 }
 
-function fundingBarSVG(rates, w = 800, h = 100) {
+function fundingBarSVG(rates, w = 1100, h = 140, history = null) {
   if (!rates || rates.length === 0) return '<div class="muted">펀딩 히스토리 없음</div>';
   const ratesPct = rates.map(r => r * 100);
   const absMax = Math.max(...ratesPct.map(Math.abs), 0.01);
   const barW = w / ratesPct.length;
   const midY = h / 2;
 
+  // 각 바 + 그 위/아래에 수치(% 표기)
   const bars = ratesPct.map((r, i) => {
-    const bh = Math.abs(r) / absMax * (h / 2 - 4);
+    const bh = Math.abs(r) / absMax * (h / 2 - 22);
     const y = r >= 0 ? midY - bh : midY;
     const color = r >= 0 ? '#4ade80' : '#f87171';
-    return `<rect x="${i * barW + 1}" y="${y}" width="${Math.max(barW - 2, 2)}" height="${bh}" fill="${color}" opacity="0.85"><title>${r.toFixed(4)}%</title></rect>`;
+    const cx = i * barW + barW / 2;
+    const labelY = r >= 0 ? y - 3 : y + bh + 10;
+    const label = `<text x="${cx}" y="${labelY}" fill="${color}" font-size="9" text-anchor="middle">${r.toFixed(4)}</text>`;
+    // 시각 라벨 (history 있을 때만)
+    const tickY = h - 2;
+    let timeLabel = '';
+    if (history && history[i]) {
+      const d = new Date(history[i].fundingTime || history[i].time || 0);
+      if (d && !isNaN(d.getTime()) && i % Math.max(1, Math.ceil(ratesPct.length / 8)) === 0) {
+        timeLabel = `<text x="${cx}" y="${tickY}" fill="#5a6478" font-size="8" text-anchor="middle">${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}h</text>`;
+      }
+    }
+    return `<rect x="${i * barW + 1}" y="${y}" width="${Math.max(barW - 2, 2)}" height="${bh}" fill="${color}" opacity="0.85"><title>${r.toFixed(4)}%</title></rect>${label}${timeLabel}`;
   }).join('');
 
   return `<svg width="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="display:block;">
     <line x1="0" y1="${midY}" x2="${w}" y2="${midY}" stroke="#243045" stroke-width="1"/>
     ${bars}
     <text x="2" y="10" fill="#8b99a8" font-size="10">+${absMax.toFixed(3)}%</text>
-    <text x="2" y="${h - 2}" fill="#8b99a8" font-size="10">-${absMax.toFixed(3)}%</text>
+    <text x="2" y="${h - 14}" fill="#8b99a8" font-size="10">-${absMax.toFixed(3)}%</text>
   </svg>`;
 }
 
@@ -2532,10 +2545,9 @@ function renderPriceTab(r) {
       <div class="stat-card"><div class="stat-label">예상 연 펀딩</div><div class="stat-value pos">${r.fundingApr.toFixed(0)}%</div></div>
     </div>`;
   const allDays = r.candlesAll?.length || 0;
-  const bigChart = `<div class="chart-block"><h3>${allDays}-Day 캔들 + 거래량</h3>${r.candlesAll && r.candlesAll.length ? bigCandleSVG(r.candlesAll) : '<div class="muted">데이터 부족</div>'}</div>`;
-  const candles = `<div class="chart-block"><h3>14-Day 캔들 (확대)</h3>${candleSVG(r.candles14)}</div>`;
-  const funding = `<div class="chart-block"><h3>21회 펀딩 히스토리 (≈ 7일, 8h 단위)</h3>${fundingBarSVG(r.fundRates)}</div>`;
-  return stats + bigChart + candles + funding;
+  const bigChart = `<div class="chart-block"><h3>${allDays}-Day 캔들 + 거래량 (MA7/25/99 · VWMA100)</h3>${r.candlesAll && r.candlesAll.length ? bigCandleSVG(r.candlesAll) : '<div class="muted">데이터 부족</div>'}</div>`;
+  const funding = `<div class="chart-block"><h3>21회 펀딩 히스토리 (≈ 7일, 8h 단위) — 단위: %/8h</h3>${fundingBarSVG(r.fundRates, 1100, 140, r.fundHistory)}</div>`;
+  return stats + bigChart + funding;
 }
 
 function renderExchangesTab(r) {
