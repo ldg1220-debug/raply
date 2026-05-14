@@ -487,6 +487,26 @@
     <datalist id="dl_maxDrawdown"><option value="0">0 (제한없음)</option><option value="30">30%</option><option value="50">50%</option><option value="70">70%</option><option value="90">90%</option></datalist>
   </div>
   <div class="filter">
+    <label>최소 시총 (M$)</label>
+    <input type="number" id="f_minMc" list="dl_minMc" step="1" value="0" min="0" title="CoinGecko Market Cap 하한 (백만달러)" />
+    <datalist id="dl_minMc"><option value="0">0</option><option value="5">5M</option><option value="20">20M</option><option value="100">100M</option></datalist>
+  </div>
+  <div class="filter">
+    <label>최대 시총 (M$)</label>
+    <input type="number" id="f_maxMc" list="dl_maxMc" step="10" value="0" min="0" title="0 = 제한없음. 작을수록 소형 코인" />
+    <datalist id="dl_maxMc"><option value="0">0 (제한없음)</option><option value="50">50M</option><option value="200">200M</option><option value="500">500M</option></datalist>
+  </div>
+  <div class="filter">
+    <label>최소 FDV (M$)</label>
+    <input type="number" id="f_minFdv" list="dl_minFdv" step="10" value="0" min="0" title="Fully Diluted Valuation = maxSupply × price" />
+    <datalist id="dl_minFdv"><option value="0">0</option><option value="50">50M</option><option value="200">200M</option></datalist>
+  </div>
+  <div class="filter">
+    <label>최대 FDV (M$)</label>
+    <input type="number" id="f_maxFdv" list="dl_maxFdv" step="100" value="0" min="0" title="0 = 제한없음" />
+    <datalist id="dl_maxFdv"><option value="0">0 (제한없음)</option><option value="500">500M</option><option value="2000">2B</option></datalist>
+  </div>
+  <div class="filter">
     <label>CoinGecko 매칭</label>
     <select id="f_cg">
       <option value="on" selected>사용 (S3/S5 정확)</option>
@@ -1261,6 +1281,12 @@ function hardExclude(row, opt) {
     if (opt.minOiMcap > 0 && row.oiMcap !== null && row.oiMcap < opt.minOiMcap) {
       return `OI/MCap ${row.oiMcap.toFixed(2)} (<${opt.minOiMcap})`;
     }
+    const mcM = (row.cg.marketCap || 0) / 1e6;
+    const fdvM = ((row.cg.maxSupply || 0) * row.price) / 1e6;
+    if (opt.minMc > 0 && mcM < opt.minMc) return `시총 $${mcM.toFixed(1)}M (<$${opt.minMc}M)`;
+    if (opt.maxMc > 0 && mcM > opt.maxMc) return `시총 $${mcM.toFixed(1)}M (>$${opt.maxMc}M)`;
+    if (opt.minFdv > 0 && fdvM < opt.minFdv) return `FDV $${fdvM.toFixed(1)}M (<$${opt.minFdv}M)`;
+    if (opt.maxFdv > 0 && fdvM > opt.maxFdv) return `FDV $${fdvM.toFixed(1)}M (>$${opt.maxFdv}M)`;
   }
   return null;
 }
@@ -1542,7 +1568,11 @@ async function runScan() {
       minFundPos: parseFloat($('f_minFundPos').value) / 100,
       minOiMcap: parseFloat($('f_minOiMcap').value),
       maxPriorPump: parseFloat($('f_maxPriorPump').value) || 0,
-      maxDrawdown: parseFloat($('f_maxDrawdown').value) || 0
+      maxDrawdown: parseFloat($('f_maxDrawdown').value) || 0,
+      minMc: parseFloat($('f_minMc').value) || 0,
+      maxMc: parseFloat($('f_maxMc').value) || 0,
+      minFdv: parseFloat($('f_minFdv').value) || 0,
+      maxFdv: parseFloat($('f_maxFdv').value) || 0
     };
 
     log('Phase 1: Universe & 거래소 데이터 병렬 로드');
@@ -1595,7 +1625,7 @@ async function runScan() {
         const item = pre[i];
         try {
           const [klines, oi, fundHist, oiHist, lsPos, lsAcc, takerHist] = await Promise.all([
-            Binance.loadKlines(item.candidate.symbol, 100),
+            Binance.loadKlines(item.candidate.symbol, 180),
             Binance.loadOI(item.candidate.symbol),
             Binance.loadFundingHistory(item.candidate.symbol, 21),
             Binance.loadOIHistory(item.candidate.symbol),
@@ -1676,6 +1706,7 @@ async function runScan() {
             // for modal
             closes14: a.closes14,
             candles14: a.candles14,
+            candlesAll: a.candlesAll,
             fundHistory: fundAnalysis.history,
             fundRates: fundAnalysis.rates,
             oiHistRaw: oiHist,
@@ -1865,6 +1896,59 @@ function candleSVG(candles, w = 800, h = 180) {
   return `<svg width="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="display:block;">${parts}${labels}</svg>`;
 }
 
+// 큰 차트 — 캔들 + 볼륨 (4~6개월 일봉)
+function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
+  if (!candles || candles.length === 0) return '<div class="muted">캔들 데이터 없음</div>';
+  const totalH = ch + vh + 20;
+  const highs = candles.map(c => c.h), lows = candles.map(c => c.l), vols = candles.map(c => c.v);
+  const maxP = Math.max(...highs), minP = Math.min(...lows);
+  const rangeP = maxP - minP || 1;
+  const maxV = Math.max(...vols, 1);
+  const barW = w / candles.length;
+  const toY = p => ch - ((p - minP) / rangeP) * ch;
+  const toVY = v => ch + 10 + (vh - (v / maxV) * vh);
+
+  // 가격 캔들
+  const priceParts = candles.map((c, i) => {
+    const x = i * barW + barW * 0.15;
+    const bw = Math.max(barW * 0.7, 1);
+    const cx = x + bw / 2;
+    const up = c.c >= c.o;
+    const color = up ? '#4ade80' : '#f87171';
+    const bodyTop = toY(Math.max(c.o, c.c));
+    const bodyBot = toY(Math.min(c.o, c.c));
+    const bodyH = Math.max(bodyBot - bodyTop, 1);
+    const wickStroke = barW > 3 ? 1 : 0.6;
+    return `<line x1="${cx}" y1="${toY(c.h)}" x2="${cx}" y2="${toY(c.l)}" stroke="${color}" stroke-width="${wickStroke}"/><rect x="${x}" y="${bodyTop}" width="${bw}" height="${bodyH}" fill="${color}"/>`;
+  }).join('');
+
+  // 볼륨 바
+  const volParts = candles.map((c, i) => {
+    const x = i * barW + barW * 0.15;
+    const bw = Math.max(barW * 0.7, 1);
+    const up = c.c >= c.o;
+    const color = up ? '#4ade80' : '#f87171';
+    const y = toVY(c.v);
+    const bh = ch + 10 + vh - y;
+    return `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" fill="${color}" opacity="0.55"/>`;
+  }).join('');
+
+  // 그리드 (5개 가로선)
+  const grid = [0, 0.25, 0.5, 0.75, 1].map(t => {
+    const y = ch - t * ch;
+    const p = minP + t * rangeP;
+    return `<line x1="0" y1="${y}" x2="${w}" y2="${y}" stroke="#243045" stroke-width="0.5" opacity="0.5"/><text x="${w-2}" y="${y-1}" fill="#8b99a8" font-size="10" text-anchor="end">${p.toPrecision(4)}</text>`;
+  }).join('');
+
+  // 시간축 (왼쪽/오른쪽 날짜)
+  const firstDate = new Date(candles[0].t);
+  const lastDate = new Date(candles[candles.length-1].t);
+  const fmt = d => `${d.getMonth()+1}/${d.getDate()}`;
+  const xLabels = `<text x="4" y="${totalH - 4}" fill="#8b99a8" font-size="10">${fmt(firstDate)}</text><text x="${w-4}" y="${totalH - 4}" fill="#8b99a8" font-size="10" text-anchor="end">${fmt(lastDate)}</text>`;
+
+  return `<svg width="100%" viewBox="0 0 ${w} ${totalH}" preserveAspectRatio="none" style="display:block;">${grid}${priceParts}<line x1="0" y1="${ch+5}" x2="${w}" y2="${ch+5}" stroke="#243045" stroke-width="0.5"/>${volParts}${xLabels}<text x="4" y="${ch+9}" fill="#8b99a8" font-size="9">Vol</text></svg>`;
+}
+
 function fundingBarSVG(rates, w = 800, h = 100) {
   if (!rates || rates.length === 0) return '<div class="muted">펀딩 히스토리 없음</div>';
   const ratesPct = rates.map(r => r * 100);
@@ -1899,9 +1983,11 @@ function renderPriceTab(r) {
       <div class="stat-card"><div class="stat-label">펀딩 양수율</div><div class="stat-value">${(r.fundPosRatio * 100).toFixed(0)}%</div></div>
       <div class="stat-card"><div class="stat-label">예상 연 펀딩</div><div class="stat-value pos">${r.fundingApr.toFixed(0)}%</div></div>
     </div>`;
-  const candles = `<div class="chart-block"><h3>14-Day 캔들</h3>${candleSVG(r.candles14)}</div>`;
+  const allDays = r.candlesAll?.length || 0;
+  const bigChart = `<div class="chart-block"><h3>${allDays}-Day 캔들 + 거래량</h3>${r.candlesAll && r.candlesAll.length ? bigCandleSVG(r.candlesAll) : '<div class="muted">데이터 부족</div>'}</div>`;
+  const candles = `<div class="chart-block"><h3>14-Day 캔들 (확대)</h3>${candleSVG(r.candles14)}</div>`;
   const funding = `<div class="chart-block"><h3>21회 펀딩 히스토리 (≈ 7일, 8h 단위)</h3>${fundingBarSVG(r.fundRates)}</div>`;
-  return stats + candles + funding;
+  return stats + bigChart + candles + funding;
 }
 
 function renderExchangesTab(r) {
@@ -2104,13 +2190,21 @@ function openModal(symbol) {
       if (!sec) { goplusEl.innerHTML = '<span class="muted">GoPlus 데이터 없음 (체인 미지원 또는 인덱싱 안됨)</span>'; return; }
       const holders = sec.holders || [];
       const top10Pct = holders.slice(0, 10).reduce((a, h) => a + parseFloat(h.percent || 0), 0) * 100;
+      const top5Pct = holders.slice(0, 5).reduce((a, h) => a + parseFloat(h.percent || 0), 0) * 100;
       const creator = parseFloat(sec.creator_percent || 0) * 100;
       const owner = parseFloat(sec.owner_percent || 0) * 100;
+      const top10Cls = top10Pct >= 70 ? 'neg' : (top10Pct >= 50 ? 'warn' : top10Pct >= 30 ? '' : 'pos');
+      // 큰 카드 + 텍스트 디테일
+      const cards = `
+        <div class="stat-grid" style="margin-bottom:8px;">
+          <div class="stat-card"><div class="stat-label">홀더 수</div><div class="stat-value">${(sec.holder_count || '?').toLocaleString ? Number(sec.holder_count).toLocaleString() : sec.holder_count}</div></div>
+          <div class="stat-card"><div class="stat-label">Top 5 점유</div><div class="stat-value ${top5Pct >= 50 ? 'neg' : (top5Pct >= 30 ? 'warn' : 'pos')}">${top5Pct.toFixed(1)}%</div></div>
+          <div class="stat-card"><div class="stat-label">Top 10 점유</div><div class="stat-value ${top10Cls}" style="font-size:18px;">${top10Pct.toFixed(1)}%</div></div>
+          ${creator > 0.1 ? `<div class="stat-card"><div class="stat-label">Creator</div><div class="stat-value ${creator >= 5 ? 'neg' : ''}">${creator.toFixed(2)}%</div></div>` : ''}
+          ${owner > 0.1 ? `<div class="stat-card"><div class="stat-label">Owner</div><div class="stat-value ${owner >= 5 ? 'neg' : ''}">${owner.toFixed(2)}%</div></div>` : ''}
+        </div>`;
       const items = [];
-      items.push(`<b>홀더 수:</b> ${sec.holder_count || '?'}`);
-      items.push(`<b>Top10 점유:</b> <span class="${top10Pct >= 50 ? 'neg' : (top10Pct >= 30 ? 'warn' : 'pos')}">${top10Pct.toFixed(1)}%</span>`);
-      if (creator > 0.1) items.push(`Creator: <span class="${creator >= 5 ? 'neg' : ''}">${creator.toFixed(2)}%</span>`);
-      if (owner > 0.1) items.push(`Owner: <span class="${owner >= 5 ? 'neg' : ''}">${owner.toFixed(2)}%</span>`);
+      items.push(`Top10 해석: ${top10Pct >= 70 ? '🔥 극단적 집중' : top10Pct >= 50 ? '⚠ 매우 집중' : top10Pct >= 30 ? '주의' : top10Pct >= 15 ? '보통' : '✓ 분산'} (RAVE급 매집은 50%+)`);
       if (sec.is_honeypot === '1') items.push('<span class="neg">⚠ Honeypot 의심</span>');
       if (sec.is_mintable === '1') items.push('<span class="warn">⚠ Mintable</span>');
       if (sec.can_take_back_ownership === '1') items.push('<span class="warn">⚠ Ownership 회수 가능</span>');
@@ -2118,7 +2212,7 @@ function openModal(symbol) {
       const buyTax = parseFloat(sec.buy_tax || 0) * 100;
       const sellTax = parseFloat(sec.sell_tax || 0) * 100;
       if (buyTax > 0 || sellTax > 0) items.push(`Buy/Sell Tax: ${buyTax.toFixed(1)}% / ${sellTax.toFixed(1)}%`);
-      goplusEl.innerHTML = items.join(' · ');
+      goplusEl.innerHTML = cards + '<div style="font-size:11px;">' + items.join(' · ') + '</div>';
     }).catch(() => { goplusEl.innerHTML = '<span class="muted">GoPlus 로드 실패</span>'; });
   } else if (goplusEl) {
     goplusEl.innerHTML = '<span class="muted">GoPlus: EVM 체인만 지원 (현재 ' + (primary?.chain || '미지원 체인') + ')</span>';
@@ -2167,7 +2261,7 @@ async function diagnoseToken(input) {
     }
 
     const [klines, oi, fundHist, oiHist, lsPos, lsAcc, takerHist] = await Promise.all([
-      Binance.loadKlines(perp.symbol, 100),
+      Binance.loadKlines(perp.symbol, 180),
       Binance.loadOI(perp.symbol),
       Binance.loadFundingHistory(perp.symbol, 21),
       Binance.loadOIHistory(perp.symbol),
@@ -2218,7 +2312,7 @@ async function diagnoseToken(input) {
       fundingTrend, basisAnalysis, basis: basisAnalysis.basis,
       oiTrend, oiTrendPct: oiTrend.ratio !== null ? (oiTrend.ratio - 1) * 100 : null,
       lsBias, lsBiasDiff: lsBias.diff, takerRatio,
-      closes14: a.closes14, candles14: a.candles14,
+      closes14: a.closes14, candles14: a.candles14, candlesAll: a.candlesAll, candlesAll: a.candlesAll,
       fundHistory: fundAnalysis.history, fundRates: fundAnalysis.rates, oiHistRaw: oiHist,
       circRatio: cg && cg.circMax !== null ? cg.circMax * 100 : null,
       athChange: cg && cg.athChangePct !== null ? cg.athChangePct : null,
@@ -2253,7 +2347,7 @@ const DAY_MS = 86400000;
 // 임의 시점에서 단일 토큰의 row 객체 생성
 async function backtestRow(symbol, base, ageDays, evalEndTime, cgLookup, cexSets, fullBacktest = true) {
   const [klines, fundHist, oiHist, lsPos, lsAcc, takerHist] = await Promise.all([
-    Binance.loadKlines(symbol, 100, evalEndTime),
+    Binance.loadKlines(symbol, 180, evalEndTime),
     Binance.loadFundingHistory(symbol, 21, evalEndTime),
     Binance.loadOIHistory(symbol, '4h', 84, evalEndTime),
     Binance.loadLSPosition(symbol, '4h', 42, evalEndTime),
@@ -2302,7 +2396,7 @@ async function backtestRow(symbol, base, ageDays, evalEndTime, cgLookup, cexSets
     fundingTrend, basisAnalysis: { basis: 0, score: 0 }, basis: 0, // 베이시스는 과거 추정 X
     oiTrend, oiTrendPct: oiTrend.ratio !== null ? (oiTrend.ratio - 1) * 100 : null,
     lsBias, lsBiasDiff: lsBias.diff, takerRatio,
-    closes14: a.closes14, candles14: a.candles14,
+    closes14: a.closes14, candles14: a.candles14, candlesAll: a.candlesAll,
     fundHistory: fundAnalysis.history, fundRates: fundAnalysis.rates, oiHistRaw: oiHist,
     circRatio: cgLookup && cgLookup.circMax !== null ? cgLookup.circMax * 100 : null,
     athChange: cgLookup && cgLookup.athChangePct !== null ? cgLookup.athChangePct : null,
@@ -3206,7 +3300,11 @@ function getCurrentOpts() {
     minFundPos: parseFloat($('f_minFundPos').value) / 100,
     minOiMcap: parseFloat($('f_minOiMcap').value),
     maxPriorPump: parseFloat($('f_maxPriorPump').value) || 0,
-    maxDrawdown: parseFloat($('f_maxDrawdown').value) || 0
+    maxDrawdown: parseFloat($('f_maxDrawdown').value) || 0,
+    minMc: parseFloat($('f_minMc').value) || 0,
+    maxMc: parseFloat($('f_maxMc').value) || 0,
+    minFdv: parseFloat($('f_minFdv').value) || 0,
+    maxFdv: parseFloat($('f_maxFdv').value) || 0
   };
 }
 
@@ -3365,13 +3463,13 @@ document.querySelector('#bt-modal .modal-overlay').addEventListener('click', () 
 // ============================================================
 // 프리셋 (시스템 + 사용자 다중 저장)
 // ============================================================
-const FILTER_FIELDS = ['f_funding','f_maxRise14','f_minRise14','f_maxDaily','f_minVol','f_minDays','f_minScore','f_maxGain','f_maxCirc','f_minCex','f_minFundPos','f_minOiMcap','f_maxPriorPump','f_maxDrawdown','f_cg'];
+const FILTER_FIELDS = ['f_funding','f_maxRise14','f_minRise14','f_maxDaily','f_minVol','f_minDays','f_minScore','f_maxGain','f_maxCirc','f_minCex','f_minFundPos','f_minOiMcap','f_maxPriorPump','f_maxDrawdown','f_minMc','f_maxMc','f_minFdv','f_maxFdv','f_cg'];
 const PRESETS_KEY = 'raply.presets.v2';
 const LAST_KEY = 'raply.presets.last';
 const SYS_PRESETS = {
-  default: { f_funding:0, f_maxRise14:50, f_minRise14:-15, f_maxDaily:50, f_minVol:100000, f_minDays:120, f_minScore:35, f_maxGain:2.5, f_maxCirc:30, f_minCex:2, f_minFundPos:50, f_minOiMcap:0, f_maxPriorPump:5, f_maxDrawdown:50, f_cg:'on' },
-  tight:   { f_funding:0.005, f_maxRise14:30, f_minRise14:-10, f_maxDaily:30, f_minVol:200000, f_minDays:120, f_minScore:50, f_maxGain:1.8, f_maxCirc:20, f_minCex:3, f_minFundPos:70, f_minOiMcap:0.2, f_maxPriorPump:3, f_maxDrawdown:30, f_cg:'on' },
-  loose:   { f_funding:0, f_maxRise14:150, f_minRise14:-30, f_maxDaily:50, f_minVol:50000, f_minDays:90, f_minScore:25, f_maxGain:5, f_maxCirc:50, f_minCex:1, f_minFundPos:30, f_minOiMcap:0, f_maxPriorPump:10, f_maxDrawdown:70, f_cg:'on' }
+  default: { f_funding:0, f_maxRise14:50, f_minRise14:-15, f_maxDaily:50, f_minVol:100000, f_minDays:120, f_minScore:35, f_maxGain:2.5, f_maxCirc:30, f_minCex:2, f_minFundPos:50, f_minOiMcap:0, f_maxPriorPump:5, f_maxDrawdown:50, f_minMc:0, f_maxMc:0, f_minFdv:0, f_maxFdv:0, f_cg:'on' },
+  tight:   { f_funding:0.005, f_maxRise14:30, f_minRise14:-10, f_maxDaily:30, f_minVol:200000, f_minDays:120, f_minScore:50, f_maxGain:1.8, f_maxCirc:20, f_minCex:3, f_minFundPos:70, f_minOiMcap:0.2, f_maxPriorPump:3, f_maxDrawdown:30, f_minMc:5, f_maxMc:300, f_minFdv:0, f_maxFdv:2000, f_cg:'on' },
+  loose:   { f_funding:0, f_maxRise14:150, f_minRise14:-30, f_maxDaily:50, f_minVol:50000, f_minDays:90, f_minScore:25, f_maxGain:5, f_maxCirc:50, f_minCex:1, f_minFundPos:30, f_minOiMcap:0, f_maxPriorPump:10, f_maxDrawdown:70, f_minMc:0, f_maxMc:0, f_minFdv:0, f_maxFdv:0, f_cg:'on' }
 };
 function applyPreset(values) {
   for (const id of FILTER_FIELDS) {
