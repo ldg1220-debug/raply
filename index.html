@@ -386,8 +386,8 @@
 
 <header>
   <div>
-    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v1.5</span></h1>
-    <span class="sub">17-Signal · S21 RAVE 시그니처 콤보 (BB+펀딩+추세 동시) · 백테스트 라이브 환산 점수</span>
+    <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v1.7</span></h1>
+    <span class="sub">17-Signal · S21 RAVE 콤보 · 🔻 고점 진단 (D1~D9) · 4-6개월 차트 · FDV/MC 필터 · Top10 홀더</span>
   </div>
   <div class="controls">
     <input id="diagInput" type="text" placeholder="심볼 진단 (예: KGEN)" class="diag-input" />
@@ -395,6 +395,7 @@
     <input id="btMinRatio" type="number" step="0.5" value="3" class="diag-input" style="width:70px;" title="최소 펌프 배수 (3x 권장)" />
     <button id="backtestBtn">🔬 역검증</button>
     <button id="deepBtBtn" title="펌프 -21d/-10d/-3d/피크 4단계 비교">🔬+ 심층</button>
+    <button id="dumpScanBtn" title="180일 신고가 근접 + 최근 30일 내 ATH 갱신 종목 고점 위험 스캔">🔻 고점</button>
     <button id="watchBtn">★ Watchlist</button>
     <button id="scanBtn" class="primary">스캔 시작</button>
   </div>
@@ -1452,6 +1453,369 @@ function computeScore(row) {
 function isLateEntry(row) {
   return row._lateEntryWarning === true;
 }
+
+// ============================================================
+// 고점 (Dump/Top) 시그널 분석 — 펌프 종목의 고점 부근 패턴 학습 기반
+// ============================================================
+// 입력: row (이미 분석된 row 객체)
+// 출력: { score: 0~100, signals: [{ key, name, score, max, detail }] }
+function analyzeDumpSignals(row) {
+  const sigs = [];
+  const candles = row.candlesAll || row.candles14 || [];
+  if (candles.length === 0) return { score: 0, signals: [], topRisk: 'unknown' };
+
+  const closes = candles.map(c => c.c);
+  const highs = candles.map(c => c.h);
+  const lows = candles.map(c => c.l);
+  const vols = candles.map(c => c.v);
+  const n = candles.length;
+  const last = candles[n - 1];
+  const curr = last.c;
+
+  // D1: ATH 근접도 (현재가 / 180일 max) — max 15
+  const max180 = Math.max(...highs);
+  const athProx = curr / max180;
+  let d1 = 0;
+  if (athProx >= 0.99) d1 = 15;
+  else if (athProx >= 0.95) d1 = 12;
+  else if (athProx >= 0.90) d1 = 8;
+  else if (athProx >= 0.80) d1 = 4;
+  sigs.push({ key: 'D1', name: 'ATH 근접도', score: d1, max: 15, detail: `현재가 / 180d max = ${(athProx*100).toFixed(1)}%` });
+
+  // D2: Parabolic 가격 (3~7일 누적 상승률) — max 18
+  let cumGain7 = 0, cumGain3 = 0;
+  if (n >= 7) cumGain7 = (closes[n-1] / closes[n-7] - 1) * 100;
+  if (n >= 3) cumGain3 = (closes[n-1] / closes[n-3] - 1) * 100;
+  let d2 = 0;
+  if (cumGain3 >= 100 || cumGain7 >= 200) d2 = 18;
+  else if (cumGain3 >= 50 || cumGain7 >= 100) d2 = 14;
+  else if (cumGain3 >= 30 || cumGain7 >= 60) d2 = 10;
+  else if (cumGain3 >= 15 || cumGain7 >= 30) d2 = 5;
+  sigs.push({ key: 'D2', name: 'Parabolic (3d/7d 누적)', score: d2, max: 18, detail: `3d ${cumGain3.toFixed(0)}% · 7d ${cumGain7.toFixed(0)}%` });
+
+  // D3: 거래량 급증 (오늘 vol / 30d 평균) — max 12
+  const tail30 = vols.slice(-Math.min(30, n));
+  const avgVol30 = tail30.reduce((a, b) => a + b, 0) / tail30.length;
+  const volSpike = avgVol30 > 0 ? last.v / avgVol30 : 0;
+  let d3 = 0;
+  if (volSpike >= 10) d3 = 12;
+  else if (volSpike >= 5) d3 = 9;
+  else if (volSpike >= 3) d3 = 6;
+  else if (volSpike >= 2) d3 = 3;
+  sigs.push({ key: 'D3', name: '거래량 급증', score: d3, max: 12, detail: `오늘 vol / 30d 평균 = ${volSpike.toFixed(1)}x` });
+
+  // D4: 펀딩 극단치 — max 12
+  const fundPct = row.funding || 0;
+  let d4 = 0;
+  if (fundPct >= 0.30) d4 = 12;         // 0.30%/8h = annualized 328%
+  else if (fundPct >= 0.15) d4 = 9;
+  else if (fundPct >= 0.08) d4 = 6;
+  else if (fundPct >= 0.05) d4 = 3;
+  sigs.push({ key: 'D4', name: '펀딩 극단치', score: d4, max: 12, detail: `현재 펀딩 ${fundPct.toFixed(4)}%/8h (연 ${(fundPct * 3 * 365).toFixed(0)}%)` });
+
+  // D5: 위꼬리 거부 (오늘 캔들 upper wick / body) — max 10
+  const body = Math.abs(last.c - last.o);
+  const upperWick = last.h - Math.max(last.c, last.o);
+  const wickRatio = body > 0 ? upperWick / body : (upperWick > 0 ? 99 : 0);
+  let d5 = 0;
+  if (wickRatio >= 3 && body > 0) d5 = 10;
+  else if (wickRatio >= 2) d5 = 7;
+  else if (wickRatio >= 1) d5 = 3;
+  sigs.push({ key: 'D5', name: '위꼬리 거부', score: d5, max: 10, detail: `upper wick / body = ${wickRatio.toFixed(1)}x` });
+
+  // D6: BB 확장 (압축 풀림) — max 10
+  // 14d cv / 60d cv > 1.5
+  let bbExpand = null;
+  if (n >= 60) {
+    const cvOf = (arr) => {
+      const m = arr.reduce((a, b) => a + b, 0) / arr.length;
+      if (m <= 0) return 0;
+      const v = arr.reduce((a, b) => a + (b - m) ** 2, 0) / arr.length;
+      return Math.sqrt(v) / m;
+    };
+    const cv14 = cvOf(closes.slice(-14));
+    const cv60 = cvOf(closes.slice(-60));
+    bbExpand = cv60 > 0 ? cv14 / cv60 : null;
+  }
+  let d6 = 0;
+  if (bbExpand !== null) {
+    if (bbExpand >= 3) d6 = 10;
+    else if (bbExpand >= 2) d6 = 7;
+    else if (bbExpand >= 1.5) d6 = 4;
+    else if (bbExpand >= 1.2) d6 = 2;
+  }
+  sigs.push({ key: 'D6', name: 'BB 확장 (압축풀림)', score: d6, max: 10, detail: bbExpand !== null ? `14d/60d cv = ${bbExpand.toFixed(2)}x` : '데이터 부족' });
+
+  // D7: 일일 변동 폭증 — max 8
+  const dailyMove = closes[n-2] > 0 ? Math.abs((curr - closes[n-2]) / closes[n-2]) * 100 : 0;
+  let d7 = 0;
+  if (dailyMove >= 40) d7 = 8;
+  else if (dailyMove >= 25) d7 = 6;
+  else if (dailyMove >= 15) d7 = 3;
+  sigs.push({ key: 'D7', name: '일일 변동 폭증', score: d7, max: 8, detail: `${dailyMove.toFixed(1)}% (전일대비)` });
+
+  // D8: OI 분배 시작 (최근 3일 OI가 7일전 대비 ↓) — max 10
+  // 가용성: OI 데이터 있어야 함 (oiHistRaw에서 추출)
+  const oiHist = row.oiHistRaw || [];
+  let d8 = 0;
+  let oiDeclineDetail = '데이터 없음';
+  if (oiHist.length >= 7) {
+    const oiVals = oiHist.map(h => parseFloat(h.sumOpenInterestValue || h.sumOpenInterest || 0)).filter(v => v > 0);
+    if (oiVals.length >= 7) {
+      const recent3 = oiVals.slice(-3).reduce((a, b) => a + b, 0) / 3;
+      const past7 = oiVals.slice(-10, -7).reduce((a, b) => a + b, 0) / Math.max(1, oiVals.slice(-10, -7).length);
+      if (past7 > 0) {
+        const decline = (recent3 / past7 - 1) * 100;
+        oiDeclineDetail = `최근 3d 평균 / 7d 전 = ${decline >= 0 ? '+' : ''}${decline.toFixed(1)}%`;
+        if (decline <= -30) d8 = 10;
+        else if (decline <= -15) d8 = 6;
+        else if (decline <= -5) d8 = 3;
+      }
+    }
+  }
+  sigs.push({ key: 'D8', name: 'OI 분배 (피크 후 ↓)', score: d8, max: 10, detail: oiDeclineDetail });
+
+  // D9: RAVE 시그니처 충돌 — 매수우위/HL 강함 but BB 확장 = 끝물 시그널 — max 5
+  let d9 = 0;
+  const s17 = row.scoreBreakdown?.S17 || 0;
+  const s19 = row.scoreBreakdown?.S19 || 0;
+  if ((s17 + s19) >= 5 && bbExpand !== null && bbExpand >= 1.5) d9 = 5;
+  else if ((s17 + s19) >= 5) d9 = 2;
+  sigs.push({ key: 'D9', name: '후기 시그널 + BB 확장', score: d9, max: 5, detail: `S17+S19=${(s17+s19).toFixed(1)}/7` });
+
+  const total = sigs.reduce((a, s) => a + s.score, 0);
+  const final = Math.min(Math.round(total), 100);
+  let topRisk = 'low';
+  if (final >= 70) topRisk = 'critical';
+  else if (final >= 50) topRisk = 'high';
+  else if (final >= 30) topRisk = 'moderate';
+  else if (final >= 15) topRisk = 'low';
+  else topRisk = 'safe';
+  return { score: final, signals: sigs, topRisk, athProximity: athProx };
+}
+
+const TOP_RISK_LABEL = {
+  critical: { ko: '🔥 극도 위험', color: '#ef4444', desc: '고점 임박 — 진입 절대 금지 / 보유시 즉시 익절 검토' },
+  high:     { ko: '⚠ 높음', color: '#fb923c', desc: '고점권 — 신규 진입 위험, 분할 익절 고려' },
+  moderate: { ko: '주의', color: '#fbbf24', desc: '경계 — 추세 추가 확인' },
+  low:      { ko: '낮음', color: '#94a3b8', desc: '고점 신호 약함' },
+  safe:     { ko: '✓ 안전', color: '#4ade80', desc: '고점 시그널 없음' },
+  unknown:  { ko: '?', color: '#8b99a8', desc: '데이터 부족' }
+};
+
+// 고점 진단 결과 렌더 (모달 탭 또는 진단 결과)
+function renderDumpTab(r) {
+  const dump = r._dumpAnalysis || analyzeDumpSignals(r);
+  r._dumpAnalysis = dump;
+  const label = TOP_RISK_LABEL[dump.topRisk] || TOP_RISK_LABEL.unknown;
+
+  const sigRows = dump.signals
+    .sort((a, b) => (b.score/b.max) - (a.score/a.max))
+    .map(s => {
+      const pct = s.max > 0 ? s.score / s.max : 0;
+      const cls = pct >= 0.7 ? 'neg' : pct >= 0.4 ? 'warn' : pct > 0 ? '' : 'muted';
+      return `<div class="diag-row">
+        <span class="diag-pts ${pct >= 0.7 ? 'pts-zero' : pct >= 0.4 ? 'pts-mid' : 'pts-full'}">${s.score}/${s.max}</span>
+        <b>${s.name}</b> <span class="muted">[${s.key}]</span>
+        <div style="margin-left:12px; color:var(--muted); font-size:11px; margin-top:2px;">${s.detail}</div>
+      </div>`;
+    }).join('');
+
+  // 가이드라인
+  const guides = [];
+  if (dump.signals.find(s => s.key === 'D2' && s.score >= 14)) guides.push('🔥 가격이 단기간 폭등 (Parabolic) — 분배 단계 진입 가능성');
+  if (dump.signals.find(s => s.key === 'D4' && s.score >= 9)) guides.push('🔥 펀딩 극단치 — 롱이 너무 많아 청산 위험');
+  if (dump.signals.find(s => s.key === 'D5' && s.score >= 7)) guides.push('🔥 위꼬리 거부 — 매도 압력 등장');
+  if (dump.signals.find(s => s.key === 'D8' && s.score >= 6)) guides.push('🔥 OI 분배 — 세력이 포지션 정리 중');
+  if (dump.signals.find(s => s.key === 'D6' && s.score >= 7)) guides.push('⚠ BB 확장 — 매집 끝, 변동성 폭발 단계');
+  if (dump.signals.find(s => s.key === 'D3' && s.score >= 9)) guides.push('⚠ 거래량 급증 — Climax (정점) 가능');
+
+  return `
+    <div class="diag-section" style="text-align:center;">
+      <div style="font-size: 13px; color: var(--muted);">고점 위험도 (Dump Risk)</div>
+      <div style="margin: 8px 0;">
+        <span style="font-size: 36px; font-weight: 700; color: ${label.color};">${dump.score}</span>
+        <span style="font-size: 18px; color: var(--muted);">/100</span>
+      </div>
+      <div style="font-size: 16px; color: ${label.color}; font-weight: 700;">${label.ko}</div>
+      <div style="font-size: 12px; margin-top: 4px;">${label.desc}</div>
+      <div style="margin-top: 8px; color: var(--muted); font-size: 11px;">현재가 / 180일 max = ${(dump.athProximity*100).toFixed(1)}%</div>
+      ${guides.length ? `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; line-height: 1.6;">${guides.map(g => '• ' + g).join('<br>')}</div>` : ''}
+    </div>
+
+    <div class="diag-section">
+      <h4>고점 시그널 분석 (D1~D9)</h4>
+      ${sigRows}
+      <div class="muted" style="font-size: 10px; margin-top: 8px; line-height: 1.5;">
+        D1 ATH 근접도 (15) · D2 Parabolic (18) · D3 거래량 급증 (12) · D4 펀딩 극단치 (12) ·
+        D5 위꼬리 거부 (10) · D6 BB 확장 (10) · D7 일일 변동 (8) · D8 OI 분배 (10) ·
+        D9 후기시그널+BB확장 (5)
+      </div>
+    </div>
+  `;
+}
+
+// 최근 6개월 신고가 갱신 종목 자동 탐색 + 고점 위험 분석
+async function runDumpScan() {
+  const btn = $('dumpScanBtn');
+  btn.disabled = true; btn.textContent = '...';
+  $('bt-modal').classList.add('show');
+  $('bt-body').innerHTML = '<div class="muted">Phase 1: 180일 신고가 근접 종목 탐색 중...</div>';
+
+  try {
+    const useCG = $('f_cg').value === 'on';
+    const [universe, tickers, premium, cexSets, cgMarkets, cgPlatforms] = await Promise.all([
+      Binance.loadUniverse(), Binance.loadTickers(), Binance.loadPremium(), CexLoader.loadAll(),
+      useCG ? CoinGecko.loadMarkets() : Promise.resolve([]),
+      useCG ? CoinGecko.loadPlatforms() : Promise.resolve([])
+    ]);
+    const cgMap = useCG ? CoinGecko.buildSymbolMap(cgMarkets) : new Map();
+    const cgPlatMap = useCG ? CoinGecko.buildPlatformMap(cgPlatforms) : new Map();
+
+    // Phase 1: 모든 선물 토큰 klines → 신고가 근접 (95%+) + 최근 30일 내 ATH 갱신 추출
+    const targets = universe.allPerps;
+    const candidates = [];
+    let done = 0; let idx = 0;
+    async function scanWorker() {
+      while (idx < targets.length) {
+        const i = idx++;
+        const t = targets[i];
+        try {
+          const klines = await Binance.loadKlines(t.symbol, 180);
+          if (!klines || klines.length < 30) continue;
+          const candles = klines.map(k => ({ t: k[0], o: parseFloat(k[1]), h: parseFloat(k[2]), l: parseFloat(k[3]), c: parseFloat(k[4]), v: parseFloat(k[7]) }));
+          const highs = candles.map(c => c.h);
+          const max180 = Math.max(...highs);
+          const curr = candles[candles.length-1].c;
+          if (curr / max180 < 0.85) continue; // 신고가에서 15% 이내 후보만
+          // ATH 갱신일이 최근 30일 이내인지 확인
+          const peakIdx = highs.indexOf(max180);
+          const peakDaysAgo = (candles.length - 1) - peakIdx;
+          if (peakDaysAgo > 30) continue;
+          candidates.push({ symbol: t.symbol, base: t.base, onboardDate: t.onboardDate, hasSpot: t.hasSpot, klines, max180, curr, peakDaysAgo });
+        } catch(e) {}
+        done++;
+        if (done % 20 === 0) $('bt-body').innerHTML = `<div class="muted">Phase 1: ${done}/${targets.length} · 신고가 근접 ${candidates.length}</div>`;
+      }
+    }
+    await Promise.all(Array.from({length: 10}, scanWorker));
+    log(`고점 스캔: 신고가 근접 ${candidates.length}개 발견`);
+
+    if (!candidates.length) { $('bt-body').innerHTML = '<div class="muted">최근 6개월 신고가 근접 종목 없음</div>'; return; }
+
+    // Phase 2: 각 후보의 풀 분석 + 고점 위험도 산출
+    $('bt-body').innerHTML = `<div class="muted">Phase 2: ${candidates.length}개 후보 고점 위험도 분석 중...</div>`;
+    const results = [];
+    let done2 = 0; let idx2 = 0;
+    async function analysisWorker() {
+      while (idx2 < candidates.length) {
+        const i = idx2++;
+        const c = candidates[i];
+        try {
+          const tk = tickers.get(c.symbol);
+          const pm = premium.get(c.symbol);
+          if (!tk || !pm) continue;
+          const [oi, fundHist, oiHist] = await Promise.all([
+            Binance.loadOI(c.symbol),
+            Binance.loadFundingHistory(c.symbol, 21),
+            Binance.loadOIHistory(c.symbol)
+          ]);
+          const a = analyzeKlines(c.klines);
+          if (!a) continue;
+          const cg = useCG ? CoinGecko.lookup(cgMap, c.base, cgPlatMap) : null;
+          const price = parseFloat(pm.markPrice) || parseFloat(tk.lastPrice);
+          const fundingPct = (parseFloat(pm.lastFundingRate) || 0) * 100;
+          // 최소 row 객체
+          const row = {
+            symbol: c.symbol, base: c.base, price, funding: fundingPct,
+            candlesAll: a.candlesAll, candles14: a.candles14,
+            oiHistRaw: oiHist,
+            scoreBreakdown: {}
+          };
+          const dump = analyzeDumpSignals(row);
+          row._dumpAnalysis = dump;
+          row.cg = cg;
+          row.peakDaysAgo = c.peakDaysAgo;
+          row.curr = c.curr;
+          row.max180 = c.max180;
+          results.push(row);
+        } catch(e) {}
+        done2++;
+        if (done2 % 5 === 0) $('bt-body').innerHTML = `<div class="muted">Phase 2: ${done2}/${candidates.length}</div>`;
+      }
+    }
+    await Promise.all(Array.from({length: 5}, analysisWorker));
+
+    results.sort((a, b) => b._dumpAnalysis.score - a._dumpAnalysis.score);
+    state.dumpResults = results;
+    renderDumpScanResults(results);
+  } catch(e) {
+    $('bt-body').innerHTML = `<div class="neg">오류: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '🔻 고점';
+  }
+}
+
+function renderDumpScanResults(results) {
+  const stats = {
+    critical: results.filter(r => r._dumpAnalysis.topRisk === 'critical').length,
+    high: results.filter(r => r._dumpAnalysis.topRisk === 'high').length,
+    moderate: results.filter(r => r._dumpAnalysis.topRisk === 'moderate').length,
+    low: results.filter(r => r._dumpAnalysis.topRisk === 'low').length
+  };
+
+  $('bt-body').innerHTML = `
+    <div class="diag-section" style="text-align:center;">
+      <div style="font-size:13px; color:var(--muted);">고점 위험 스캔 — 180일 신고가 근접 + 최근 30일 내 ATH 갱신 ${results.length}개</div>
+      <div style="margin: 10px 0; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;">
+        <div><span style="font-size: 22px; font-weight: 700; color: ${TOP_RISK_LABEL.critical.color};">${stats.critical}</span><div class="muted" style="font-size:11px;">🔥 극도 위험</div></div>
+        <div><span style="font-size: 22px; font-weight: 700; color: ${TOP_RISK_LABEL.high.color};">${stats.high}</span><div class="muted" style="font-size:11px;">⚠ 높음</div></div>
+        <div><span style="font-size: 22px; font-weight: 700; color: ${TOP_RISK_LABEL.moderate.color};">${stats.moderate}</span><div class="muted" style="font-size:11px;">주의</div></div>
+        <div><span style="font-size: 22px; font-weight: 700; color: ${TOP_RISK_LABEL.low.color};">${stats.low}</span><div class="muted" style="font-size:11px;">낮음</div></div>
+      </div>
+    </div>
+    <div class="diag-section">
+      <h4>📋 종목별 고점 위험도</h4>
+      <table style="width:100%; font-size:11px;">
+        <thead><tr style="color:var(--muted);">
+          <th style="text-align:left;">Symbol</th><th>현재가</th><th>180d max</th><th>근접도</th><th>피크 N일전</th><th>위험도</th><th>상위 시그널</th>
+        </tr></thead>
+        <tbody>
+          ${results.map(r => {
+            const d = r._dumpAnalysis;
+            const lbl = TOP_RISK_LABEL[d.topRisk];
+            const topSigs = d.signals.filter(s => s.score >= s.max/2).sort((a,b)=>b.score-a.score).slice(0, 3).map(s => `${s.key}:${s.score}`).join(' ');
+            return `<tr style="cursor:pointer;" onclick="window.openDumpModal('${r.symbol}')">
+              <td><b>${r.symbol}</b></td>
+              <td>${fmtNum(r.curr, 6)}</td>
+              <td>${fmtNum(r.max180, 6)}</td>
+              <td>${(d.athProximity*100).toFixed(1)}%</td>
+              <td>${r.peakDaysAgo}d</td>
+              <td><span style="color:${lbl.color}; font-weight:700;">${d.score} · ${lbl.ko}</span></td>
+              <td class="muted" style="font-size:10px;">${topSigs || '-'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      <div class="muted" style="font-size:10px; margin-top:8px;">행 클릭 시 상세 고점 진단 모달 열림.</div>
+    </div>
+  `;
+}
+
+window.openDumpModal = function(symbol) {
+  const r = (state.dumpResults || []).find(x => x.symbol === symbol);
+  if (!r) return;
+  state.rowMap.set(symbol, r);
+  $('m_symbol').textContent = `${r.symbol} — 고점 위험 진단`;
+  $('m_meta').innerHTML = `현재가 ${fmtNum(r.curr, 6)} · 180d max ${fmtNum(r.max180, 6)} · 근접 ${(r._dumpAnalysis.athProximity*100).toFixed(1)}%`;
+  $('tab-diagnose').innerHTML = renderDumpTab(r);
+  $('tab-price').innerHTML = `<div class="chart-block"><h3>${r.candlesAll?.length || 0}-Day 캔들 + 거래량</h3>${r.candlesAll ? bigCandleSVG(r.candlesAll) : ''}</div>`;
+  $('tab-exchanges').innerHTML = '<div class="muted">고점 스캔 모드: 거래소 분석은 일반 진단 사용</div>';
+  $('tab-signals').innerHTML = '<div class="muted">고점 스캔 모드</div>';
+  $('modal').classList.add('show');
+  document.querySelectorAll('.modal-tabs .tab').forEach((t, i) => t.classList.toggle('active', i === 0));
+  document.querySelectorAll('.tab-panel').forEach((p, i) => p.classList.toggle('active', i === 0));
+};
 
 // 조작 의심 판별 (배지용)
 function isManipSuspect(row) {
@@ -3358,6 +3722,11 @@ function renderDiagnosisTab(r) {
     </div>`).join('');
 
   const watched = state.watchlist.includes(r.symbol);
+  // 고점 위험 요약
+  const dump = analyzeDumpSignals(r);
+  r._dumpAnalysis = dump;
+  const dumpLbl = TOP_RISK_LABEL[dump.topRisk] || TOP_RISK_LABEL.unknown;
+
   return `
     <div class="diag-section" style="text-align:center;">
       <div style="font-size: 13px; color: var(--muted);">진단 결과</div>
@@ -3368,6 +3737,9 @@ function renderDiagnosisTab(r) {
         ${r.liveEquivalentScore && r.liveEquivalentScore !== r.score ? `<div class="muted" style="font-size:11px; margin-top:4px;">백테스트 환산 (가용 max ${r._availableMax || 100}/100): 라이브 ≈ <b>${r.liveEquivalentScore}</b></div>` : ''}
       </div>
       <div style="font-size: 13px;">${grade.desc}</div>
+      <div style="margin-top: 8px; font-size: 12px; padding: 6px 12px; background: rgba(255,255,255,0.03); border-radius: 6px; display: inline-block;">
+        고점 위험: <span style="color: ${dumpLbl.color}; font-weight: 700;">${dump.score}/100 · ${dumpLbl.ko}</span>
+      </div>
       ${comments.length ? `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; line-height: 1.6; color: var(--text);">${comments.map(c => '• ' + c).join('<br>')}</div>` : ''}
       <div style="margin-top: 12px;">
         <button id="diagWatchBtn" class="diag-watch-btn ${watched ? 'watched' : ''}" onclick="diagToggleWatch('${r.symbol}')">${watched ? '★ 워치리스트에서 제거' : '☆ 워치리스트 추가'}</button>
@@ -3457,6 +3829,7 @@ $('diagInput').addEventListener('keydown', (e) => {
 
 $('backtestBtn').addEventListener('click', runBacktest);
 $('deepBtBtn').addEventListener('click', runDeepBacktest);
+$('dumpScanBtn').addEventListener('click', runDumpScan);
 $('bt-close').addEventListener('click', () => $('bt-modal').classList.remove('show'));
 document.querySelector('#bt-modal .modal-overlay').addEventListener('click', () => $('bt-modal').classList.remove('show'));
 
