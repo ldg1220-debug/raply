@@ -1474,7 +1474,13 @@ function analyzeDumpSignals(row) {
   const vols = candles.map(c => c.v);
   const n = candles.length;
   const last = candles[n - 1];
-  const curr = last.c;
+  // 라이브: 마지막 봉 = 오늘 진행중(미완성). 백테스트: 마지막 봉 = 평가일 완성봉.
+  // 진행중 봉 사용을 피해 점수 일중 변동을 줄임 — 라이브에서는 prev(완성봉) 우선.
+  const isLive = !row.isBacktest;
+  const prev = n >= 2 ? candles[n - 2] : last;
+  const refIdx = isLive ? (n - 2 >= 0 ? n - 2 : n - 1) : n - 1;
+  const refCandle = candles[refIdx];
+  const curr = refCandle.c;
 
   // D1: ATH 근접도 (현재가 / 180일 max) — max 15
   const max180 = Math.max(...highs);
@@ -1484,12 +1490,13 @@ function analyzeDumpSignals(row) {
   else if (athProx >= 0.95) d1 = 12;
   else if (athProx >= 0.90) d1 = 8;
   else if (athProx >= 0.80) d1 = 4;
-  sigs.push({ key: 'D1', name: 'ATH 근접도', score: d1, max: 15, detail: `현재가 / 180d max = ${(athProx*100).toFixed(1)}%` });
+  sigs.push({ key: 'D1', name: 'ATH 근접도', score: d1, max: 15, detail: `기준가 / 180d max = ${(athProx*100).toFixed(1)}%` });
 
   // D2: Parabolic 가격 (3~7일 누적 상승률) — max 18
+  // 완성봉 기준: refIdx 대비 3/7일 전 close 비교 (라이브에서도 안정)
   let cumGain7 = 0, cumGain3 = 0;
-  if (n >= 7) cumGain7 = (closes[n-1] / closes[n-7] - 1) * 100;
-  if (n >= 3) cumGain3 = (closes[n-1] / closes[n-3] - 1) * 100;
+  if (refIdx - 7 >= 0) cumGain7 = (closes[refIdx] / closes[refIdx - 7] - 1) * 100;
+  if (refIdx - 3 >= 0) cumGain3 = (closes[refIdx] / closes[refIdx - 3] - 1) * 100;
   let d2 = 0;
   if (cumGain3 >= 100 || cumGain7 >= 200) d2 = 18;
   else if (cumGain3 >= 50 || cumGain7 >= 100) d2 = 14;
@@ -1497,16 +1504,21 @@ function analyzeDumpSignals(row) {
   else if (cumGain3 >= 15 || cumGain7 >= 30) d2 = 5;
   sigs.push({ key: 'D2', name: 'Parabolic (3d/7d 누적)', score: d2, max: 18, detail: `3d ${cumGain3.toFixed(0)}% · 7d ${cumGain7.toFixed(0)}%` });
 
-  // D3: 거래량 급증 (오늘 vol / 30d 평균) — max 12
-  const tail30 = vols.slice(-Math.min(30, n));
-  const avgVol30 = tail30.reduce((a, b) => a + b, 0) / tail30.length;
-  const volSpike = avgVol30 > 0 ? last.v / avgVol30 : 0;
+  // D3: 거래량 급증 — max 12
+  // 라이브: 어제(완성봉) vol / 그 직전 30d 평균  (오늘 미완성봉 제외)
+  // 백테스트: 평가일(완성봉) vol / 직전 30d 평균
+  const refVolEnd = refIdx + 1;             // exclusive end
+  const refVolStart = Math.max(0, refIdx - 30); // 직전 30봉
+  const refSlice = vols.slice(refVolStart, refIdx); // 기준 봉 제외 (직전 30d)
+  const avgVol30 = refSlice.length ? refSlice.reduce((a, b) => a + b, 0) / refSlice.length : 0;
+  const refVol = vols[refIdx] || 0;
+  const volSpike = avgVol30 > 0 ? refVol / avgVol30 : 0;
   let d3 = 0;
   if (volSpike >= 10) d3 = 12;
   else if (volSpike >= 5) d3 = 9;
   else if (volSpike >= 3) d3 = 6;
   else if (volSpike >= 2) d3 = 3;
-  sigs.push({ key: 'D3', name: '거래량 급증', score: d3, max: 12, detail: `오늘 vol / 30d 평균 = ${volSpike.toFixed(1)}x` });
+  sigs.push({ key: 'D3', name: '거래량 급증', score: d3, max: 12, detail: `기준봉 vol / 직전30d 평균 = ${volSpike.toFixed(1)}x${isLive ? ' (어제봉 기준)' : ''}` });
 
   // D4: 펀딩 극단치 — max 12
   const fundPct = row.funding || 0;
@@ -1517,28 +1529,30 @@ function analyzeDumpSignals(row) {
   else if (fundPct >= 0.05) d4 = 3;
   sigs.push({ key: 'D4', name: '펀딩 극단치', score: d4, max: 12, detail: `현재 펀딩 ${fundPct.toFixed(4)}%/8h (연 ${(fundPct * 3 * 365).toFixed(0)}%)` });
 
-  // D5: 위꼬리 거부 (오늘 캔들 upper wick / body) — max 10
-  const body = Math.abs(last.c - last.o);
-  const upperWick = last.h - Math.max(last.c, last.o);
+  // D5: 위꼬리 거부 — max 10
+  // 라이브: 어제 봉(완성) 위꼬리 비율 (진행중 봉 제외)
+  const refCdl = refCandle;
+  const body = Math.abs(refCdl.c - refCdl.o);
+  const upperWick = refCdl.h - Math.max(refCdl.c, refCdl.o);
   const wickRatio = body > 0 ? upperWick / body : (upperWick > 0 ? 99 : 0);
   let d5 = 0;
   if (wickRatio >= 3 && body > 0) d5 = 10;
   else if (wickRatio >= 2) d5 = 7;
   else if (wickRatio >= 1) d5 = 3;
-  sigs.push({ key: 'D5', name: '위꼬리 거부', score: d5, max: 10, detail: `upper wick / body = ${wickRatio.toFixed(1)}x` });
+  sigs.push({ key: 'D5', name: '위꼬리 거부', score: d5, max: 10, detail: `upper wick / body = ${wickRatio.toFixed(1)}x${isLive ? ' (어제봉)' : ''}` });
 
   // D6: BB 확장 (압축 풀림) — max 10
-  // 14d cv / 60d cv > 1.5
+  // 14d cv / 60d cv > 1.5 — 완성봉 기준으로 슬라이스
   let bbExpand = null;
-  if (n >= 60) {
+  if (refIdx >= 59) {
     const cvOf = (arr) => {
       const m = arr.reduce((a, b) => a + b, 0) / arr.length;
       if (m <= 0) return 0;
       const v = arr.reduce((a, b) => a + (b - m) ** 2, 0) / arr.length;
       return Math.sqrt(v) / m;
     };
-    const cv14 = cvOf(closes.slice(-14));
-    const cv60 = cvOf(closes.slice(-60));
+    const cv14 = cvOf(closes.slice(refIdx - 13, refIdx + 1));
+    const cv60 = cvOf(closes.slice(refIdx - 59, refIdx + 1));
     bbExpand = cv60 > 0 ? cv14 / cv60 : null;
   }
   let d6 = 0;
@@ -1551,7 +1565,9 @@ function analyzeDumpSignals(row) {
   sigs.push({ key: 'D6', name: 'BB 확장 (압축풀림)', score: d6, max: 10, detail: bbExpand !== null ? `14d/60d cv = ${bbExpand.toFixed(2)}x` : '데이터 부족' });
 
   // D7: 일일 변동 폭증 — max 8
-  const dailyMove = closes[n-2] > 0 ? Math.abs((curr - closes[n-2]) / closes[n-2]) * 100 : 0;
+  // 완성봉 기준: refIdx vs refIdx-1 종가
+  const prevClose = refIdx - 1 >= 0 ? closes[refIdx - 1] : closes[refIdx];
+  const dailyMove = prevClose > 0 ? Math.abs((closes[refIdx] - prevClose) / prevClose) * 100 : 0;
   let d7 = 0;
   if (dailyMove >= 40) d7 = 8;
   else if (dailyMove >= 25) d7 = 6;
@@ -3273,10 +3289,11 @@ window.diagToggleWatchOpen = function(symbol) {
 // 심층 백테스트: 펌프 4단계 시점(초입/중반/말기/피크) 시그널 진화
 // ============================================================
 const DEEP_PHASES = [
-  { name: '초입', short: '-21d', offsetDays: 21, color: '#94a3b8' },
-  { name: '중반', short: '-10d', offsetDays: 10, color: '#fbbf24' },
-  { name: '말기', short: '-3d',  offsetDays: 3,  color: '#fb923c' },
-  { name: '피크', short: '0d',   offsetDays: 0,  color: '#f87171' }
+  { name: '초입', short: '-21d', offsetDays: 21,  color: '#94a3b8' },
+  { name: '중반', short: '-10d', offsetDays: 10,  color: '#fbbf24' },
+  { name: '말기', short: '-3d',  offsetDays: 3,   color: '#fb923c' },
+  { name: '피크', short: '0d',   offsetDays: 0,   color: '#f87171' },
+  { name: '사후', short: '+3d',  offsetDays: -3,  color: '#a78bfa' }
 ];
 const SIG_KEYS = ['S2','S3','S6cont','S6size','S7','S8','S9','S10','S11','S12','S13','S14','S15','S17','S18','S19'];
 const SIG_MAX  = {S2:3,S3:12,S6cont:9,S6size:7,S7:8,S8:7,S9:9,S10:6,S11:4,S12:13,S13:7,S14:8,S15:10,S17:4,S18:5,S19:3};
@@ -3338,12 +3355,22 @@ async function runDeepBacktest() {
           const evalDate = p.peakDate - phase.offsetDays * DAY_MS;
           const ageDays = p.onboardDate ? Math.floor((evalDate - p.onboardDate) / DAY_MS) : null;
           if (ageDays !== null && ageDays < 7) continue; // 상장 직후 평가 X
+          if (evalDate > Date.now() - DAY_MS) continue;  // 미래 시점 (사후 단계가 아직 안 옴) 스킵
           try {
             // 심층 시점별 fullBacktest 재계산: 평가 시점이 30일 이내면 OI 가용
             const evalDaysAgo = (Date.now() - evalDate) / DAY_MS;
             const phaseFullBacktest = evalDaysAgo <= 28;
             const row = await backtestRow(p.symbol, p.base, ageDays, evalDate, cg, cexSets, phaseFullBacktest);
-            if (row) phaseResults.push({ phase: phase.name, offset: phase.offsetDays, score: row.score, liveScore: row.liveEquivalentScore, breakdown: row.scoreBreakdown, row });
+            if (row) {
+              const dump = analyzeDumpSignals(row);
+              row._dumpAnalysis = dump;
+              phaseResults.push({
+                phase: phase.name, offset: phase.offsetDays,
+                score: row.score, liveScore: row.liveEquivalentScore, breakdown: row.scoreBreakdown,
+                dumpScore: dump.score, dumpRisk: dump.topRisk, dumpSignals: dump.signals,
+                row
+              });
+            }
           } catch(e) {}
         }
         if (phaseResults.length >= 2) {
@@ -3391,13 +3418,45 @@ function renderDeepResults(evolutions) {
 
   // 평균 점수 진화 (라이브 환산 우선)
   const phaseScoreAvg = {};
+  const phaseDumpAvg = {};
+  const phaseDumpDist = {};   // { phaseName: { apex, critical, high, moderate, low, safe } }
+  const DUMP_SIG_KEYS = ['D1','D2','D3','D4','D5','D6','D7','D8','D9'];
+  const phaseDumpSigAvg = {}; // { phaseName: { D1: avg, ... } }
   for (const phase of DEEP_PHASES) {
     const scores = evolutions.map(e => {
       const ph = e.phases.find(p => p.phase === phase.name);
       return ph ? (ph.liveScore || ph.score) : undefined;
     }).filter(s => s !== undefined);
     phaseScoreAvg[phase.name] = scores.length ? scores.reduce((a,b)=>a+b,0)/scores.length : 0;
+
+    const dumps = evolutions.map(e => {
+      const ph = e.phases.find(p => p.phase === phase.name);
+      return ph ? ph.dumpScore : undefined;
+    }).filter(s => s !== undefined);
+    phaseDumpAvg[phase.name] = dumps.length ? dumps.reduce((a,b)=>a+b,0)/dumps.length : 0;
+
+    const dist = { apex:0, critical:0, high:0, moderate:0, low:0, safe:0 };
+    for (const e of evolutions) {
+      const ph = e.phases.find(p => p.phase === phase.name);
+      if (ph && ph.dumpRisk && dist[ph.dumpRisk] !== undefined) dist[ph.dumpRisk]++;
+    }
+    phaseDumpDist[phase.name] = dist;
+
+    phaseDumpSigAvg[phase.name] = {};
+    for (const dk of DUMP_SIG_KEYS) {
+      const vals = [];
+      for (const e of evolutions) {
+        const ph = e.phases.find(p => p.phase === phase.name);
+        if (ph && ph.dumpSignals) {
+          const sig = ph.dumpSignals.find(s => s.key === dk);
+          if (sig) vals.push(sig.score);
+        }
+      }
+      phaseDumpSigAvg[phase.name][dk] = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : 0;
+    }
   }
+  const DUMP_SIG_MAX = { D1:15, D2:18, D3:12, D4:12, D5:10, D6:10, D7:8, D8:10, D9:5 };
+  const DUMP_SIG_NAME = { D1:'ATH 근접도', D2:'Parabolic', D3:'거래량 급증', D4:'펀딩 극단', D5:'위꼬리', D6:'BB 확장', D7:'일일변동', D8:'OI 분배', D9:'후기+BB' };
 
   // 시그널 분류: 초입 vs 말기 등장률 차이로 분류
   const sigCategorized = SIG_KEYS.map(k => {
@@ -3453,6 +3512,38 @@ function renderDeepResults(evolutions) {
     </tr>`;
   }).join('');
 
+  // 종목별 덤프 스코어 진화 테이블
+  const dumpEvoRows = evolutions.map(e => {
+    const dumpCells = DEEP_PHASES.map(ph => {
+      const found = e.phases.find(p => p.phase === ph.name);
+      if (!found) return '<td class="muted">-</td>';
+      const ds = found.dumpScore || 0;
+      const lbl = TOP_RISK_LABEL[found.dumpRisk] || TOP_RISK_LABEL.unknown;
+      return `<td><span style="font-size:11px; font-weight:700; color:${lbl.color}; padding:1px 5px; border-radius:4px; background:rgba(255,255,255,.04);" title="${lbl.ko}">${ds}</span></td>`;
+    }).join('');
+    const peakDump = (e.phases.find(p => p.phase === '피크')?.dumpScore) || 0;
+    const earlyDump = (e.phases.find(p => p.phase === '초입')?.dumpScore) || 0;
+    const ddelta = peakDump - earlyDump;
+    return `<tr style="cursor:pointer;" onclick="diagToggleWatchOpen('${e.symbol}')">
+      <td><b>${e.symbol}</b></td>
+      <td>${e.pumpRatio.toFixed(1)}x</td>
+      ${dumpCells}
+      <td class="${ddelta > 0 ? 'neg' : 'muted'}">+${ddelta}</td>
+    </tr>`;
+  }).join('');
+
+  // 덤프 시그널별 진화 (D1~D9 평균)
+  const dumpSigEvoRows = DUMP_SIG_KEYS.map(dk => {
+    const max = DUMP_SIG_MAX[dk];
+    const cells = DEEP_PHASES.map(ph => {
+      const v = phaseDumpSigAvg[ph.name][dk] || 0;
+      const pct = max > 0 ? v / max : 0;
+      const cls = pct >= 0.6 ? 'neg' : pct >= 0.3 ? 'warn' : 'muted';
+      return `<td class="${cls}">${v.toFixed(1)}/${max}</td>`;
+    }).join('');
+    return `<tr><td><b>${dk}</b> ${DUMP_SIG_NAME[dk]}</td>${cells}</tr>`;
+  }).join('');
+
   // 자동 권장 사항 (시그널 분류 기반)
   const drops = sigCategorized.filter(s => s.category === '🚫 무용');
   const boosts = sigCategorized.filter(s => s.category === '🟢 일관' || s.category === '🔵 선행');
@@ -3469,25 +3560,88 @@ function renderDeepResults(evolutions) {
     </div>
   `;
 
+  // 덤프 등급 분포 셀
+  const dumpDistCells = DEEP_PHASES.map(ph => {
+    const d = phaseDumpDist[ph.name];
+    const total = d.apex + d.critical + d.high + d.moderate + d.low + d.safe;
+    const apexPct = total ? (d.apex * 100 / total).toFixed(0) : 0;
+    const criticalPct = total ? (d.critical * 100 / total).toFixed(0) : 0;
+    const highPct = total ? (d.high * 100 / total).toFixed(0) : 0;
+    return `<td style="font-size:10px;">
+      <span style="color:${TOP_RISK_LABEL.apex.color};">🚨${d.apex}</span> ·
+      <span style="color:${TOP_RISK_LABEL.critical.color};">🔥${d.critical}</span> ·
+      <span style="color:${TOP_RISK_LABEL.high.color};">⚠${d.high}</span><br>
+      <span class="muted">apex+crit: ${parseFloat(apexPct)+parseFloat(criticalPct)}%</span>
+    </td>`;
+  }).join('');
+
   $('bt-body').innerHTML = `
     <div class="diag-section" style="text-align:center;">
-      <div style="font-size:13px; color:var(--muted);">심층 백테스트 — ${evolutions.length}개 펌프 종목 × 4단계 시점</div>
-      <div style="margin: 10px 0; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;">
+      <div style="font-size:13px; color:var(--muted);">심층 백테스트 — ${evolutions.length}개 펌프 종목 × ${DEEP_PHASES.length}단계 시점</div>
+      <div style="margin: 10px 0; display: flex; justify-content: center; gap: 18px; flex-wrap: wrap;">
         ${DEEP_PHASES.map(ph => `
-          <div>
-            <div style="color:${ph.color}; font-size:11px;">${ph.name} (${ph.short})</div>
-            <div style="font-size: 22px; font-weight: 700;">${phaseScoreAvg[ph.name].toFixed(1)}</div>
-            <div class="muted" style="font-size:10px;">평균 점수</div>
+          <div style="min-width: 88px;">
+            <div style="color:${ph.color}; font-size:11px; font-weight:600;">${ph.name} (${ph.short})</div>
+            <div style="font-size: 20px; font-weight: 700;">${phaseScoreAvg[ph.name].toFixed(1)}</div>
+            <div class="muted" style="font-size:10px;">매집 점수</div>
+            <div style="font-size: 18px; font-weight: 700; color:${phaseDumpAvg[ph.name] >= 70 ? '#ef4444' : phaseDumpAvg[ph.name] >= 50 ? '#fb923c' : phaseDumpAvg[ph.name] >= 30 ? '#fbbf24' : 'var(--muted)'}; margin-top:6px;">${phaseDumpAvg[ph.name].toFixed(1)}</div>
+            <div class="muted" style="font-size:10px;">🔻 덤프 점수</div>
           </div>
         `).join('')}
       </div>
-      <div class="muted" style="font-size:11px;">평균 점수가 시점별로 상승하면 시그널이 펌프 임박 시점에 더 강해진다는 뜻 (정상). 차이가 작으면 조기 검출도 가능.</div>
+      <div class="muted" style="font-size:11px;">매집 점수: 초입 → 피크 상승이 정상. 덤프 점수: 피크에서 80~100점 도달해야 신호 정확.</div>
+    </div>
+
+    <div class="diag-section" style="border-color:#ef4444;">
+      <h4 style="color:#ef4444;">🔻 덤프 시그널 검증 — 피크 시점에 점수가 폭증하는가?</h4>
+      <table style="width:100%; font-size:11px;">
+        <thead><tr style="color:var(--muted);">
+          <th style="text-align:left;">단계</th>
+          ${DEEP_PHASES.map(ph => `<th>${ph.name}<br><span class="muted" style="font-size:9px;">(${ph.short})</span></th>`).join('')}
+        </tr></thead>
+        <tbody>
+          <tr><td><b>평균 덤프 점수</b></td>
+            ${DEEP_PHASES.map(ph => {
+              const v = phaseDumpAvg[ph.name];
+              const cls = v >= 80 ? 'neg' : v >= 50 ? 'warn' : 'muted';
+              return `<td class="${cls}" style="font-weight:700;">${v.toFixed(1)}</td>`;
+            }).join('')}
+          </tr>
+          <tr><td><b>등급 분포</b><br><span class="muted" style="font-size:10px;">🚨 apex / 🔥 crit / ⚠ high</span></td>
+            ${dumpDistCells}
+          </tr>
+        </tbody>
+      </table>
+      <h4 style="color:#ef4444; margin-top:14px;">D1~D9 시그널별 진화</h4>
+      <table style="width:100%; font-size:11px;">
+        <thead><tr style="color:var(--muted);">
+          <th style="text-align:left;">시그널</th>
+          ${DEEP_PHASES.map(ph => `<th>${ph.name}</th>`).join('')}
+        </tr></thead>
+        <tbody>${dumpSigEvoRows}</tbody>
+      </table>
+      <div class="muted" style="font-size:10px; margin-top:6px;">
+        피크/사후 시점에 강하게 발현하는 시그널 = 고점 검출에 유효. 초입에서도 높으면 false positive 위험.
+      </div>
+    </div>
+
+    <div class="diag-section">
+      <h4>🔻 종목별 덤프 점수 진화</h4>
+      <table style="width:100%; font-size:11px;">
+        <thead><tr style="color:var(--muted);">
+          <th style="text-align:left;">Symbol</th><th>펌프</th>
+          ${DEEP_PHASES.map(ph => `<th>${ph.name}</th>`).join('')}
+          <th>Δ</th>
+        </tr></thead>
+        <tbody>${dumpEvoRows}</tbody>
+      </table>
+      <div class="muted" style="font-size:10px; margin-top:6px;">각 셀: 덤프 점수 (색상=위험등급). Δ = 피크 - 초입.</div>
     </div>
 
     ${recommendHtml}
 
     <div class="diag-section">
-      <h4>📊 시그널 진화 (펌프 종목 평균)</h4>
+      <h4>📊 매집 시그널 진화 (펌프 종목 평균)</h4>
       <table style="width:100%; font-size:11px;">
         <thead><tr style="color:var(--muted);"><th style="text-align:left;">시그널</th><th>초입(-21d)</th><th>말기(-3d)</th><th>피크(0d)</th><th>분류</th><th>권장</th></tr></thead>
         <tbody>${sigEvoRows}</tbody>
@@ -3495,9 +3649,13 @@ function renderDeepResults(evolutions) {
     </div>
 
     <div class="diag-section">
-      <h4>📈 종목별 점수 진화 (Top ${evolutions.length})</h4>
+      <h4>📈 종목별 매집 점수 진화 (Top ${evolutions.length})</h4>
       <table style="width:100%; font-size:11px;">
-        <thead><tr style="color:var(--muted);"><th style="text-align:left;">Symbol</th><th>펌프</th><th>초입</th><th>중반</th><th>말기</th><th>피크</th><th>Δ</th><th>BT</th></tr></thead>
+        <thead><tr style="color:var(--muted);">
+          <th style="text-align:left;">Symbol</th><th>펌프</th>
+          ${DEEP_PHASES.map(ph => `<th>${ph.name}</th>`).join('')}
+          <th>Δ</th><th>BT</th>
+        </tr></thead>
         <tbody>${evoRows}</tbody>
       </table>
       <div class="muted" style="font-size:10px; margin-top:6px;">행 클릭 시 워치리스트 추가. Δ = 피크 점수 - 초입 점수 (시그널 누적 정도).</div>
