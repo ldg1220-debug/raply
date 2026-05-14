@@ -380,6 +380,10 @@
   @media (max-width: 768px) {
     table { min-width: 1100px; font-size: 11px; }
   }
+  @keyframes apexPulse {
+    from { box-shadow: 0 0 8px rgba(255,45,85,.4); }
+    to   { box-shadow: 0 0 22px rgba(255,45,85,.9); }
+  }
 </style>
 </head>
 <body>
@@ -1585,16 +1589,17 @@ function analyzeDumpSignals(row) {
 
   const total = sigs.reduce((a, s) => a + s.score, 0);
   const final = Math.min(Math.round(total), 100);
-  let topRisk = 'low';
-  if (final >= 70) topRisk = 'critical';
+  let topRisk = 'safe';
+  if (final >= 90) topRisk = 'apex';
+  else if (final >= 70) topRisk = 'critical';
   else if (final >= 50) topRisk = 'high';
   else if (final >= 30) topRisk = 'moderate';
   else if (final >= 15) topRisk = 'low';
-  else topRisk = 'safe';
   return { score: final, signals: sigs, topRisk, athProximity: athProx };
 }
 
 const TOP_RISK_LABEL = {
+  apex:     { ko: '🚨 이번 상승사이클 최고점 인접', color: '#ff2d55', desc: '복합 고점 시그널 극단치 — 즉각 익절 / 추가 진입 절대 금지', badge: true },
   critical: { ko: '🔥 극도 위험', color: '#ef4444', desc: '고점 임박 — 진입 절대 금지 / 보유시 즉시 익절 검토' },
   high:     { ko: '⚠ 높음', color: '#fb923c', desc: '고점권 — 신규 진입 위험, 분할 익절 고려' },
   moderate: { ko: '주의', color: '#fbbf24', desc: '경계 — 추세 추가 확인' },
@@ -1630,8 +1635,23 @@ function renderDumpTab(r) {
   if (dump.signals.find(s => s.key === 'D6' && s.score >= 7)) guides.push('⚠ BB 확장 — 매집 끝, 변동성 폭발 단계');
   if (dump.signals.find(s => s.key === 'D3' && s.score >= 9)) guides.push('⚠ 거래량 급증 — Climax (정점) 가능');
 
+  const apexBanner = dump.topRisk === 'apex' ? `
+    <div style="
+      margin-bottom: 12px;
+      padding: 14px 18px;
+      background: linear-gradient(135deg, rgba(255,45,85,.18), rgba(239,68,68,.10));
+      border: 2px solid #ff2d55;
+      border-radius: 10px;
+      text-align: center;
+      animation: apexPulse 1.8s ease-in-out infinite alternate;
+    ">
+      <div style="font-size: 22px; font-weight: 800; color: #ff2d55; letter-spacing: .5px;">🚨 이번 상승사이클 최고점 인접</div>
+      <div style="font-size: 12px; color: #ff6b81; margin-top: 6px;">고점 위험도 ${dump.score}/100 · 즉각 익절 / 신규 진입 절대 금지</div>
+    </div>` : '';
+
   return `
-    <div class="diag-section" style="text-align:center;">
+    ${apexBanner}
+    <div class="diag-section" style="text-align:center; ${dump.topRisk === 'apex' ? 'border-color:#ff2d55;' : ''}">
       <div style="font-size: 13px; color: var(--muted);">고점 위험도 (Dump Risk)</div>
       <div style="margin: 8px 0;">
         <span style="font-size: 36px; font-weight: 700; color: ${label.color};">${dump.score}</span>
@@ -1758,16 +1778,18 @@ async function runDumpScan() {
 
 function renderDumpScanResults(results) {
   const stats = {
+    apex:     results.filter(r => r._dumpAnalysis.topRisk === 'apex').length,
     critical: results.filter(r => r._dumpAnalysis.topRisk === 'critical').length,
-    high: results.filter(r => r._dumpAnalysis.topRisk === 'high').length,
+    high:     results.filter(r => r._dumpAnalysis.topRisk === 'high').length,
     moderate: results.filter(r => r._dumpAnalysis.topRisk === 'moderate').length,
-    low: results.filter(r => r._dumpAnalysis.topRisk === 'low').length
+    low:      results.filter(r => r._dumpAnalysis.topRisk === 'low').length
   };
 
   $('bt-body').innerHTML = `
     <div class="diag-section" style="text-align:center;">
       <div style="font-size:13px; color:var(--muted);">고점 위험 스캔 — 180일 신고가 근접 + 최근 30일 내 ATH 갱신 ${results.length}개</div>
       <div style="margin: 10px 0; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;">
+        ${stats.apex ? `<div><span style="font-size: 22px; font-weight: 700; color: ${TOP_RISK_LABEL.apex.color};">${stats.apex}</span><div class="muted" style="font-size:11px;">🚨 최고점 인접</div></div>` : ''}
         <div><span style="font-size: 22px; font-weight: 700; color: ${TOP_RISK_LABEL.critical.color};">${stats.critical}</span><div class="muted" style="font-size:11px;">🔥 극도 위험</div></div>
         <div><span style="font-size: 22px; font-weight: 700; color: ${TOP_RISK_LABEL.high.color};">${stats.high}</span><div class="muted" style="font-size:11px;">⚠ 높음</div></div>
         <div><span style="font-size: 22px; font-weight: 700; color: ${TOP_RISK_LABEL.moderate.color};">${stats.moderate}</span><div class="muted" style="font-size:11px;">주의</div></div>
@@ -3726,8 +3748,22 @@ function renderDiagnosisTab(r) {
   const dump = analyzeDumpSignals(r);
   r._dumpAnalysis = dump;
   const dumpLbl = TOP_RISK_LABEL[dump.topRisk] || TOP_RISK_LABEL.unknown;
+  const isApex = dump.topRisk === 'apex';
+
+  const apexDiagBanner = isApex ? `
+    <div style="
+      padding: 14px 18px; margin-bottom: 4px;
+      background: linear-gradient(135deg, rgba(255,45,85,.18), rgba(239,68,68,.10));
+      border: 2px solid #ff2d55; border-radius: 10px;
+      text-align: center;
+      animation: apexPulse 1.8s ease-in-out infinite alternate;
+    ">
+      <div style="font-size: 20px; font-weight: 800; color: #ff2d55;">🚨 이번 상승사이클 최고점 인접</div>
+      <div style="font-size: 11px; color: #ff6b81; margin-top: 5px;">고점 위험도 ${dump.score}/100 · 즉각 익절 / 신규 진입 절대 금지</div>
+    </div>` : '';
 
   return `
+    ${apexDiagBanner}
     <div class="diag-section" style="text-align:center;">
       <div style="font-size: 13px; color: var(--muted);">진단 결과</div>
       <div style="margin: 8px 0;">
@@ -3737,13 +3773,37 @@ function renderDiagnosisTab(r) {
         ${r.liveEquivalentScore && r.liveEquivalentScore !== r.score ? `<div class="muted" style="font-size:11px; margin-top:4px;">백테스트 환산 (가용 max ${r._availableMax || 100}/100): 라이브 ≈ <b>${r.liveEquivalentScore}</b></div>` : ''}
       </div>
       <div style="font-size: 13px;">${grade.desc}</div>
-      <div style="margin-top: 8px; font-size: 12px; padding: 6px 12px; background: rgba(255,255,255,0.03); border-radius: 6px; display: inline-block;">
-        고점 위험: <span style="color: ${dumpLbl.color}; font-weight: 700;">${dump.score}/100 · ${dumpLbl.ko}</span>
-      </div>
       ${comments.length ? `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; line-height: 1.6; color: var(--text);">${comments.map(c => '• ' + c).join('<br>')}</div>` : ''}
       <div style="margin-top: 12px;">
         <button id="diagWatchBtn" class="diag-watch-btn ${watched ? 'watched' : ''}" onclick="diagToggleWatch('${r.symbol}')">${watched ? '★ 워치리스트에서 제거' : '☆ 워치리스트 추가'}</button>
       </div>
+    </div>
+
+    <div class="diag-section" style="border-color: ${dumpLbl.color}; ${isApex ? 'background: rgba(255,45,85,.06);' : ''}">
+      <h4 style="color: ${dumpLbl.color}; margin-bottom: 10px;">고점 위험도 (Dump Risk Score)</h4>
+      <div style="display:flex; align-items:center; gap: 18px; flex-wrap:wrap;">
+        <div style="text-align:center; min-width: 80px;">
+          <div style="font-size: 40px; font-weight: 800; color: ${dumpLbl.color}; line-height:1;">${dump.score}</div>
+          <div style="font-size: 12px; color: var(--muted);">/100</div>
+        </div>
+        <div style="flex:1;">
+          <div style="font-size: 15px; font-weight: 700; color: ${dumpLbl.color};">${dumpLbl.ko}</div>
+          <div style="font-size: 12px; margin-top: 4px;">${dumpLbl.desc}</div>
+          <div style="margin-top: 6px; color: var(--muted); font-size: 11px;">현재가 / 180일 max = ${(dump.athProximity*100).toFixed(1)}%</div>
+        </div>
+      </div>
+      <div style="margin-top: 10px; background: rgba(255,255,255,.03); border-radius: 6px; padding: 8px 10px;">
+        ${dump.signals.filter(s => s.score > 0).sort((a,b) => b.score - a.score).slice(0, 5).map(s => {
+          const pct = s.max > 0 ? s.score / s.max : 0;
+          const sc = pct >= 0.7 ? '#ef4444' : pct >= 0.4 ? '#fbbf24' : 'var(--muted)';
+          return `<div style="display:flex; gap:8px; align-items:center; font-size:11px; padding: 3px 0; border-bottom: 1px solid var(--border);">
+            <span style="color:${sc}; font-weight:700; min-width:32px;">${s.score}/${s.max}</span>
+            <span>${s.name}</span>
+            <span style="color:var(--muted); margin-left:auto;">${s.detail}</span>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="margin-top: 8px; font-size: 11px; color: var(--info);">🔻 고점 탭에서 D1~D9 전체 시그널 확인</div>
     </div>
 
     ${hardX.length ? `
