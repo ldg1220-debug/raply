@@ -2597,7 +2597,34 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   const volDivider = `<line x1="0" y1="${ch+5}" x2="${w}" y2="${ch+5}" stroke="#243045" stroke-width="0.5"/>`;
   const volTitle   = `<text x="6" y="${ch+12}" fill="#cbd5e1" font-size="10" font-weight="700">Vol</text>`;
 
-  return `<svg id="bigchartsvg" width="100%" viewBox="0 0 ${w} ${totalH}" preserveAspectRatio="none" style="display:block; cursor:grab; touch-action:none;">${grid}${fibLines}${rsiBg}${zoomGroup}${volDivider}${legend}${fibLabels}${rsiLabels}${xLabels}${volTitle}</svg>`;
+  // 크로스헤어 + OHLC 툴팁 (초기 숨김, JS에서 이동/표시)
+  const crosshair = `
+    <g id="ch-cursor" style="display:none; pointer-events:none;">
+      <line id="ch-vline" x1="0" y1="0" x2="0" y2="${totalH - 22}" stroke="#cbd5e1" stroke-width="0.6" stroke-dasharray="3,3" opacity="0.55"/>
+      <line id="ch-hline" x1="0" y1="0" x2="${w}" y2="0" stroke="#cbd5e1" stroke-width="0.6" stroke-dasharray="3,3" opacity="0.55"/>
+      <rect id="ch-price-bg" x="0" y="0" width="84" height="16" fill="#1e293b" stroke="#fbbf24" stroke-width="0.7" rx="2"/>
+      <text id="ch-price" x="0" y="0" fill="#fbbf24" font-size="11" font-weight="700" font-family="monospace" text-anchor="middle"></text>
+      <rect id="ch-date-bg" x="0" y="${totalH - 20}" width="64" height="14" fill="#1e293b" stroke="#475569" stroke-width="0.5" rx="2"/>
+      <text id="ch-date" x="0" y="${totalH - 9}" fill="#cbd5e1" font-size="10" font-weight="600" font-family="monospace" text-anchor="middle"></text>
+    </g>
+    <g id="ch-tip" style="display:none; pointer-events:none;">
+      <rect id="ch-tip-bg" x="0" y="0" width="172" height="108" fill="#0b0e14" opacity="0.95" stroke="#475569" stroke-width="0.6" rx="4"/>
+      <text id="ch-tip-date" x="0" y="0" fill="#cbd5e1" font-size="11" font-weight="800" font-family="monospace"></text>
+      <text id="ch-tip-o"    x="0" y="0" fill="#94a3b8" font-size="11" font-family="monospace"></text>
+      <text id="ch-tip-h"    x="0" y="0" fill="#4ade80" font-size="11" font-family="monospace"></text>
+      <text id="ch-tip-l"    x="0" y="0" fill="#f87171" font-size="11" font-family="monospace"></text>
+      <text id="ch-tip-c"    x="0" y="0" fill="#fbbf24" font-size="11" font-family="monospace" font-weight="700"></text>
+      <text id="ch-tip-v"    x="0" y="0" fill="#a78bfa" font-size="11" font-family="monospace"></text>
+      <text id="ch-tip-chg"  x="0" y="0" font-size="11" font-family="monospace" font-weight="700"></text>
+    </g>`;
+
+  // 크로스헤어/툴팁에서 사용할 차트 메타데이터 글로벌 노출
+  window.__chartData = {
+    candles, w, ch, vh, rh, rsiTop, totalH, minP, maxP, rangeP, maxV, barW,
+    rsi14, vwma100, ma99, ma25, ma7
+  };
+
+  return `<svg id="bigchartsvg" width="100%" viewBox="0 0 ${w} ${totalH}" preserveAspectRatio="none" style="display:block; cursor:crosshair; touch-action:none;">${grid}${fibLines}${rsiBg}${zoomGroup}${volDivider}${legend}${fibLabels}${rsiLabels}${xLabels}${volTitle}${crosshair}</svg>`;
 }
 
 function fundingBarSVG(rates, w = 1100, h = 160, history = null) {
@@ -2831,13 +2858,15 @@ function renderSignalsTab(r) {
 function setupChartZoom() {
   const svg   = document.getElementById('bigchartsvg');
   const zoomG = document.getElementById('chartZoomG');
-  if (!svg || !zoomG) return;
+  if (!svg || !zoomG || !window.__chartData) return;
 
-  // 내부 그룹에만 transform 적용 → 텍스트/라벨은 절대 영향 안 받음
+  const data = window.__chartData;
+  const { candles, w, ch, vh, rh, rsiTop, totalH, minP, maxP, rangeP, maxV, barW } = data;
+
+  // ── 줌·팬 상태 ────────────────────────────────────────────────────
   const vbNums = svg.getAttribute('viewBox').split(' ').map(Number);
   const origW  = vbNums[2];
-  let scale = 1;   // X 줌 배수 (1=원본, 클수록 확대)
-  let panX  = 0;   // 좌측 가시 영역의 viewBox X (0 ~ origW*(1-1/scale))
+  let scale = 1, panX = 0;
 
   const apply = () => {
     zoomG.setAttribute('transform', `translate(${(-panX * scale).toFixed(2)}, 0) scale(${scale.toFixed(4)}, 1)`);
@@ -2847,43 +2876,159 @@ function setupChartZoom() {
     panX = Math.max(0, Math.min(maxPan, panX));
   };
 
-  svg.style.cursor = 'grab';
   svg.style.userSelect = 'none';
 
-  // 스크롤 → 마우스 X 기준 수평 줌
+  // ── 크로스헤어·툴팁 요소 ───────────────────────────────────────────
+  const cursor   = document.getElementById('ch-cursor');
+  const tip      = document.getElementById('ch-tip');
+  const vline    = document.getElementById('ch-vline');
+  const hline    = document.getElementById('ch-hline');
+  const pBg      = document.getElementById('ch-price-bg');
+  const pTxt     = document.getElementById('ch-price');
+  const dBg      = document.getElementById('ch-date-bg');
+  const dTxt     = document.getElementById('ch-date');
+  const tipBg    = document.getElementById('ch-tip-bg');
+  const tipDate  = document.getElementById('ch-tip-date');
+  const tipO     = document.getElementById('ch-tip-o');
+  const tipH     = document.getElementById('ch-tip-h');
+  const tipL     = document.getElementById('ch-tip-l');
+  const tipC     = document.getElementById('ch-tip-c');
+  const tipV     = document.getElementById('ch-tip-v');
+  const tipChg   = document.getElementById('ch-tip-chg');
+
+  const fmtP = p => p >= 1 ? p.toFixed(3) : p >= 0.01 ? p.toFixed(5) : p.toExponential(2);
+  const fmtVol = v => v >= 1e9 ? (v/1e9).toFixed(2)+'B' : v >= 1e6 ? (v/1e6).toFixed(2)+'M' : v >= 1e3 ? (v/1e3).toFixed(1)+'K' : v.toFixed(0);
+
+  const updateCrosshair = (e) => {
+    if (drag) { cursor.style.display='none'; tip.style.display='none'; return; }
+    const rect = svg.getBoundingClientRect();
+    const mxView = (e.clientX - rect.left) / rect.width  * w;
+    const myView = (e.clientY - rect.top)  / rect.height * totalH;
+
+    // 줌 보정 후 데이터 X → 캔들 인덱스
+    const dataX = mxView / scale + panX;
+    const idx = Math.max(0, Math.min(candles.length - 1, Math.floor(dataX / barW)));
+    const c = candles[idx];
+    if (!c) { cursor.style.display='none'; tip.style.display='none'; return; }
+
+    cursor.style.display = '';
+
+    // 수직선: 캔들 중심에 스냅
+    const candleCenter = ((idx * barW + barW / 2) - panX) * scale;
+    vline.setAttribute('x1', candleCenter);
+    vline.setAttribute('x2', candleCenter);
+
+    // 수평선: 마우스 Y
+    hline.setAttribute('y1', myView);
+    hline.setAttribute('y2', myView);
+
+    // 우측 가격(또는 RSI값) 라벨
+    let labelTxt = '', labelShow = true;
+    if (myView <= ch) {
+      const p = minP + (1 - myView / ch) * rangeP;
+      labelTxt = '$' + fmtP(p);
+      pTxt.setAttribute('fill', '#fbbf24');
+      pBg.setAttribute('stroke', '#fbbf24');
+    } else if (myView >= rsiTop && myView <= rsiTop + rh) {
+      const rsiVal = (1 - (myView - rsiTop) / rh) * 100;
+      labelTxt = 'RSI ' + rsiVal.toFixed(1);
+      pTxt.setAttribute('fill', '#a78bfa');
+      pBg.setAttribute('stroke', '#a78bfa');
+    } else { labelShow = false; }
+
+    if (labelShow) {
+      const lx = w - 88, ly = Math.max(8, Math.min(totalH - 8, myView - 8));
+      pBg.setAttribute('x', lx);
+      pBg.setAttribute('y', ly);
+      pTxt.setAttribute('x', lx + 42);
+      pTxt.setAttribute('y', ly + 11.5);
+      pTxt.textContent = labelTxt;
+      pBg.style.display = ''; pTxt.style.display = '';
+    } else { pBg.style.display='none'; pTxt.style.display='none'; }
+
+    // 하단 날짜 라벨 (캔들 기준)
+    const d = new Date(c.t);
+    const dateStr = `${d.getMonth()+1}/${d.getDate()}`;
+    const dx = Math.max(34, Math.min(w - 34, candleCenter));
+    dBg.setAttribute('x', dx - 32);
+    dTxt.setAttribute('x', dx);
+    dTxt.textContent = dateStr;
+
+    // OHLC 툴팁
+    tip.style.display = '';
+    const boxW = 172, boxH = 108;
+    let tx = candleCenter + 14;
+    if (tx + boxW > w - 4) tx = candleCenter - boxW - 14; // 우측 끝이면 좌측에 표시
+    if (tx < 4) tx = 4;
+    let ty = myView - boxH / 2;
+    ty = Math.max(4, Math.min(totalH - boxH - 4, ty));
+
+    tipBg.setAttribute('x', tx);
+    tipBg.setAttribute('y', ty);
+    const tipX = tx + 10;
+    tipDate.setAttribute('x', tipX); tipDate.setAttribute('y', ty + 16);
+    tipO.setAttribute('x', tipX);    tipO.setAttribute('y', ty + 32);
+    tipH.setAttribute('x', tipX);    tipH.setAttribute('y', ty + 46);
+    tipL.setAttribute('x', tipX);    tipL.setAttribute('y', ty + 60);
+    tipC.setAttribute('x', tipX);    tipC.setAttribute('y', ty + 74);
+    tipV.setAttribute('x', tipX);    tipV.setAttribute('y', ty + 88);
+    tipChg.setAttribute('x', tipX);  tipChg.setAttribute('y', ty + 102);
+
+    const fullDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    tipDate.textContent = fullDate;
+    tipO.textContent = `O  $${fmtP(c.o)}`;
+    tipH.textContent = `H  $${fmtP(c.h)}`;
+    tipL.textContent = `L  $${fmtP(c.l)}`;
+    tipC.textContent = `C  $${fmtP(c.c)}`;
+    tipV.textContent = `Vol ${fmtVol(c.v)}`;
+    const chg = ((c.c - c.o) / c.o) * 100;
+    tipChg.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`;
+    tipChg.setAttribute('fill', chg >= 0 ? '#4ade80' : '#f87171');
+  };
+
+  // ── 스크롤 → 마우스 X 기준 수평 줌 ──────────────────────────────
   svg.addEventListener('wheel', e => {
     e.preventDefault();
     const rect = svg.getBoundingClientRect();
-    const fx = (e.clientX - rect.left) / rect.width;        // 마우스 상대 위치 0~1
-    const anchor = panX + fx * origW / scale;               // viewBox 좌표 앵커
+    const fx = (e.clientX - rect.left) / rect.width;
+    const anchor = panX + fx * origW / scale;
     const factor = e.deltaY > 0 ? 1 / 1.22 : 1.22;
     const newScale = Math.max(1, Math.min(40, scale * factor));
     panX = anchor - fx * origW / newScale;
     scale = newScale;
     clampPan();
     apply();
+    updateCrosshair(e);
   }, { passive: false });
 
-  // 드래그 → 수평 이동
+  // ── 드래그 → 수평 이동 ────────────────────────────────────────────
   let drag = null;
   svg.addEventListener('pointerdown', e => {
     drag = { startX: e.clientX, startPan: panX };
     svg.setPointerCapture(e.pointerId);
     svg.style.cursor = 'grabbing';
+    cursor.style.display='none'; tip.style.display='none';
   });
   svg.addEventListener('pointermove', e => {
-    if (!drag) return;
-    const rect = svg.getBoundingClientRect();
-    const dx = (drag.startX - e.clientX) / rect.width * (origW / scale);
-    panX = drag.startPan + dx;
-    clampPan();
-    apply();
+    if (drag) {
+      const rect = svg.getBoundingClientRect();
+      const dx = (drag.startX - e.clientX) / rect.width * (origW / scale);
+      panX = drag.startPan + dx;
+      clampPan();
+      apply();
+    } else {
+      updateCrosshair(e);
+    }
   });
-  const endDrag = () => { drag = null; svg.style.cursor = 'grab'; };
+  const endDrag = () => { drag = null; svg.style.cursor = 'crosshair'; };
   svg.addEventListener('pointerup',     endDrag);
   svg.addEventListener('pointercancel', endDrag);
+  svg.addEventListener('pointerleave',  () => {
+    drag = null; svg.style.cursor = 'crosshair';
+    cursor.style.display='none'; tip.style.display='none';
+  });
 
-  // 더블클릭 → 초기화
+  // ── 더블클릭 → 초기화 ─────────────────────────────────────────────
   svg.addEventListener('dblclick', () => { scale = 1; panX = 0; apply(); });
 }
 
