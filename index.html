@@ -412,7 +412,7 @@
 <details>
   <summary>탐지 시그널 및 점수 기준 (펼치기)</summary>
   <div style="color: var(--muted); font-size: 11px; line-height: 1.7; margin-top: 8px;">
-    <b>Hard Exclude</b> — Binance Spot에 이미 상장 / 선물 상장 N일 미만 / ATH 대비 -90% 이하 / 저점대비 N배 이상 / 유통률 N% 초과 / CEX N곳 미만 / 펀딩 양수율 N% 미만 / OI/MCap N 미만 / 저볼륨<br>
+    <b>Hard Exclude</b> — Binance Spot에 이미 상장 / 선물 상장 N일 미만 / ATH 대비 -95% 이하 / 저점대비 N배 이상 / 유통률 N% 초과 / CEX N곳 미만 / 펀딩 양수율 N% 미만 / OI/MCap N 미만 / 저볼륨<br>
     <b>가산 시그널 (17종, 합산 ≤100점) · 조기 진입 최적화</b> — CEX(3) · 유통률(12) · <b>BB압축(13)⚡⚡</b> · <b>펀딩 양수율 단계화(9)</b>·크기(7)·<b>추세(8)⚡</b>·베이시스(7) · 매집 3종(19) · 디버전스(7) · OI/MCap(8) · 유기+OI Spike(10) · HigherLows(4)🟡 · Body압축(5) · 매수우위(3)🟡 · <b>S21 RAVE 시그니처 콤보(15)</b><br>
     <b>컨텍스트 패널티 (완화)</b> — rise14 &gt; 50% 또는 저점대비 &gt; 3.5x 시 펀딩 점수 50% 감점 · <b>후기 진입 페널티</b>: HL+매수우위 ≥5/7 AND BB압축 &lt; 5/13 시 -5pt + ⏰ 배지<br>
     <b>펀딩 컨텍스트 패널티</b> — 14d 상승률 &gt; 30% 또는 저점대비 &gt; 2.5x 시 S6cont/S6size/S7 50% 감점 (후행 신호 무력화)<br>
@@ -483,7 +483,7 @@
   </div>
   <div class="filter">
     <label>과거 펌프 이력 최대 (180d max/min)</label>
-    <input type="number" id="f_maxPriorPump" list="dl_maxPriorPump" step="0.5" value="5" min="0" title="180일 내 max/min 비율 — 이 값 이상이면 이미 펌프-덤프 끝난 토큰" />
+    <input type="number" id="f_maxPriorPump" list="dl_maxPriorPump" step="0.5" value="0" min="0" title="180일 내 max/min 비율 — 이 값 이상이면 이미 펌프-덤프 끝난 토큰. 0=제한없음 (점수+매집신호로 판별)" />
     <datalist id="dl_maxPriorPump"><option value="0">0 (제한없음)</option><option value="3">3 (타이트)</option><option value="5">5</option><option value="10">10 (느슨)</option><option value="20">20</option></datalist>
   </div>
   <div class="filter">
@@ -1329,7 +1329,7 @@ function hardExclude(row, opt) {
   if (row.cexCount < opt.minCex) return `CEX ${row.cexCount}/${opt.minCex} 미달`;
   if (row.fundPosRatio < opt.minFundPos) return `펀딩양수율 ${(row.fundPosRatio*100).toFixed(0)}% (<${(opt.minFundPos*100).toFixed(0)}%)`;
   if (row.cg) {
-    if (row.cg.athChangePct !== null && row.cg.athChangePct <= -90) return 'ATH -90%';
+    if (row.cg.athChangePct !== null && row.cg.athChangePct <= -95) return 'ATH -95%';
     if (row.cg.circMax !== null && row.cg.circMax > opt.maxCirc) return `유통 ${(row.cg.circMax*100).toFixed(0)}% (>${(opt.maxCirc*100).toFixed(0)}%)`;
     if (opt.minOiMcap > 0 && row.oiMcap !== null && row.oiMcap < opt.minOiMcap) {
       return `OI/MCap ${row.oiMcap.toFixed(2)} (<${opt.minOiMcap})`;
@@ -4221,9 +4221,9 @@ const FILTER_FIELDS = ['f_funding','f_maxRise14','f_minRise14','f_maxDaily','f_m
 const PRESETS_KEY = 'raply.presets.v2';
 const LAST_KEY = 'raply.presets.last';
 const SYS_PRESETS = {
-  default: { f_funding:0, f_maxRise14:50, f_minRise14:-15, f_maxDaily:50, f_minVol:100000, f_minDays:120, f_minScore:35, f_maxGain:2.5, f_maxCirc:30, f_minCex:2, f_minFundPos:50, f_minOiMcap:0, f_maxPriorPump:5, f_maxDrawdown:50, f_minMc:0, f_maxMc:0, f_minFdv:0, f_maxFdv:0, f_cg:'on' },
+  default: { f_funding:0, f_maxRise14:50, f_minRise14:-15, f_maxDaily:50, f_minVol:100000, f_minDays:120, f_minScore:35, f_maxGain:2.5, f_maxCirc:30, f_minCex:2, f_minFundPos:50, f_minOiMcap:0, f_maxPriorPump:0, f_maxDrawdown:50, f_minMc:0, f_maxMc:0, f_minFdv:0, f_maxFdv:0, f_cg:'on' },
   tight:   { f_funding:0.005, f_maxRise14:30, f_minRise14:-10, f_maxDaily:30, f_minVol:200000, f_minDays:120, f_minScore:50, f_maxGain:1.8, f_maxCirc:20, f_minCex:3, f_minFundPos:70, f_minOiMcap:0.2, f_maxPriorPump:3, f_maxDrawdown:30, f_minMc:5, f_maxMc:300, f_minFdv:0, f_maxFdv:2000, f_cg:'on' },
-  loose:   { f_funding:0, f_maxRise14:150, f_minRise14:-30, f_maxDaily:50, f_minVol:50000, f_minDays:90, f_minScore:25, f_maxGain:5, f_maxCirc:50, f_minCex:1, f_minFundPos:30, f_minOiMcap:0, f_maxPriorPump:10, f_maxDrawdown:70, f_minMc:0, f_maxMc:0, f_minFdv:0, f_maxFdv:0, f_cg:'on' }
+  loose:   { f_funding:0, f_maxRise14:150, f_minRise14:-30, f_maxDaily:50, f_minVol:50000, f_minDays:90, f_minScore:25, f_maxGain:5, f_maxCirc:50, f_minCex:1, f_minFundPos:30, f_minOiMcap:0, f_maxPriorPump:0, f_maxDrawdown:70, f_minMc:0, f_maxMc:0, f_minFdv:0, f_maxFdv:0, f_cg:'on' }
 };
 function applyPreset(values) {
   for (const id of FILTER_FIELDS) {
