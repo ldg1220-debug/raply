@@ -2506,13 +2506,24 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
     const fy = toY(fp).toFixed(1);
     return `<line x1="0" y1="${fy}" x2="${w}" y2="${fy}" stroke="${FIB_COLORS[i]}" stroke-width="1.1" stroke-dasharray="6,4" opacity="0.75"/>`;
   }).join('') : '';
-  const fibLabels = fibRange > 0 ? FIB_RATIOS.map((r, i) => {
-    const fp = fibHigh - r * fibRange;
-    const fy = toY(fp).toFixed(1);
-    const labelY = (parseFloat(fy) - 3).toFixed(1);
-    return `<rect x="${w - 132}" y="${parseFloat(labelY) - 11}" width="128" height="14" fill="#0b0e14" opacity="0.85" rx="2"/>
-      <text x="${w - 6}" y="${labelY}" fill="${FIB_COLORS[i]}" font-size="12" font-weight="700" text-anchor="end">Fib ${r}  ${fp.toPrecision(4)}</text>`;
-  }).join('') : '';
+  const fibLabels = fibRange > 0 ? (() => {
+    const boxW = 188, rowH = 14, padTop = 16, padBot = 6;
+    const boxH = FIB_RATIOS.length * rowH + padTop + padBot;
+    const boxX = w - boxW - 6;
+    const boxY = 6;
+    let rows = '';
+    FIB_RATIOS.forEach((r, i) => {
+      const fp = fibHigh - r * fibRange;
+      const y = boxY + padTop + i * rowH + 4;
+      rows += `
+        <line x1="${boxX + 8}" y1="${y - 3}" x2="${boxX + 26}" y2="${y - 3}" stroke="${FIB_COLORS[i]}" stroke-width="2" stroke-dasharray="4,3"/>
+        <text x="${boxX + 32}" y="${y}" fill="${FIB_COLORS[i]}" font-size="11" font-weight="700">Fib ${r}</text>
+        <text x="${boxX + boxW - 8}" y="${y}" fill="${FIB_COLORS[i]}" font-size="11" font-weight="700" text-anchor="end" font-family="monospace">${fp.toPrecision(4)}</text>`;
+    });
+    return `<rect x="${boxX}" y="${boxY}" width="${boxW}" height="${boxH}" fill="#0b0e14" opacity="0.82" rx="4" stroke="#243045" stroke-width="0.6"/>
+      <text x="${boxX + 8}" y="${boxY + 12}" fill="#94a3b8" font-size="10" font-weight="700">Fib · 90d 고저</text>
+      ${rows}`;
+  })() : '';
 
   // 범례 (MA + Fib 가이드)
   const legend = `
