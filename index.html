@@ -2345,7 +2345,7 @@ function render() {
         <td>${fmtM(r.oi)}</td>
         <td>${r.oiMcap !== null && r.oiMcap !== undefined ? `<span class="${r.oiMcap >= 0.20 ? 'pos' : (r.oiMcap >= 0.10 ? '' : 'muted')}" title="OI ÷ Market Cap (시총 대비 미결제약정 — 0.20+ 이면 세력 장악)">${r.oiMcap.toFixed(2)}</span>` : '<span class="muted">?</span>'}</td>
         <td><span class="score ${scoreCls}">${r.score}</span></td>
-        <td><span title="${_crime.label} · 예상 ${_crime.range[0]}~${_crime.range[1]}x · ${_crime.score}/100" style="display:inline-block; padding:2px 7px; border-radius:4px; background:${_crime.color}22; color:${_crime.color}; font-weight:700; font-size:12px;">${_crime.grade}<span style="opacity:.7; font-size:10px; margin-left:3px;">${_crime.range[0]}~${_crime.range[1]}x</span></span></td>
+        <td><span title="${_crime.label} · 예상 ${_crime.range[0]}~${_crime.range[1]}x · ${_crime.score}/100${_crime.oiMissing?' · ⚠OI없음':''}" style="display:inline-block; padding:2px 7px; border-radius:4px; background:${_crime.color}22; color:${_crime.color}; font-weight:700; font-size:12px;">${_crime.grade}${_crime.oiMissing?'<span style="opacity:.5;font-size:9px;margin-left:1px;">?</span>':''}<span style="opacity:.7; font-size:10px; margin-left:3px;">${_crime.range[0]}~${_crime.range[1]}x</span></span></td>
         <td>${sparkline(r.closes14)}</td>
         <td><button class="watch-btn" data-watch="${r.symbol}" onclick="event.stopPropagation()">${watched ? '★' : '☆'}</button></td>
       </tr>`;
@@ -3618,17 +3618,17 @@ const GRADE_VAL_TOKENS = [
 // 등급 적중 기준: 실제 배수 ≥ 등급 하한
 function gradeHit(grade, actual) {
   if (grade === 'A') return actual >= 20;
-  if (grade === 'B') return actual >= 7;
+  if (grade === 'B') return actual >= 5;   // 7→5
   if (grade === 'C') return actual >= 3;
-  if (grade === 'D') return actual >= 1.5;
+  if (grade === 'D') return actual >= 2;   // 1.5→2
   return false;
 }
 // 등급 과소평가(실제가 상한도 초과)
 function gradeOver(grade, actual) {
-  if (grade === 'A') return false; // A는 상한 없음
-  if (grade === 'B') return actual > 25;
-  if (grade === 'C') return actual > 8;
-  if (grade === 'D') return actual > 3;
+  if (grade === 'A') return false;
+  if (grade === 'B') return actual > 20;  // 25→20
+  if (grade === 'C') return actual > 10;  // 8→10
+  if (grade === 'D') return actual > 6;   // 3→6
   return false;
 }
 
@@ -4315,13 +4315,16 @@ function computeCrimeGrade(row) {
   else if (row.score >= 50) { pts += 7; factors.push(`매집 점수 ${row.score}점`); }
   else if (row.score >= 30) pts += 3;
 
+  // OI/MCap 없으면 등급 신뢰도 저하 표시용 플래그
+  const oiMissing = row.oiMcap === null || row.oiMcap === undefined;
+
   let grade, label, range, color;
   if (pts >= 70)      { grade = 'A'; label = 'RAVE급';     range = [20, 100]; color = '#ef4444'; }
-  else if (pts >= 45) { grade = 'B'; label = '대형 crime'; range = [7, 25];   color = '#fb923c'; }
-  else if (pts >= 25) { grade = 'C'; label = '중급 펌프';  range = [3, 8];    color = '#fbbf24'; }
-  else                { grade = 'D'; label = '일반 펌프';  range = [1.5, 3];  color = '#94a3b8'; }
+  else if (pts >= 45) { grade = 'B'; label = '대형 crime'; range = [5, 20];   color = '#fb923c'; }
+  else if (pts >= 25) { grade = 'C'; label = '중급 펌프';  range = [3, 10];   color = '#fbbf24'; }
+  else                { grade = 'D'; label = '일반 펌프';  range = [2, 6];    color = '#94a3b8'; }
 
-  return { grade, label, range, color, factors, score: pts };
+  return { grade, label, range, color, factors, score: pts, oiMissing };
 }
 
 function computeRiskProfile(row) {
@@ -4520,6 +4523,7 @@ function renderPotentialAndPlan(r) {
       <div style="margin-top:10px; font-size:11px; color:var(--muted);">
         ⓘ 등급은 <b>점수와 별개</b>로 펌프 잠재 크기를 평가. 점수=확신도, 등급=상승폭.
       </div>
+      ${crime.oiMissing ? `<div style="margin-top:6px; font-size:11px; padding:4px 8px; background:rgba(251,191,36,.08); border-left:2px solid #fbbf24; border-radius:3px; color:#fbbf24;">⚠ OI/MCap 데이터 없음 — 등급 실제보다 낮을 수 있음</div>` : ''}
     </div>
 
     <div class="diag-section" style="border-color:${risk.color};">
