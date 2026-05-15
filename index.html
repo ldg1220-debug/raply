@@ -2493,7 +2493,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
       polyline(ma99,    '#a78bfa', 1.4) +   // 보라
       polyline(vwma100, '#ec4899', 2.4);    // 핑크 (굵게)
 
-  // 피보나치 수평선 (최근 90일 고저 기준)
+  // 피보나치 — 수평선(줌과 무관)과 가격라벨(줌 외부)을 분리
   const tail90H = highs.slice(-Math.min(90, highs.length));
   const tail90L = lows.slice(-Math.min(90, lows.length));
   const fibHigh = Math.max(...tail90H);
@@ -2501,12 +2501,16 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   const fibRange = fibHigh - fibLow;
   const FIB_RATIOS  = [0.236, 0.382, 0.500, 0.618, 0.786];
   const FIB_COLORS  = ['#94a3b8', '#fbbf24', '#60a5fa', '#4ade80', '#f472b6'];
-  const fibLayer = fibRange > 0 ? FIB_RATIOS.map((r, i) => {
+  const fibLines = fibRange > 0 ? FIB_RATIOS.map((r, i) => {
+    const fp = fibHigh - r * fibRange;
+    const fy = toY(fp).toFixed(1);
+    return `<line x1="0" y1="${fy}" x2="${w}" y2="${fy}" stroke="${FIB_COLORS[i]}" stroke-width="1.1" stroke-dasharray="6,4" opacity="0.75"/>`;
+  }).join('') : '';
+  const fibLabels = fibRange > 0 ? FIB_RATIOS.map((r, i) => {
     const fp = fibHigh - r * fibRange;
     const fy = toY(fp).toFixed(1);
     const labelY = (parseFloat(fy) - 3).toFixed(1);
-    return `<line x1="0" y1="${fy}" x2="${w}" y2="${fy}" stroke="${FIB_COLORS[i]}" stroke-width="1.1" stroke-dasharray="6,4" opacity="0.75"/>
-      <rect x="${w - 132}" y="${parseFloat(labelY) - 11}" width="128" height="14" fill="#0b0e14" opacity="0.85" rx="2"/>
+    return `<rect x="${w - 132}" y="${parseFloat(labelY) - 11}" width="128" height="14" fill="#0b0e14" opacity="0.85" rx="2"/>
       <text x="${w - 6}" y="${labelY}" fill="${FIB_COLORS[i]}" font-size="12" font-weight="700" text-anchor="end">Fib ${r}  ${fp.toPrecision(4)}</text>`;
   }).join('') : '';
 
@@ -2554,13 +2558,17 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   }
   const currRSI = rsi14.reduce((last, v) => v !== null ? v : last, null);
   const rsiColor = !currRSI ? '#94a3b8' : currRSI < 30 ? '#4ade80' : currRSI > 70 ? '#ef4444' : '#a78bfa';
-  const rsiPanel = `
+  // RSI 패널 — 배경/임계선(고정), 폴리라인(줌 대상), 라벨(고정) 분리
+  const rsiBg = `
     <line x1="0" y1="${rsiTop - 5}" x2="${w}" y2="${rsiTop - 5}" stroke="#243045" stroke-width="0.8"/>
     <rect x="0" y="${rsiTop}" width="${w}" height="${rh}" fill="rgba(11,14,20,0.25)"/>
     <line x1="0" y1="${toRY(70)}" x2="${w}" y2="${toRY(70)}" stroke="#ef4444" stroke-width="0.9" stroke-dasharray="4,3" opacity="0.7"/>
     <line x1="0" y1="${toRY(50)}" x2="${w}" y2="${toRY(50)}" stroke="#475569" stroke-width="0.5" opacity="0.5"/>
-    <line x1="0" y1="${toRY(30)}" x2="${w}" y2="${toRY(30)}" stroke="#4ade80" stroke-width="0.9" stroke-dasharray="4,3" opacity="0.7"/>
-    ${rsiPts.length >= 2 ? `<polyline points="${rsiPts.join(' ')}" fill="none" stroke="${rsiColor}" stroke-width="1.6" opacity="0.95"/>` : ''}
+    <line x1="0" y1="${toRY(30)}" x2="${w}" y2="${toRY(30)}" stroke="#4ade80" stroke-width="0.9" stroke-dasharray="4,3" opacity="0.7"/>`;
+  const rsiPolyline = rsiPts.length >= 2
+    ? `<polyline points="${rsiPts.join(' ')}" fill="none" stroke="${rsiColor}" stroke-width="1.6" opacity="0.95"/>`
+    : '';
+  const rsiLabels = `
     <text x="6" y="${rsiTop + 13}" fill="#cbd5e1" font-size="12" font-weight="700">RSI(14)</text>
     <text x="60" y="${toRY(70) - 3}" fill="#ef4444" font-size="11" font-weight="700">70</text>
     <text x="60" y="${toRY(30) + 12}" fill="#4ade80" font-size="11" font-weight="700">30</text>
@@ -2572,7 +2580,13 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   const fmt = d => `${d.getMonth()+1}/${d.getDate()}`;
   const xLabels = `<text x="6" y="${totalH - 4}" fill="#cbd5e1" font-size="11" font-weight="600">${fmt(firstDate)}</text><text x="${w-6}" y="${totalH - 4}" fill="#cbd5e1" font-size="11" font-weight="600" text-anchor="end">${fmt(lastDate)}</text>`;
 
-  return `<svg id="bigchartsvg" width="100%" viewBox="0 0 ${w} ${totalH}" preserveAspectRatio="none" style="display:block; cursor:grab; touch-action:none;">${grid}${fibLayer}${priceParts}${maLayer}${legend}<line x1="0" y1="${ch+5}" x2="${w}" y2="${ch+5}" stroke="#243045" stroke-width="0.5"/>${volParts}${rsiPanel}${xLabels}<text x="6" y="${ch+12}" fill="#cbd5e1" font-size="10" font-weight="700">Vol</text></svg>`;
+  // 줌 대상(X축 따라 분포): 캔들, MA·VWMA 폴리라인, 볼륨 바, RSI 폴리라인
+  // 줌 외부(고정): 그리드선·Fib선·RSI 배경/임계선·범례·Fib 가격라벨·RSI 라벨·시간축
+  const zoomGroup = `<g id="chartZoomG">${priceParts}${maLayer}${volParts}${rsiPolyline}</g>`;
+  const volDivider = `<line x1="0" y1="${ch+5}" x2="${w}" y2="${ch+5}" stroke="#243045" stroke-width="0.5"/>`;
+  const volTitle   = `<text x="6" y="${ch+12}" fill="#cbd5e1" font-size="10" font-weight="700">Vol</text>`;
+
+  return `<svg id="bigchartsvg" width="100%" viewBox="0 0 ${w} ${totalH}" preserveAspectRatio="none" style="display:block; cursor:grab; touch-action:none;">${grid}${fibLines}${rsiBg}${zoomGroup}${volDivider}${legend}${fibLabels}${rsiLabels}${xLabels}${volTitle}</svg>`;
 }
 
 function fundingBarSVG(rates, w = 1100, h = 160, history = null) {
@@ -2804,48 +2818,62 @@ function renderSignalsTab(r) {
 }
 
 function setupChartZoom() {
-  const svg = document.getElementById('bigchartsvg');
-  if (!svg) return;
+  const svg   = document.getElementById('bigchartsvg');
+  const zoomG = document.getElementById('chartZoomG');
+  if (!svg || !zoomG) return;
 
-  const vbNums  = svg.getAttribute('viewBox').split(' ').map(Number);
-  const origW   = vbNums[2];
-  const origH   = vbNums[3];
-  let curX = 0, curW = origW;
+  // 내부 그룹에만 transform 적용 → 텍스트/라벨은 절대 영향 안 받음
+  const vbNums = svg.getAttribute('viewBox').split(' ').map(Number);
+  const origW  = vbNums[2];
+  let scale = 1;   // X 줌 배수 (1=원본, 클수록 확대)
+  let panX  = 0;   // 좌측 가시 영역의 viewBox X (0 ~ origW*(1-1/scale))
 
-  const applyVB = () => svg.setAttribute('viewBox', `${curX.toFixed(2)} 0 ${curW.toFixed(2)} ${origH}`);
+  const apply = () => {
+    zoomG.setAttribute('transform', `translate(${(-panX * scale).toFixed(2)}, 0) scale(${scale.toFixed(4)}, 1)`);
+  };
+  const clampPan = () => {
+    const maxPan = origW * (1 - 1 / scale);
+    panX = Math.max(0, Math.min(maxPan, panX));
+  };
 
-  // 스크롤 → 수평 줌 (마우스 위치 기준)
+  svg.style.cursor = 'grab';
+  svg.style.userSelect = 'none';
+
+  // 스크롤 → 마우스 X 기준 수평 줌
   svg.addEventListener('wheel', e => {
     e.preventDefault();
     const rect = svg.getBoundingClientRect();
-    const fx = (e.clientX - rect.left) / rect.width;           // 마우스 상대 위치 0~1
-    const anchorX = curX + fx * curW;                          // 뷰박스 내 앵커 X
-    const factor  = e.deltaY > 0 ? 1.22 : 1 / 1.22;           // 줌인/아웃
-    curW = Math.min(origW, Math.max(origW * 0.03, curW * factor));
-    curX = Math.max(0, Math.min(origW - curW, anchorX - fx * curW));
-    applyVB();
+    const fx = (e.clientX - rect.left) / rect.width;        // 마우스 상대 위치 0~1
+    const anchor = panX + fx * origW / scale;               // viewBox 좌표 앵커
+    const factor = e.deltaY > 0 ? 1 / 1.22 : 1.22;
+    const newScale = Math.max(1, Math.min(40, scale * factor));
+    panX = anchor - fx * origW / newScale;
+    scale = newScale;
+    clampPan();
+    apply();
   }, { passive: false });
 
   // 드래그 → 수평 이동
   let drag = null;
   svg.addEventListener('pointerdown', e => {
-    drag = { startX: e.clientX, originVBX: curX };
+    drag = { startX: e.clientX, startPan: panX };
     svg.setPointerCapture(e.pointerId);
     svg.style.cursor = 'grabbing';
   });
   svg.addEventListener('pointermove', e => {
     if (!drag) return;
     const rect = svg.getBoundingClientRect();
-    const dx = (drag.startX - e.clientX) / rect.width * curW;
-    curX = Math.max(0, Math.min(origW - curW, drag.originVBX + dx));
-    applyVB();
+    const dx = (drag.startX - e.clientX) / rect.width * (origW / scale);
+    panX = drag.startPan + dx;
+    clampPan();
+    apply();
   });
   const endDrag = () => { drag = null; svg.style.cursor = 'grab'; };
   svg.addEventListener('pointerup',     endDrag);
   svg.addEventListener('pointercancel', endDrag);
 
-  // 더블클릭 → 전체 보기 초기화
-  svg.addEventListener('dblclick', () => { curX = 0; curW = origW; applyVB(); });
+  // 더블클릭 → 초기화
+  svg.addEventListener('dblclick', () => { scale = 1; panX = 0; apply(); });
 }
 
 function openModal(symbol) {
