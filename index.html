@@ -4042,7 +4042,7 @@ function computeCrimeGrade(row) {
   if (circ !== null) {
     if (circ < 15) { pts += 25; factors.push(`유통률 ${circ.toFixed(0)}% (극희소)`); }
     else if (circ < 25) { pts += 18; factors.push(`유통률 ${circ.toFixed(0)}% (희소)`); }
-    else if (circ < 40) { pts += 10; factors.push(`유통률 ${circ.toFixed(0)}%`); }
+    else if (circ < 45) { pts += 10; factors.push(`유통률 ${circ.toFixed(0)}%`); }
     else if (circ < 60) pts += 3;
   }
 
@@ -4132,7 +4132,7 @@ function computeRiskProfile(row) {
 
 function computeTradePlan(row, crime) {
   const candles = row.candlesAll || [];
-  if (candles.length < 30) return null;
+  if (candles.length < 30 || !row.price || row.price <= 0) return null;
 
   const closes = candles.map(c => c.c);
   const lows = candles.map(c => c.l);
