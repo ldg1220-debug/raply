@@ -563,6 +563,7 @@
       <th data-sort="oi">OI(M)</th>
       <th data-sort="oiMcap">OI/MC</th>
       <th data-sort="score" class="sorted">Score ▼</th>
+      <th data-sort="crimePot" title="펌프 잠재력 등급 (Crime Grade) — A:RAVE급 20~100x, B:대형 7~25x, C:중급 3~8x, D:일반 1.5~3x">잠재력</th>
       <th>Spark</th>
       <th>★</th>
     </tr>
@@ -2316,6 +2317,9 @@ function render() {
                     : top10Pct >= 50 ? 'warn'
                     : top10Pct >= 30 ? '' : 'pos';
     r.top10Pct = top10Pct ?? null;
+    const _crime = computeCrimeGrade(r);
+    r.crimePot = _crime.score;
+    r.crimeGrade = _crime.grade;
     return `
       <tr class="${rowCls}" data-sym="${r.symbol}">
         <td class="sym">${signalChips(r)} ${r.symbol}${hotBadges.join('')}</td>
@@ -2340,6 +2344,7 @@ function render() {
         <td>${fmtM(r.oi)}</td>
         <td>${r.oiMcap !== null && r.oiMcap !== undefined ? `<span class="${r.oiMcap >= 0.20 ? 'pos' : (r.oiMcap >= 0.10 ? '' : 'muted')}" title="OI ÷ Market Cap (시총 대비 미결제약정 — 0.20+ 이면 세력 장악)">${r.oiMcap.toFixed(2)}</span>` : '<span class="muted">?</span>'}</td>
         <td><span class="score ${scoreCls}">${r.score}</span></td>
+        <td><span title="${_crime.label} · 예상 ${_crime.range[0]}~${_crime.range[1]}x · ${_crime.score}/100" style="display:inline-block; padding:2px 7px; border-radius:4px; background:${_crime.color}22; color:${_crime.color}; font-weight:700; font-size:12px;">${_crime.grade}<span style="opacity:.7; font-size:10px; margin-left:3px;">${_crime.range[0]}~${_crime.range[1]}x</span></span></td>
         <td>${sparkline(r.closes14)}</td>
         <td><button class="watch-btn" data-watch="${r.symbol}" onclick="event.stopPropagation()">${watched ? '★' : '☆'}</button></td>
       </tr>`;
@@ -4023,6 +4028,282 @@ function gradeOf(score) {
   return { g: 'D', desc: '매집 단계 미흡 또는 패턴 불일치' };
 }
 
+// ============================================================
+// 펌프 잠재력 (Crime Grade) · 리스크 프로파일 · 트레이드 플랜
+// ============================================================
+// 점수(score)가 "확신도"라면, Crime Grade는 "터졌을 때 상승폭".
+// 별개 축이므로 점수 50/A급 (확신↓ 상승폭↑) vs 점수 80/C급 (확신↑ 상승폭↓) 같은 조합 가능.
+
+function computeCrimeGrade(row) {
+  let pts = 0;
+  const factors = [];
+
+  const circ = row.cg && row.cg.circMax !== null ? row.cg.circMax * 100 : null;
+  if (circ !== null) {
+    if (circ < 15) { pts += 25; factors.push(`유통률 ${circ.toFixed(0)}% (극희소)`); }
+    else if (circ < 25) { pts += 18; factors.push(`유통률 ${circ.toFixed(0)}% (희소)`); }
+    else if (circ < 40) { pts += 10; factors.push(`유통률 ${circ.toFixed(0)}%`); }
+    else if (circ < 60) pts += 3;
+  }
+
+  const mcM = (row.cg && row.cg.marketCap) ? row.cg.marketCap / 1e6 : null;
+  if (mcM !== null && mcM > 0) {
+    if (mcM < 20) { pts += 20; factors.push(`MC $${mcM.toFixed(1)}M (마이크로캡)`); }
+    else if (mcM < 50) { pts += 14; factors.push(`MC $${mcM.toFixed(1)}M (스몰캡)`); }
+    else if (mcM < 150) { pts += 8; factors.push(`MC $${mcM.toFixed(1)}M`); }
+    else if (mcM < 500) pts += 3;
+  }
+
+  if (row.oiMcap !== null && row.oiMcap !== undefined) {
+    if (row.oiMcap >= 0.30) { pts += 18; factors.push(`OI/MCap ${row.oiMcap.toFixed(2)} (극과열 매집)`); }
+    else if (row.oiMcap >= 0.20) { pts += 14; factors.push(`OI/MCap ${row.oiMcap.toFixed(2)} (RAVE급)`); }
+    else if (row.oiMcap >= 0.10) { pts += 8; factors.push(`OI/MCap ${row.oiMcap.toFixed(2)}`); }
+    else if (row.oiMcap >= 0.05) pts += 3;
+  }
+
+  if (row.ageDays !== null && row.ageDays !== undefined) {
+    if (row.ageDays < 60) { pts += 12; factors.push(`상장 ${row.ageDays}d (신규)`); }
+    else if (row.ageDays < 120) { pts += 7; factors.push(`상장 ${row.ageDays}d`); }
+    else if (row.ageDays < 240) pts += 3;
+  }
+
+  if (row.cexCount === 0) { pts += 8; factors.push('Binance 독점'); }
+  else if (row.cexCount === 1) { pts += 4; factors.push('CEX 1곳만'); }
+
+  if (row.bbRatio !== null && row.bbRatio !== undefined) {
+    if (row.bbRatio < 0.5) { pts += 5; factors.push(`BB ${row.bbRatio.toFixed(2)} (극압축)`); }
+    else if (row.bbRatio < 0.7) pts += 3;
+  }
+
+  if (row.score >= 70) { pts += 12; factors.push(`매집 점수 ${row.score}점 (강)`); }
+  else if (row.score >= 50) { pts += 7; factors.push(`매집 점수 ${row.score}점`); }
+  else if (row.score >= 30) pts += 3;
+
+  let grade, label, range, color;
+  if (pts >= 70)      { grade = 'A'; label = 'RAVE급';     range = [20, 100]; color = '#ef4444'; }
+  else if (pts >= 45) { grade = 'B'; label = '대형 crime'; range = [7, 25];   color = '#fb923c'; }
+  else if (pts >= 25) { grade = 'C'; label = '중급 펌프';  range = [3, 8];    color = '#fbbf24'; }
+  else                { grade = 'D'; label = '일반 펌프';  range = [1.5, 3];  color = '#94a3b8'; }
+
+  return { grade, label, range, color, factors, score: pts };
+}
+
+function computeRiskProfile(row) {
+  let dumpRisk = 0, liquidationRisk = 0, liquidityRisk = 0;
+  const risks = [];
+
+  // 덤프 위험 (세력 도주)
+  if (row.top10Pct !== null && row.top10Pct !== undefined) {
+    if (row.top10Pct >= 60) { dumpRisk += 35; risks.push(`Top10 ${row.top10Pct.toFixed(0)}% (세력 집중)`); }
+    else if (row.top10Pct >= 40) { dumpRisk += 20; risks.push(`Top10 ${row.top10Pct.toFixed(0)}%`); }
+    else if (row.top10Pct >= 25) dumpRisk += 8;
+  }
+  if (row.fundPosRatio >= 0.90) { dumpRisk += 15; risks.push('펀딩양수율 90%+ (롱 일변)'); }
+  else if (row.fundPosRatio >= 0.80) dumpRisk += 8;
+  if (row.gainFromLow >= 5) { dumpRisk += 12; risks.push(`이미 ${row.gainFromLow.toFixed(1)}x 상승 (추격 위험)`); }
+  else if (row.gainFromLow >= 3) dumpRisk += 6;
+
+  // 청산 위험 (롱 과밀)
+  if (row.oiMcap !== null && row.oiMcap !== undefined) {
+    if (row.oiMcap >= 0.30) { liquidationRisk += 35; risks.push(`OI/MCap ${row.oiMcap.toFixed(2)} (레버리지 극과열)`); }
+    else if (row.oiMcap >= 0.20) { liquidationRisk += 22; risks.push(`OI/MCap ${row.oiMcap.toFixed(2)} (롱 과밀)`); }
+    else if (row.oiMcap >= 0.10) liquidationRisk += 10;
+  }
+  if (row.funding > 0.0005) { liquidationRisk += 15; risks.push(`펀딩 ${(row.funding*100).toFixed(3)}% (롱 비용 폭증)`); }
+  else if (row.funding > 0.0002) liquidationRisk += 8;
+  if (row.takerRatio && row.takerRatio.score >= 4) liquidationRisk += 8;
+
+  // 유동성 위험
+  if (row.volume < 500000) { liquidityRisk += 35; risks.push(`거래대금 $${(row.volume/1000).toFixed(0)}K (저유동)`); }
+  else if (row.volume < 2000000) { liquidityRisk += 18; risks.push(`거래대금 $${(row.volume/1e6).toFixed(1)}M`); }
+  else if (row.volume < 5000000) liquidityRisk += 8;
+  if (row.cexCount === 0) { liquidityRisk += 18; risks.push('Binance 독점 (탈출 어려움)'); }
+
+  const total = Math.max(dumpRisk, liquidationRisk, liquidityRisk);
+  let level, label, color;
+  if (total >= 50)      { level = 'extreme'; label = '극위험'; color = '#dc2626'; }
+  else if (total >= 30) { level = 'high';    label = '높음';   color = '#f97316'; }
+  else if (total >= 15) { level = 'medium';  label = '중간';   color = '#fbbf24'; }
+  else                  { level = 'low';     label = '낮음';   color = '#4ade80'; }
+
+  const drawdownEst = Math.min(90, Math.round(30 + total * 0.8));
+  return { level, label, color, risks, dumpRisk, liquidationRisk, liquidityRisk, drawdownEst };
+}
+
+function computeTradePlan(row, crime) {
+  const candles = row.candlesAll || [];
+  if (candles.length < 30) return null;
+
+  const closes = candles.map(c => c.c);
+  const lows = candles.map(c => c.l);
+  const price = row.price;
+  const avg = (a) => a.reduce((s, x) => s + x, 0) / a.length;
+
+  const ma30 = avg(closes.slice(-30));
+  const ma50 = closes.length >= 50 ? avg(closes.slice(-50)) : null;
+  const lowest90 = Math.min(...lows.slice(-Math.min(90, lows.length)));
+
+  let bbLower = null;
+  if (closes.length >= 20) {
+    const c20 = closes.slice(-20);
+    const m = avg(c20);
+    const sd = Math.sqrt(c20.reduce((a, b) => a + (b - m) ** 2, 0) / 20);
+    bbLower = m - 2 * sd;
+  }
+
+  const supports = [
+    { price: ma30, label: 'MA30' },
+    ma50 ? { price: ma50, label: 'MA50' } : null,
+    bbLower ? { price: bbLower, label: 'BB 하단' } : null,
+    { price: lowest90 * 1.05, label: '90d 저점 +5%' }
+  ].filter(c => c && c.price > 0 && c.price < price)
+   .sort((a, b) => b.price - a.price);
+
+  const entry1 = supports[0] || { price: price * 0.92, label: '현재가 -8%' };
+  const entry2 = supports[1] || { price: lowest90 * 1.05, label: '90d 저점 부근' };
+  const stopLoss = { price: lowest90 * 0.95, label: '90d 저점 -5%' };
+
+  const refLow = lowest90;
+  let mults;
+  if (crime.grade === 'A')      mults = [3, 6, 12];
+  else if (crime.grade === 'B') mults = [2.5, 5, 8];
+  else if (crime.grade === 'C') mults = [2, 3.5, 5];
+  else                          mults = [1.7, 2.3, 3];
+
+  const targets = mults.map((m, i) => ({
+    tier: ['1차', '2차', '3차'][i],
+    price: refLow * m,
+    multiple: m,
+    portion: [40, 35, 25][i]
+  }));
+
+  return {
+    currentPrice: price, refLow,
+    entry: [entry1, entry2], stopLoss, targets,
+    entryTriggers: [
+      '거래량 ≥ 14d 평균 ×1.5',
+      '일봉 양봉 마감 (close > open)',
+      '펀딩 양전환 또는 양수율 60%+',
+      'BB 압축 유지 (BB ratio < 0.7)'
+    ],
+    exitTriggers: [
+      { color: '#fbbf24', label: 'dump score ≥ 40',                     action: '1차 익절 시작' },
+      { color: '#fb923c', label: 'dump score ≥ 60 (critical)',          action: '추가 분할 청산' },
+      { color: '#dc2626', label: 'dump score ≥ 80 (apex)',              action: '전량 비상 청산' },
+      { color: '#ef4444', label: 'D2 Parabolic ≥ 14 OR D4 펀딩 ≥ 9',    action: '단일 강신호 — 익절 검토' }
+    ]
+  };
+}
+
+function renderPotentialAndPlan(r) {
+  const crime = computeCrimeGrade(r);
+  const risk = computeRiskProfile(r);
+  const plan = computeTradePlan(r, crime);
+  const fmtP = p => p >= 1 ? p.toFixed(3) : p >= 0.01 ? p.toFixed(5) : p.toExponential(2);
+
+  const factorsHtml = crime.factors.length
+    ? crime.factors.map(f => `<span style="display:inline-block; margin:2px 4px 2px 0; padding:2px 8px; background:rgba(255,255,255,.05); border-radius:4px; font-size:11px;">${f}</span>`).join('')
+    : '<span class="muted">결정 요인 없음 — 데이터 부족</span>';
+
+  const axes = [
+    { label: '🪓 덤프', score: risk.dumpRisk },
+    { label: '⚡ 청산', score: risk.liquidationRisk },
+    { label: '💧 유동성', score: risk.liquidityRisk }
+  ];
+  const axisHtml = axes.map(a => {
+    const pct = Math.min(100, a.score / 80 * 100);
+    const c = a.score >= 40 ? '#dc2626' : a.score >= 25 ? '#f97316' : a.score >= 12 ? '#fbbf24' : '#4ade80';
+    return `<div style="flex:1; min-width:140px;">
+      <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:3px;">
+        <b>${a.label}</b><span style="color:${c}; font-weight:700;">${a.score}</span>
+      </div>
+      <div style="background:rgba(255,255,255,.06); height:6px; border-radius:3px; overflow:hidden;">
+        <div style="height:100%; width:${pct}%; background:${c};"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const risksList = risk.risks.length
+    ? risk.risks.map(t => `<li style="margin:3px 0;">${t}</li>`).join('')
+    : '<li class="muted">특별한 위험요소 없음</li>';
+
+  let planHtml = '<div class="muted" style="padding:8px 0;">캔들 데이터 부족 (30일 미만) — 매매 플랜 산출 불가</div>';
+  if (plan) {
+    const planRow = (color, label, value, extra) => `
+      <div style="display:flex; align-items:center; gap:10px; padding:6px 8px; margin:3px 0;
+                  background:rgba(255,255,255,.03); border-left:3px solid ${color}; border-radius:4px;">
+        <b style="color:${color}; min-width:88px;">${label}</b>
+        <span style="font-family:monospace; font-size:14px;">${value}</span>
+        ${extra ? `<span class="muted" style="font-size:11px; margin-left:auto;">${extra}</span>` : ''}
+      </div>`;
+
+    planHtml = `
+      <div style="font-weight:700; color:#4ade80; margin-top:6px; margin-bottom:4px;">🟢 매수 존</div>
+      ${planRow('#4ade80', '1차', `$${fmtP(plan.entry[0].price)}`, `${plan.entry[0].label} · 현재가 대비 ${((plan.entry[0].price/plan.currentPrice-1)*100).toFixed(1)}%`)}
+      ${planRow('#22d3ee', '2차', `$${fmtP(plan.entry[1].price)}`, `${plan.entry[1].label} · 현재가 대비 ${((plan.entry[1].price/plan.currentPrice-1)*100).toFixed(1)}%`)}
+      ${planRow('#dc2626', '⛔ 손절', `$${fmtP(plan.stopLoss.price)}`, plan.stopLoss.label)}
+
+      <div style="font-weight:700; color:#fb923c; margin:14px 0 4px;">🔴 익절 존 (90d 저점 $${fmtP(plan.refLow)} 기준 배수)</div>
+      ${plan.targets.map((t, i) => planRow(
+        ['#fbbf24','#fb923c','#ef4444'][i],
+        t.tier + ' 익절',
+        `$${fmtP(t.price)}`,
+        `${t.multiple}x · ${t.portion}% 청산`
+      )).join('')}
+
+      <div style="font-weight:700; margin:14px 0 4px;">📌 진입 트리거 (지지가 도달 시 모두 충족)</div>
+      <ul style="margin:4px 0 4px 18px; font-size:12px;">
+        ${plan.entryTriggers.map(t => `<li style="margin:2px 0;">${t}</li>`).join('')}
+      </ul>
+
+      <div style="font-weight:700; margin:14px 0 4px;">⚠ 청산 트리거 (도달 시 즉시 행동)</div>
+      <div style="font-size:12px;">
+        ${plan.exitTriggers.map(t => `
+          <div style="display:flex; gap:8px; padding:3px 0; border-bottom:1px solid var(--border);">
+            <b style="color:${t.color}; min-width:230px;">${t.label}</b>
+            <span>→ ${t.action}</span>
+          </div>`).join('')}
+      </div>`;
+  }
+
+  return `
+    <div class="diag-section" style="border-color:${crime.color};">
+      <h4 style="color:${crime.color}; margin-bottom:10px;">🎯 펌프 잠재력 (Crime Grade)</h4>
+      <div style="display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-bottom:10px;">
+        <div style="display:inline-block; padding:6px 14px; border-radius:8px;
+                    background:${crime.color}22; border:2px solid ${crime.color};
+                    color:${crime.color}; font-weight:800; font-size:18px;">
+          ${crime.grade}급 · ${crime.label}
+        </div>
+        <div>
+          <div style="font-size:13px;">예상 펌프 배수 <b style="color:${crime.color}; font-size:18px;">${crime.range[0]}~${crime.range[1]}x</b></div>
+          <div style="font-size:11px; color:var(--muted);">90d 저점 기준 · 평가 ${crime.score}/100</div>
+        </div>
+      </div>
+      <div style="margin-top:6px;">${factorsHtml}</div>
+      <div style="margin-top:10px; font-size:11px; color:var(--muted);">
+        ⓘ 등급은 <b>점수와 별개</b>로 펌프 잠재 크기를 평가. 점수=확신도, 등급=상승폭.
+      </div>
+    </div>
+
+    <div class="diag-section" style="border-color:${risk.color};">
+      <h4 style="color:${risk.color}; margin-bottom:10px;">⚠ 리스크 프로파일 — ${risk.label}</h4>
+      <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:10px;">${axisHtml}</div>
+      <div style="font-size:12px; margin-top:6px;">
+        <b>예상 드로다운:</b> 펌프 후 <span style="color:${risk.color}; font-weight:700;">-${risk.drawdownEst}%</span> 수준
+      </div>
+      <ul style="margin:8px 0 0 18px; font-size:11px; color:var(--muted);">
+        ${risksList}
+      </ul>
+    </div>
+
+    <div class="diag-section">
+      <h4>📋 트레이드 플랜</h4>
+      ${planHtml}
+    </div>
+  `;
+}
+
 function renderDiagnosisTab(r) {
   const opt = getCurrentOpts();
   const sigs = buildSignalDiagnostics(r);
@@ -4126,6 +4407,8 @@ function renderDiagnosisTab(r) {
       </div>
       <div style="margin-top: 8px; font-size: 11px; color: var(--info);">🔻 고점 탭에서 D1~D9 전체 시그널 확인</div>
     </div>
+
+    ${renderPotentialAndPlan(r)}
 
     ${hardX.length ? `
     <div class="diag-section" style="border-color: var(--danger);">
