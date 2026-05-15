@@ -2345,7 +2345,7 @@ function render() {
         <td>${fmtM(r.oi)}</td>
         <td>${r.oiMcap !== null && r.oiMcap !== undefined ? `<span class="${r.oiMcap >= 0.20 ? 'pos' : (r.oiMcap >= 0.10 ? '' : 'muted')}" title="OI ÷ Market Cap (시총 대비 미결제약정 — 0.20+ 이면 세력 장악)">${r.oiMcap.toFixed(2)}</span>` : '<span class="muted">?</span>'}</td>
         <td><span class="score ${scoreCls}">${r.score}</span></td>
-        <td><span title="${_crime.label} · 예상 ${_crime.range[0]}~${_crime.range[1]}x · ${_crime.score}/100${_crime.oiMissing?' · ⚠OI없음':''}" style="display:inline-block; padding:2px 7px; border-radius:4px; background:${_crime.color}22; color:${_crime.color}; font-weight:700; font-size:12px;">${_crime.grade}${_crime.oiMissing?'<span style="opacity:.5;font-size:9px;margin-left:1px;">?</span>':''}<span style="opacity:.7; font-size:10px; margin-left:3px;">${_crime.range[0]}~${_crime.range[1]}x</span></span></td>
+        <td><span title="${_crime.label} · 예상 ${_crime.range[0]}~${_crime.range[1]}x · ${_crime.score}/100${_crime.oiMissing?' · ⚠OI없음(A등급 불가)':''} · 확신도: ${_crime.convictionLabel}" style="display:inline-block; padding:2px 7px; border-radius:4px; background:${_crime.color}22; color:${_crime.color}; font-weight:700; font-size:12px;">${_crime.grade}${_crime.oiMissing?'<span style="opacity:.5;font-size:9px;margin-left:1px;">?</span>':''}<span style="opacity:.7; font-size:10px; margin-left:3px;">${_crime.range[0]}~${_crime.range[1]}x</span><span style="margin-left:4px; font-size:9px; padding:1px 4px; border-radius:3px; background:${_crime.convictionColor}33; color:${_crime.convictionColor}; font-weight:600;">${_crime.conviction}</span></span></td>
         <td>${sparkline(r.closes14)}</td>
         <td><button class="watch-btn" data-watch="${r.symbol}" onclick="event.stopPropagation()">${watched ? '★' : '☆'}</button></td>
       </tr>`;
@@ -3778,7 +3778,10 @@ function renderGradeValidation(results) {
       ${overs.length ? `<div class="muted" style="font-size:11px; margin-top:4px;">△ 과소평가(실제가 상한 초과): ${overs.length}건</div>` : ''}
       ${errors.length ? `<div class="muted" style="font-size:11px; margin-top:2px;">데이터 없음 (180d 이전 펌프 등): ${errors.length}건</div>` : ''}
       <div class="muted" style="font-size:10px; margin-top:6px;">
-        판정 기준: 실제 배수 ≥ 등급 하한 (A≥20x · B≥7x · C≥3x · D≥1.5x) | ✓=적중 △=과소평가 ✗=미적중
+        판정 기준: 실제 배수 ≥ 등급 하한 (A≥20x · B≥5x · C≥3x · D≥2x) | ✓=적중 △=과소평가(상한 초과) ✗=미적중
+      </div>
+      <div style="font-size:10px; margin-top:3px; color:#fbbf24;">
+        ⓘ A등급은 OI/MCap≥0.20 실증 필수 (없으면 pts 70+이어도 B 자동 하향)
       </div>
       <div class="muted" style="font-size:10px; margin-top:2px;">
         ⚠ CG 유통률·MC는 현재 값 기준 (펌프 당시와 다를 수 있음) · 일부 토큰 180d 이전 펌프는 감지 불가
@@ -4315,16 +4318,37 @@ function computeCrimeGrade(row) {
   else if (row.score >= 50) { pts += 7; factors.push(`매집 점수 ${row.score}점`); }
   else if (row.score >= 30) pts += 3;
 
-  // OI/MCap 없으면 등급 신뢰도 저하 표시용 플래그
   const oiMissing = row.oiMcap === null || row.oiMcap === undefined;
 
-  let grade, label, range, color;
-  if (pts >= 70)      { grade = 'A'; label = 'RAVE급';     range = [20, 100]; color = '#ef4444'; }
-  else if (pts >= 45) { grade = 'B'; label = '대형 crime'; range = [5, 20];   color = '#fb923c'; }
-  else if (pts >= 25) { grade = 'C'; label = '중급 펌프';  range = [3, 10];   color = '#fbbf24'; }
-  else                { grade = 'D'; label = '일반 펌프';  range = [2, 6];    color = '#94a3b8'; }
+  // 매집 확신도: 점수·OI·BB 세 축 기반 (등급과 독립 — "지금 갈 것 같은가")
+  const hasStrongOI = !oiMissing && row.oiMcap >= 0.20;
+  const hasMidOI    = !oiMissing && row.oiMcap >= 0.10;
+  const hasStrongBB = row.bbRatio !== null && row.bbRatio !== undefined && row.bbRatio <= 0.6;
+  const hasMidBB    = row.bbRatio !== null && row.bbRatio !== undefined && row.bbRatio <= 0.75;
+  let conviction, convictionLabel, convictionColor;
+  if (row.score >= 65 && hasStrongOI && hasStrongBB) {
+    conviction = 'HIGH'; convictionLabel = '매집 완료'; convictionColor = '#ef4444';
+  } else if (row.score >= 50 && (hasMidOI || hasMidBB)) {
+    conviction = 'MED';  convictionLabel = '매집 중';   convictionColor = '#fbbf24';
+  } else {
+    conviction = 'LOW';  convictionLabel = '초기/약';   convictionColor = '#64748b';
+  }
 
-  return { grade, label, range, color, factors, score: pts, oiMissing };
+  // A등급 하드 게이트: OI/MCap 0.20+ 실증 없이는 RAVE급 발급 불가
+  // (구조적 소형주라는 이유만으로 A가 남발되는 것 방지)
+  let grade, label, range, color;
+  if (pts >= 70 && !oiMissing && row.oiMcap >= 0.20) {
+    grade = 'A'; label = 'RAVE급';     range = [20, 100]; color = '#ef4444';
+  } else if (pts >= 45) {
+    grade = 'B'; label = '대형 crime'; range = [5, 20];   color = '#fb923c';
+  } else if (pts >= 25) {
+    grade = 'C'; label = '중급 펌프';  range = [3, 10];   color = '#fbbf24';
+  } else {
+    grade = 'D'; label = '일반 펌프';  range = [2, 6];    color = '#94a3b8';
+  }
+
+  return { grade, label, range, color, factors, score: pts, oiMissing,
+           conviction, convictionLabel, convictionColor };
 }
 
 function computeRiskProfile(row) {
@@ -4516,14 +4540,21 @@ function renderPotentialAndPlan(r) {
         </div>
         <div>
           <div style="font-size:13px;">예상 펌프 배수 <b style="color:${crime.color}; font-size:18px;">${crime.range[0]}~${crime.range[1]}x</b></div>
-          <div style="font-size:11px; color:var(--muted);">90d 저점 기준 · 평가 ${crime.score}/100</div>
+          <div style="font-size:11px; color:var(--muted);">90d 저점 기준 · 구조 점수 ${crime.score}/100</div>
+        </div>
+        <div style="padding:6px 14px; border-radius:8px; background:${crime.convictionColor}18; border:1.5px solid ${crime.convictionColor}55;">
+          <div style="font-size:10px; color:var(--muted); margin-bottom:2px;">매집 확신도</div>
+          <div style="color:${crime.convictionColor}; font-weight:800; font-size:16px;">${crime.conviction} <span style="font-size:12px; font-weight:400;">${crime.convictionLabel}</span></div>
         </div>
       </div>
-      <div style="margin-top:6px;">${factorsHtml}</div>
-      <div style="margin-top:10px; font-size:11px; color:var(--muted);">
-        ⓘ 등급은 <b>점수와 별개</b>로 펌프 잠재 크기를 평가. 점수=확신도, 등급=상승폭.
+      <div style="margin-top:4px; font-size:11px; color:var(--muted); margin-bottom:6px;">
+        💡 <b>확신도</b>는 "지금 갈 것 같은가"를 판단 (점수≥65 + OI/MCap≥0.20 + BB≤0.60 = HIGH).
+        <b>등급</b>은 "갈 때 얼마나 오를 수 있는가" (구조적 폭발력).
       </div>
-      ${crime.oiMissing ? `<div style="margin-top:6px; font-size:11px; padding:4px 8px; background:rgba(251,191,36,.08); border-left:2px solid #fbbf24; border-radius:3px; color:#fbbf24;">⚠ OI/MCap 데이터 없음 — 등급 실제보다 낮을 수 있음</div>` : ''}
+      <div style="margin-top:6px; font-size:11px; color:var(--muted); margin-bottom:4px;">📋 등급 산출 근거:</div>
+      <div style="margin-bottom:4px;">${factorsHtml}</div>
+      ${crime.grade === 'A' ? `<div style="margin-top:8px; font-size:11px; padding:5px 10px; background:rgba(239,68,68,.08); border-left:3px solid #ef4444; border-radius:3px; color:#ef4444;">🚨 <b>A등급(RAVE급)은 연 1~2회 수준의 희귀 이벤트.</b> OI 매집 실증 필수. 단독 포지션 금지.</div>` : ''}
+      ${crime.oiMissing ? `<div style="margin-top:6px; font-size:11px; padding:4px 8px; background:rgba(251,191,36,.08); border-left:2px solid #fbbf24; border-radius:3px; color:#fbbf24;">⚠ OI/MCap 데이터 없음 — A등급 발급 불가. 등급 실제보다 낮게 평가될 수 있음.</div>` : ''}
     </div>
 
     <div class="diag-section" style="border-color:${risk.color};">
