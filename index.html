@@ -1932,6 +1932,7 @@ window.openDumpModal = function(symbol) {
   $('tab-exchanges').innerHTML = '<div class="muted">고점 스캔 모드: 거래소 분석은 일반 진단 사용</div>';
   $('tab-signals').innerHTML = '<div class="muted">고점 스캔 모드</div>';
   $('modal').classList.add('show');
+  setupChartZoom();
   document.querySelectorAll('.modal-tabs .tab').forEach((t, i) => t.classList.toggle('active', i === 0));
   document.querySelectorAll('.tab-panel').forEach((p, i) => p.classList.toggle('active', i === 0));
 };
@@ -2571,7 +2572,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   const fmt = d => `${d.getMonth()+1}/${d.getDate()}`;
   const xLabels = `<text x="6" y="${totalH - 4}" fill="#cbd5e1" font-size="11" font-weight="600">${fmt(firstDate)}</text><text x="${w-6}" y="${totalH - 4}" fill="#cbd5e1" font-size="11" font-weight="600" text-anchor="end">${fmt(lastDate)}</text>`;
 
-  return `<svg width="100%" viewBox="0 0 ${w} ${totalH}" preserveAspectRatio="none" style="display:block;">${grid}${fibLayer}${priceParts}${maLayer}${legend}<line x1="0" y1="${ch+5}" x2="${w}" y2="${ch+5}" stroke="#243045" stroke-width="0.5"/>${volParts}${rsiPanel}${xLabels}<text x="6" y="${ch+12}" fill="#cbd5e1" font-size="10" font-weight="700">Vol</text></svg>`;
+  return `<svg id="bigchartsvg" width="100%" viewBox="0 0 ${w} ${totalH}" preserveAspectRatio="none" style="display:block; cursor:grab; touch-action:none;">${grid}${fibLayer}${priceParts}${maLayer}${legend}<line x1="0" y1="${ch+5}" x2="${w}" y2="${ch+5}" stroke="#243045" stroke-width="0.5"/>${volParts}${rsiPanel}${xLabels}<text x="6" y="${ch+12}" fill="#cbd5e1" font-size="10" font-weight="700">Vol</text></svg>`;
 }
 
 function fundingBarSVG(rates, w = 1100, h = 160, history = null) {
@@ -2622,7 +2623,7 @@ function renderPriceTab(r) {
       <div class="stat-card"><div class="stat-label">예상 연 펀딩</div><div class="stat-value pos">${r.fundingApr.toFixed(0)}%</div></div>
     </div>`;
   const allDays = r.candlesAll?.length || 0;
-  const bigChart = `<div class="chart-block"><h3>${allDays}-Day 캔들 + 거래량 (MA7/25/99 · VWMA100)</h3>${r.candlesAll && r.candlesAll.length ? bigCandleSVG(r.candlesAll) : '<div class="muted">데이터 부족</div>'}</div>`;
+  const bigChart = `<div class="chart-block"><h3>${allDays}-Day 캔들 + 거래량 (MA7/25/99 · VWMA100) <span style="font-size:11px; font-weight:400; color:var(--muted);">스크롤 줌 · 드래그 이동 · 더블클릭 초기화</span></h3>${r.candlesAll && r.candlesAll.length ? bigCandleSVG(r.candlesAll) : '<div class="muted">데이터 부족</div>'}</div>`;
   const funding = `<div class="chart-block"><h3>21회 펀딩 히스토리 (≈ 7일, 8h 단위) — 단위: %/8h</h3>${fundingBarSVG(r.fundRates, 1100, 160, r.fundHistory)}</div>`;
   return stats + bigChart + funding;
 }
@@ -2802,6 +2803,51 @@ function renderSignalsTab(r) {
     </div>`;
 }
 
+function setupChartZoom() {
+  const svg = document.getElementById('bigchartsvg');
+  if (!svg) return;
+
+  const vbNums  = svg.getAttribute('viewBox').split(' ').map(Number);
+  const origW   = vbNums[2];
+  const origH   = vbNums[3];
+  let curX = 0, curW = origW;
+
+  const applyVB = () => svg.setAttribute('viewBox', `${curX.toFixed(2)} 0 ${curW.toFixed(2)} ${origH}`);
+
+  // 스크롤 → 수평 줌 (마우스 위치 기준)
+  svg.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = svg.getBoundingClientRect();
+    const fx = (e.clientX - rect.left) / rect.width;           // 마우스 상대 위치 0~1
+    const anchorX = curX + fx * curW;                          // 뷰박스 내 앵커 X
+    const factor  = e.deltaY > 0 ? 1.22 : 1 / 1.22;           // 줌인/아웃
+    curW = Math.min(origW, Math.max(origW * 0.03, curW * factor));
+    curX = Math.max(0, Math.min(origW - curW, anchorX - fx * curW));
+    applyVB();
+  }, { passive: false });
+
+  // 드래그 → 수평 이동
+  let drag = null;
+  svg.addEventListener('pointerdown', e => {
+    drag = { startX: e.clientX, originVBX: curX };
+    svg.setPointerCapture(e.pointerId);
+    svg.style.cursor = 'grabbing';
+  });
+  svg.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const rect = svg.getBoundingClientRect();
+    const dx = (drag.startX - e.clientX) / rect.width * curW;
+    curX = Math.max(0, Math.min(origW - curW, drag.originVBX + dx));
+    applyVB();
+  });
+  const endDrag = () => { drag = null; svg.style.cursor = 'grab'; };
+  svg.addEventListener('pointerup',     endDrag);
+  svg.addEventListener('pointercancel', endDrag);
+
+  // 더블클릭 → 전체 보기 초기화
+  svg.addEventListener('dblclick', () => { curX = 0; curW = origW; applyVB(); });
+}
+
 function openModal(symbol) {
   const r = state.rowMap.get(symbol);
   if (!r) return;
@@ -2821,6 +2867,7 @@ function openModal(symbol) {
   $('tab-exchanges').innerHTML = renderExchangesTab(r);
   $('tab-signals').innerHTML = renderSignalsTab(r);
   $('modal').classList.add('show');
+  setupChartZoom();
   // reset to first tab (진단)
   document.querySelectorAll('.modal-tabs .tab').forEach((t, i) => t.classList.toggle('active', i === 0));
   document.querySelectorAll('.tab-panel').forEach((p, i) => p.classList.toggle('active', i === 0));
