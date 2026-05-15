@@ -4613,6 +4613,15 @@ function computeTradePlan(row, crime) {
     { ratio: 0.786, price: fibHigh - 0.786 * fibRange, color: '#f472b6' },
   ] : [];
 
+  // 피보나치 확장 (저점 + range × ratio — 상방 목표가)
+  // 1.272/1.414/1.618은 일반적 펌프 1차 저항, 2.0/2.618은 강한 추세 시 도달
+  const FIB_EXT_RATIOS = [1.272, 1.414, 1.618, 2.000, 2.618];
+  const fibExtensions = fibRange > 0 ? FIB_EXT_RATIOS.map(r => ({
+    ratio: r,
+    price: fibLow + r * fibRange,
+    fromCurrent: ((fibLow + r * fibRange) / price - 1) * 100
+  })).filter(e => e.price > price) : [];
+
   // RSI 해석
   const rsiSignal = currentRSI === null ? null :
     currentRSI < 25 ? { label: '극도 과매도', color: '#4ade80', advice: '강한 반등 구간. 적극 매수 고려.' } :
@@ -4656,6 +4665,24 @@ function computeTradePlan(row, crime) {
     portion: [40, 35, 25][i]
   }));
 
+  // 라운드 넘버 (심리적 저항) — 가격 자리수 기반으로 생성
+  // 예: $1.35 → [1.5, 2, 2.5, 3, 4, 5] / $0.005 → [0.0075, 0.01, 0.015, ...]
+  const niceLevels = [1, 1.5, 2, 2.5, 3, 4, 5, 7.5];
+  const maxTargetPrice = refLow * mults[mults.length - 1] * 1.15;
+  const rounds = [];
+  let mag = Math.pow(10, Math.floor(Math.log10(price)));
+  while (mag <= maxTargetPrice * 1.5 && rounds.length < 30) {
+    for (const n of niceLevels) {
+      const v = mag * n;
+      if (v > price * 1.005 && v <= maxTargetPrice) rounds.push(v);
+    }
+    mag *= 10;
+  }
+  const roundNumbers = rounds.sort((a, b) => a - b).slice(0, 6).map(v => ({
+    price: v,
+    fromCurrent: (v / price - 1) * 100
+  }));
+
   return {
     currentPrice: price, refLow,
     entry: [entry1, entry2], stopLoss, targets,
@@ -4664,7 +4691,7 @@ function computeTradePlan(row, crime) {
     ma30, ma50, ma99: ma99Val, vwma100: vwma100Val,
     bbLower, bbUpper,
     crossSignal,
-    fibHigh, fibLow, fibLevels, fibSupports, fibResistances,
+    fibHigh, fibLow, fibLevels, fibSupports, fibResistances, fibExtensions, roundNumbers,
     entryTriggers: [
       '거래량 ≥ 14d 평균 ×1.5',
       '일봉 양봉 마감 (close > open)',
@@ -4825,10 +4852,10 @@ function renderPotentialAndPlan(r) {
             ${plan.crossSignal ? `<div style="margin-top:5px; padding:4px 8px; font-size:11px; background:${plan.crossSignal.color}15; border-left:2px solid ${plan.crossSignal.color}; border-radius:3px; color:${plan.crossSignal.color};">⚡ ${plan.crossSignal.type} — ${plan.crossSignal.desc}</div>` : ''}
           </div>`;
 
-        // 피보나치 지지·저항
+        // 피보나치 지지·저항 (되돌림)
         const fibBlock = plan.fibLevels.length ? `
           <div>
-            <div style="font-size:11px; font-weight:700; margin-bottom:4px; color:var(--muted);">피보나치 지지/저항 (90d: 저점 $${fmtPl(plan.fibLow)} → 고점 $${fmtPl(plan.fibHigh)})</div>
+            <div style="font-size:11px; font-weight:700; margin-bottom:4px; color:var(--muted);">피보나치 되돌림 — 지지/저항 (90d: 저점 $${fmtPl(plan.fibLow)} → 고점 $${fmtPl(plan.fibHigh)})</div>
             ${plan.fibLevels.map(f => {
               const isCurr = Math.abs(f.price - plan.currentPrice) / plan.currentPrice < 0.02;
               const isSupport = f.price < plan.currentPrice;
@@ -4843,7 +4870,40 @@ function renderPotentialAndPlan(r) {
             }).join('')}
           </div>` : '';
 
-        return rsiBlock + maBlock + fibBlock;
+        // 피보나치 확장 (상방 목표가 — 펌프 시 도달 가능한 가격대)
+        const FIB_EXT_DESC = {
+          1.272: '1차 돌파 저항',
+          1.414: '평균 저항대',
+          1.618: '핵심 목표 (황금비)',
+          2.000: '강추세 목표',
+          2.618: '오버슈팅 영역'
+        };
+        const fibExtBlock = plan.fibExtensions && plan.fibExtensions.length ? `
+          <div style="margin-top:10px;">
+            <div style="font-size:11px; font-weight:700; margin-bottom:4px; color:var(--muted);">피보나치 확장 — 상방 목표 (90d 스윙폭 기준)</div>
+            ${plan.fibExtensions.map(e => `
+              <div style="display:flex; justify-content:space-between; align-items:center; padding:3px 8px; margin:2px 0;
+                          background:rgba(251,146,60,.06); border-radius:3px; font-size:11px;">
+                <span style="color:#fb923c; min-width:66px; font-weight:600;">Ext ${e.ratio}</span>
+                <span style="font-family:monospace; color:#fb923c;">$${fmtPl(e.price)}</span>
+                <span style="font-size:10px; color:#fb923c;">+${e.fromCurrent.toFixed(0)}% · ${FIB_EXT_DESC[e.ratio]}</span>
+              </div>`).join('')}
+          </div>` : '';
+
+        // 라운드 넘버 (심리적 저항)
+        const roundsBlock = plan.roundNumbers && plan.roundNumbers.length ? `
+          <div style="margin-top:10px;">
+            <div style="font-size:11px; font-weight:700; margin-bottom:4px; color:var(--muted);">심리적 라운드 저항 (마디가 — 차익 실현 빈출 구간)</div>
+            ${plan.roundNumbers.map(rn => `
+              <div style="display:flex; justify-content:space-between; align-items:center; padding:3px 8px; margin:2px 0;
+                          background:rgba(167,139,250,.06); border-radius:3px; font-size:11px;">
+                <span style="color:#a78bfa; min-width:66px; font-weight:600;">Round</span>
+                <span style="font-family:monospace; color:#a78bfa;">$${fmtPl(rn.price)}</span>
+                <span style="font-size:10px; color:#a78bfa;">+${rn.fromCurrent.toFixed(0)}%</span>
+              </div>`).join('')}
+          </div>` : '';
+
+        return rsiBlock + maBlock + fibBlock + fibExtBlock + roundsBlock;
       })() : '<div class="muted">캔들 데이터 부족 — 기술 분석 불가</div>'}
     </div>
 
