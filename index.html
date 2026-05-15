@@ -3458,9 +3458,9 @@ const DEEP_PHASES = [
   { name: '피크', short: '0d',   offsetDays: 0,   color: '#f87171' },
   { name: '사후', short: '+3d',  offsetDays: -3,  color: '#a78bfa' }
 ];
-const SIG_KEYS = ['S2','S3','S6cont','S6size','S7','S8','S9','S10','S11','S12','S13','S14','S15','S17','S18','S19'];
-const SIG_MAX  = {S2:3,S3:12,S6cont:9,S6size:7,S7:8,S8:7,S9:9,S10:6,S11:4,S12:13,S13:7,S14:8,S15:10,S17:4,S18:5,S19:3};
-const SIG_NAME = {S2:'CEX',S3:'유통률',S6cont:'펀딩양수율⚡',S6size:'펀딩크기',S7:'펀딩추세⚡',S8:'베이시스',S9:'OI추세',S10:'L/S편향',S11:'Taker',S12:'BB압축⚡⚡',S13:'디버전스',S14:'OI/MCap',S15:'발사임박',S17:'HigherLows🟡',S18:'Body압축',S19:'매수우위🟡'};
+const SIG_KEYS = ['S2','S3','S6cont','S6size','S7','S8','S9','S10','S11','S12','S13','S14','S15','S17','S18','S19','S21'];
+const SIG_MAX  = {S2:3,S3:12,S6cont:9,S6size:7,S7:8,S8:7,S9:9,S10:6,S11:4,S12:13,S13:7,S14:8,S15:10,S17:4,S18:5,S19:3,S21:15};
+const SIG_NAME = {S2:'CEX',S3:'유통률',S6cont:'펀딩양수율⚡',S6size:'펀딩크기',S7:'펀딩추세⚡',S8:'베이시스',S9:'OI추세',S10:'L/S편향',S11:'Taker',S12:'BB압축⚡⚡',S13:'디버전스',S14:'OI/MCap',S15:'발사임박',S17:'HigherLows🟡',S18:'Body압축',S19:'매수우위🟡',S21:'RAVE 콤보⭐'};
 
 async function runDeepBacktest() {
   const btn = $('deepBtBtn');
