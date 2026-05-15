@@ -2506,6 +2506,16 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
     const fy = toY(fp).toFixed(1);
     return `<line x1="0" y1="${fy}" x2="${w}" y2="${fy}" stroke="${FIB_COLORS[i]}" stroke-width="1.1" stroke-dasharray="6,4" opacity="0.75"/>`;
   }).join('') : '';
+  // 인라인 가격 라벨 — 각 Fib 선의 우측 끝에 작은 pill (가격만)
+  const fibInline = fibRange > 0 ? FIB_RATIOS.map((r, i) => {
+    const fp = fibHigh - r * fibRange;
+    const fy = toY(fp);
+    const txt = fp.toPrecision(4);
+    const labelW = txt.length * 6.5 + 10;
+    const lx = w - labelW - 4;
+    return `<rect x="${lx}" y="${(fy - 7).toFixed(1)}" width="${labelW}" height="13" fill="#0b0e14" opacity="0.85" rx="2" stroke="${FIB_COLORS[i]}" stroke-width="0.7"/>
+      <text x="${(lx + labelW / 2).toFixed(1)}" y="${(fy + 3).toFixed(1)}" fill="${FIB_COLORS[i]}" font-size="10" font-weight="700" font-family="monospace" text-anchor="middle">${txt}</text>`;
+  }).join('') : '';
   const fibLabels = fibRange > 0 ? (() => {
     const boxW = 188, rowH = 14, padTop = 16, padBot = 6;
     const boxH = FIB_RATIOS.length * rowH + padTop + padBot;
@@ -2520,23 +2530,22 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
         <text x="${boxX + 32}" y="${y}" fill="${FIB_COLORS[i]}" font-size="11" font-weight="700">Fib ${r}</text>
         <text x="${boxX + boxW - 8}" y="${y}" fill="${FIB_COLORS[i]}" font-size="11" font-weight="700" text-anchor="end" font-family="monospace">${fp.toPrecision(4)}</text>`;
     });
-    return `<rect x="${boxX}" y="${boxY}" width="${boxW}" height="${boxH}" fill="#0b0e14" opacity="0.82" rx="4" stroke="#243045" stroke-width="0.6"/>
-      <text x="${boxX + 8}" y="${boxY + 12}" fill="#94a3b8" font-size="10" font-weight="700">Fib · 90d 고저</text>
-      ${rows}`;
+    // 드래그 가능한 그룹으로 래핑 (style:cursor + transform 으로 이동)
+    return `<g id="fib-panel" transform="translate(0,0)" style="cursor:grab;">
+      <rect x="${boxX}" y="${boxY}" width="${boxW}" height="${boxH}" fill="#0b0e14" opacity="0.85" rx="4" stroke="#475569" stroke-width="0.8"/>
+      <text x="${boxX + 8}" y="${boxY + 12}" fill="#94a3b8" font-size="10" font-weight="700">⋮⋮ Fib · 90d 고저</text>
+      ${rows}
+    </g>`;
   })() : '';
 
-  // 범례 (MA + Fib 가이드)
+  // 범례 (MA만)
   const legend = `
     <g font-size="13" font-family="monospace">
-      <rect x="6" y="6" width="220" height="76" fill="#0b0e14" opacity="0.88" rx="4" stroke="#243045" stroke-width="0.5"/>
+      <rect x="6" y="6" width="104" height="76" fill="#0b0e14" opacity="0.88" rx="4" stroke="#243045" stroke-width="0.5"/>
       <text x="14" y="22" fill="#fbbf24" font-weight="700">━ MA7</text>
       <text x="14" y="38" fill="#60a5fa" font-weight="700">━ MA25</text>
       <text x="14" y="54" fill="#a78bfa" font-weight="700">━ MA99</text>
       <text x="14" y="70" fill="#ec4899" font-weight="800">━ VWMA100</text>
-      <text x="118" y="22" fill="#94a3b8" font-weight="600">┄ Fib 0.236</text>
-      <text x="118" y="38" fill="#fbbf24" font-weight="600">┄ Fib 0.382</text>
-      <text x="118" y="54" fill="#60a5fa" font-weight="600">┄ Fib 0.500</text>
-      <text x="118" y="70" fill="#4ade80" font-weight="600">┄ Fib 0.618</text>
     </g>`;
 
   // 볼륨 바
@@ -2624,7 +2633,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
     rsi14, vwma100, ma99, ma25, ma7
   };
 
-  return `<svg id="bigchartsvg" width="100%" viewBox="0 0 ${w} ${totalH}" preserveAspectRatio="none" style="display:block; cursor:crosshair; touch-action:none;">${grid}${fibLines}${rsiBg}${zoomGroup}${volDivider}${legend}${fibLabels}${rsiLabels}${xLabels}${volTitle}${crosshair}</svg>`;
+  return `<svg id="bigchartsvg" width="100%" viewBox="0 0 ${w} ${totalH}" preserveAspectRatio="none" style="display:block; cursor:crosshair; touch-action:none;">${grid}${fibLines}${fibInline}${rsiBg}${zoomGroup}${volDivider}${legend}${fibLabels}${rsiLabels}${xLabels}${volTitle}${crosshair}</svg>`;
 }
 
 function fundingBarSVG(rates, w = 1100, h = 160, history = null) {
@@ -3030,6 +3039,34 @@ function setupChartZoom() {
 
   // ── 더블클릭 → 초기화 ─────────────────────────────────────────────
   svg.addEventListener('dblclick', () => { scale = 1; panX = 0; apply(); });
+
+  // ── Fib 패널 드래그 (별도 그룹 — 차트 팬과 분리) ───────────────────
+  const fibPanel = document.getElementById('fib-panel');
+  if (fibPanel) {
+    let pTx = 0, pTy = 0;
+    let panelDrag = null;
+    fibPanel.addEventListener('pointerdown', e => {
+      e.stopPropagation();  // 차트 팬으로 전파 차단
+      panelDrag = { startX: e.clientX, startY: e.clientY, startTx: pTx, startTy: pTy };
+      fibPanel.setPointerCapture(e.pointerId);
+      fibPanel.style.cursor = 'grabbing';
+      cursor.style.display = 'none'; tip.style.display = 'none';
+    });
+    fibPanel.addEventListener('pointermove', e => {
+      if (!panelDrag) return;
+      e.stopPropagation();
+      const rect = svg.getBoundingClientRect();
+      const dx = (e.clientX - panelDrag.startX) / rect.width  * w;
+      const dy = (e.clientY - panelDrag.startY) / rect.height * totalH;
+      // 패널이 너무 멀리 벗어나지 않도록 클램프 (원위치 ± 차트폭)
+      pTx = Math.max(-w + 220, Math.min(20, panelDrag.startTx + dx));
+      pTy = Math.max(0,         Math.min(totalH - 110, panelDrag.startTy + dy));
+      fibPanel.setAttribute('transform', `translate(${pTx.toFixed(1)}, ${pTy.toFixed(1)})`);
+    });
+    const endPanelDrag = () => { panelDrag = null; fibPanel.style.cursor = 'grab'; };
+    fibPanel.addEventListener('pointerup',     endPanelDrag);
+    fibPanel.addEventListener('pointercancel', endPanelDrag);
+  }
 }
 
 function openModal(symbol) {
