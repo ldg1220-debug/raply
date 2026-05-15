@@ -399,6 +399,7 @@
     <input id="btMinRatio" type="number" step="0.5" value="3" class="diag-input" style="width:70px;" title="최소 펌프 배수 (3x 권장)" />
     <button id="backtestBtn">🔬 역검증</button>
     <button id="deepBtBtn" title="펌프 -21d/-10d/-3d/피크 4단계 비교">🔬+ 심층</button>
+    <button id="gradeValBtn" title="실제 Crime 47종목 대상 Crime Grade 정확도 검증 (실제 API 데이터 사용)">📊 Grade검증</button>
     <button id="dumpScanBtn" title="180일 신고가 근접 + 최근 30일 내 ATH 갱신 종목 고점 위험 스캔">🔻 고점</button>
     <button id="watchBtn">★ Watchlist</button>
     <button id="scanBtn" class="primary">스캔 시작</button>
@@ -3564,6 +3565,241 @@ async function runDeepBacktest() {
   }
 }
 
+// ============================================================
+// Crime Grade 실제 검증: 역사적 crime 47종목 대상
+// ============================================================
+const GRADE_VAL_TOKENS = [
+  { symbol:'RAVEUSDT',       actual:109.4 },
+  { symbol:'STOUSDT',        actual:27.7  },
+  { symbol:'BULLAUSDT',      actual:15.8  },
+  { symbol:'SIRENUSDT',      actual:13.1  },
+  { symbol:'LABUSDT',        actual:12.7  },
+  { symbol:'BROCCOLI714USDT',actual:7.3   },
+  { symbol:'BLESSUSDT',      actual:6.9   },
+  { symbol:'BUSDT',          actual:6.4   },
+  { symbol:'AKEUSDT',        actual:6.2   },
+  { symbol:'DUSKUSDT',       actual:6.1   },
+  { symbol:'RIVERUSDT',      actual:5.8   },
+  { symbol:'PLAYUSDT',       actual:5.7   },
+  { symbol:'SKYAIUSDT',      actual:5.6   },
+  { symbol:'BASEDUSDT',      actual:5.5   },
+  { symbol:'BSBUSDT',        actual:5.4   },
+  { symbol:'XNYUSDT',        actual:5.4   },
+  { symbol:'TACUSDT',        actual:5.4   },
+  { symbol:'ENJUSDT',        actual:5.1   },
+  { symbol:'FOLKSUSDT',      actual:5.0   },
+  { symbol:'UBUSDT',         actual:5.0   },
+  { symbol:'LIGHTUSDT',      actual:4.9   },
+  { symbol:'BRUSDT',         actual:4.9   },
+  { symbol:'HIGHUSDT',       actual:4.7   },
+  { symbol:'ORDIUSDT',       actual:4.7   },
+  { symbol:'DUSDT',          actual:4.2   },
+  { symbol:'BEATUSDT',       actual:4.0   },
+  { symbol:'MOVRUSDT',       actual:3.9   },
+  { symbol:'ZEREBROUSDT',    actual:3.7   },
+  { symbol:'ARIAUSDT',       actual:3.7   },
+  { symbol:'JELLYJELLYUSDT', actual:3.7   },
+  { symbol:'CLOUSDT',        actual:3.5   },
+  { symbol:'PIEVERSEUSDT',   actual:3.5   },
+  { symbol:'LUNA2USDT',      actual:3.5   },
+  { symbol:'DOGSUSDT',       actual:3.5   },
+  { symbol:'TAGUSDT',        actual:3.5   },
+  { symbol:'MOODENGUSDT',    actual:3.4   },
+  { symbol:'TSTUSDT',        actual:3.4   },
+  { symbol:'TRADOORUSDT',    actual:3.4   },
+  { symbol:'ONTUSDT',        actual:3.3   },
+  { symbol:'AXSUSDT',        actual:3.2   },
+  { symbol:'SPKUSDT',        actual:3.1   },
+  { symbol:'BTRUSDT',        actual:3.1   },
+  { symbol:'AGTUSDT',        actual:3.0   },
+  { symbol:'ONUSDT',         actual:3.0   },
+];
+
+// 등급 적중 기준: 실제 배수 ≥ 등급 하한
+function gradeHit(grade, actual) {
+  if (grade === 'A') return actual >= 20;
+  if (grade === 'B') return actual >= 7;
+  if (grade === 'C') return actual >= 3;
+  if (grade === 'D') return actual >= 1.5;
+  return false;
+}
+// 등급 과소평가(실제가 상한도 초과)
+function gradeOver(grade, actual) {
+  if (grade === 'A') return false; // A는 상한 없음
+  if (grade === 'B') return actual > 25;
+  if (grade === 'C') return actual > 8;
+  if (grade === 'D') return actual > 3;
+  return false;
+}
+
+async function runGradeValidation() {
+  const btn = $('gradeValBtn');
+  btn.disabled = true; btn.textContent = '...';
+  $('bt-modal').classList.add('show');
+  $('bt-body').innerHTML = `<div class="muted">Phase 1: 데이터 로드 중 (CG + CEX + 선물 유니버스)...</div>`;
+
+  try {
+    const useCG = $('f_cg').value === 'on';
+    const [universe, cexSets, cgMarkets, cgPlatforms] = await Promise.all([
+      Binance.loadUniverse(),
+      CexLoader.loadAll(),
+      useCG ? CoinGecko.loadMarkets() : Promise.resolve([]),
+      useCG ? CoinGecko.loadPlatforms() : Promise.resolve([])
+    ]);
+    const cgMap = useCG ? CoinGecko.buildSymbolMap(cgMarkets) : new Map();
+    const cgPlatMap = useCG ? CoinGecko.buildPlatformMap(cgPlatforms) : new Map();
+    const perpMap = new Map(universe.allPerps.map(p => [p.symbol, p]));
+
+    const results = [];
+    let done = 0, idx = 0;
+
+    async function worker() {
+      while (idx < GRADE_VAL_TOKENS.length) {
+        const i = idx++;
+        const { symbol, actual } = GRADE_VAL_TOKENS[i];
+        const base = symbol.replace('USDT','');
+        const perp = perpMap.get(symbol);
+        try {
+          const klines = await Binance.loadKlines(symbol, 180);
+          const pump = detectPump(klines, 180, 2.5);
+          if (!pump) {
+            results.push({ symbol, actual, error: '180d 내 펌프 미감지' });
+          } else {
+            const ageDays = perp && perp.onboardDate
+              ? Math.floor((pump.peakDate - perp.onboardDate) / 86400000) : null;
+            const evalDate = pump.peakDate - 7 * 86400000;
+            const fullBt = (Date.now() - evalDate) < 28 * 86400000;
+            const cgLookup = useCG ? CoinGecko.lookup(cgMap, base, cgPlatMap) : null;
+            const row = await backtestRow(symbol, base, ageDays, evalDate, cgLookup, cexSets, fullBt);
+            if (!row) {
+              results.push({ symbol, actual, error: 'row 생성 실패' });
+            } else {
+              const crime = computeCrimeGrade(row);
+              results.push({
+                symbol, actual,
+                grade: crime.grade, gradeScore: crime.score,
+                range: crime.range, factors: crime.factors,
+                hit: gradeHit(crime.grade, actual),
+                over: gradeOver(crime.grade, actual),
+                accScore: row.score, liveScore: row.liveEquivalentScore,
+                pumpRatio: pump.pumpRatio
+              });
+            }
+          }
+        } catch(e) {
+          results.push({ symbol, actual, error: e.message.slice(0, 40) });
+        }
+        done++;
+        if (done % 5 === 0) $('bt-body').innerHTML = `<div class="muted">검증 중 ${done}/${GRADE_VAL_TOKENS.length}...</div>`;
+      }
+    }
+
+    await Promise.all(Array.from({length: 5}, worker));
+    $('bt-body').innerHTML = renderGradeValidation(results);
+  } catch(e) {
+    $('bt-body').innerHTML = `<div class="neg">오류: ${e.message}</div>`;
+    log('Grade 검증 실패:', e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '📊 Grade검증';
+  }
+}
+
+function renderGradeValidation(results) {
+  const valid = results.filter(r => r.grade);
+  const errors = results.filter(r => r.error);
+  const hits = valid.filter(r => r.hit);
+  const overs = valid.filter(r => r.over); // 과소평가
+
+  // 등급별 통계
+  const byGrade = { A:[], B:[], C:[], D:[] };
+  valid.forEach(r => { if (byGrade[r.grade]) byGrade[r.grade].push(r); });
+  const gradeStats = ['A','B','C','D'].map(g => {
+    const gr = byGrade[g];
+    if (!gr.length) return '';
+    const h = gr.filter(r => r.hit).length;
+    const gc = g === 'A' ? '#ef4444' : g === 'B' ? '#fb923c' : g === 'C' ? '#fbbf24' : '#94a3b8';
+    return `<span style="color:${gc};">${g}: ${h}/${gr.length}</span>`;
+  }).filter(Boolean).join(' · ');
+
+  const acc = valid.length ? Math.round(hits.length / valid.length * 100) : 0;
+  const accColor = acc >= 70 ? '#4ade80' : acc >= 50 ? '#fbbf24' : '#ef4444';
+
+  const rows = results.slice().sort((a,b) => b.actual - a.actual).map(r => {
+    if (r.error) return `
+      <tr style="opacity:.5">
+        <td style="padding:3px 6px;">${r.symbol.replace('USDT','')}</td>
+        <td style="padding:3px 6px;" class="muted">${r.actual}x</td>
+        <td colspan="5" class="muted" style="padding:3px 6px; font-size:10px;">— ${r.error}</td>
+      </tr>`;
+    const gc = r.grade==='A'?'#ef4444':r.grade==='B'?'#fb923c':r.grade==='C'?'#fbbf24':'#94a3b8';
+    const ac = r.actual>=20?'#ef4444':r.actual>=7?'#fb923c':r.actual>=3?'#fbbf24':'#94a3b8';
+    const hitMark = r.hit
+      ? (r.over ? `<span style="color:#fbbf24;" title="적중하나 과소평가 (실제가 상한 초과)">△</span>`
+                : `<span style="color:#4ade80;">✓</span>`)
+      : `<span style="color:#ef4444;">✗</span>`;
+    const f = (r.factors||[]).slice(0,3).join(' · ');
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:3px 6px;">${r.symbol.replace('USDT','')}</td>
+      <td style="padding:3px 6px;"><b style="color:${ac};">${r.actual}x</b></td>
+      <td style="padding:3px 6px;"><b style="color:${gc};">${r.grade}</b> <span class="muted" style="font-size:10px;">(${r.gradeScore})</span></td>
+      <td style="padding:3px 6px;" class="muted">${r.range[0]}~${r.range[1]}x</td>
+      <td style="padding:3px 6px; text-align:center;">${hitMark}</td>
+      <td style="padding:3px 6px;"><span style="color:${r.accScore>=50?'#4ade80':r.accScore>=35?'#fbbf24':'var(--muted)'}; font-size:11px;">${r.accScore}pt</span></td>
+      <td style="padding:3px 6px; font-size:10px; color:var(--muted); max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${f}">${f}</td>
+    </tr>`;
+  }).join('');
+
+  // 과소평가 분석 — 무엇이 등급을 끌어내렸는가
+  const missedHigh = valid.filter(r => !r.hit && r.actual >= 7);  // 실제로 큰데 B 미만 판정
+  const overPred   = valid.filter(r => r.grade === 'A' && r.actual < 20); // A 판정했는데 실제 <20x
+
+  let analysisHtml = '';
+  if (missedHigh.length) {
+    analysisHtml += `<div style="margin-top:12px; padding:8px 10px; background:rgba(239,68,68,.08); border-left:3px solid #ef4444; border-radius:4px;">
+      <b style="color:#ef4444;">⚠ 과소 등급 (실제 ≥7x인데 B 미만 판정): ${missedHigh.length}건</b>
+      <div style="font-size:11px; margin-top:4px; color:var(--muted);">
+        ${missedHigh.map(r => `${r.symbol.replace('USDT','')} (${r.actual}x → ${r.grade}급: ${(r.factors||[]).slice(0,2).join(', ')||'CG 데이터 부족'})`).join('<br>')}
+      </div>
+    </div>`;
+  }
+  if (overPred.length) {
+    analysisHtml += `<div style="margin-top:8px; padding:8px 10px; background:rgba(251,191,36,.08); border-left:3px solid #fbbf24; border-radius:4px;">
+      <b style="color:#fbbf24;">△ 과대 등급 (A 판정했는데 실제 <20x): ${overPred.length}건</b>
+      <div style="font-size:11px; margin-top:4px; color:var(--muted);">
+        ${overPred.map(r => `${r.symbol.replace('USDT','')} (실제 ${r.actual}x, 매집점수 ${r.accScore}pt)`).join('<br>')}
+      </div>
+    </div>`;
+  }
+
+  return `
+    <div style="margin-bottom:16px;">
+      <div style="font-size:24px; font-weight:800; color:${accColor};">${hits.length}/${valid.length} 적중 (${acc}%)</div>
+      <div style="margin-top:4px; font-size:13px;">${gradeStats}</div>
+      ${overs.length ? `<div class="muted" style="font-size:11px; margin-top:4px;">△ 과소평가(실제가 상한 초과): ${overs.length}건</div>` : ''}
+      ${errors.length ? `<div class="muted" style="font-size:11px; margin-top:2px;">데이터 없음 (180d 이전 펌프 등): ${errors.length}건</div>` : ''}
+      <div class="muted" style="font-size:10px; margin-top:6px;">
+        판정 기준: 실제 배수 ≥ 등급 하한 (A≥20x · B≥7x · C≥3x · D≥1.5x) | ✓=적중 △=과소평가 ✗=미적중
+      </div>
+      <div class="muted" style="font-size:10px; margin-top:2px;">
+        ⚠ CG 유통률·MC는 현재 값 기준 (펌프 당시와 다를 수 있음) · 일부 토큰 180d 이전 펌프는 감지 불가
+      </div>
+    </div>
+    ${analysisHtml}
+    <table style="width:100%; font-size:12px; border-collapse:collapse; margin-top:12px;">
+      <thead><tr style="color:var(--muted); font-size:11px; border-bottom:1px solid var(--border);">
+        <th style="padding:4px 6px; text-align:left;">심볼</th>
+        <th style="padding:4px 6px; text-align:left;">실제</th>
+        <th style="padding:4px 6px; text-align:left;">Grade</th>
+        <th style="padding:4px 6px; text-align:left;">예상범위</th>
+        <th style="padding:4px 6px; text-align:center;">적중</th>
+        <th style="padding:4px 6px; text-align:left;">누적점수</th>
+        <th style="padding:4px 6px; text-align:left;">주요 요인</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
 function renderDeepResults(evolutions) {
   if (!evolutions.length) { $('bt-body').innerHTML = '<div class="muted">데이터 없음</div>'; return; }
 
@@ -4493,6 +4729,7 @@ $('diagInput').addEventListener('keydown', (e) => {
 
 $('backtestBtn').addEventListener('click', runBacktest);
 $('deepBtBtn').addEventListener('click', runDeepBacktest);
+$('gradeValBtn').addEventListener('click', runGradeValidation);
 $('dumpScanBtn').addEventListener('click', runDumpScan);
 $('bt-close').addEventListener('click', () => $('bt-modal').classList.remove('show'));
 document.querySelector('#bt-modal .modal-overlay').addEventListener('click', () => $('bt-modal').classList.remove('show'));
