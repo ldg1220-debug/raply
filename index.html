@@ -2503,23 +2503,24 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   const fibLayer = fibRange > 0 ? FIB_RATIOS.map((r, i) => {
     const fp = fibHigh - r * fibRange;
     const fy = toY(fp).toFixed(1);
-    return `<line x1="0" y1="${fy}" x2="${w}" y2="${fy}" stroke="${FIB_COLORS[i]}" stroke-width="0.8" stroke-dasharray="5,4" opacity="0.5"/>
-      <text x="${w - 3}" y="${(parseFloat(fy) - 2).toFixed(1)}" fill="${FIB_COLORS[i]}" font-size="8.5" text-anchor="end" opacity="0.75">Fib ${r} ${fp.toPrecision(4)}</text>`;
+    const labelY = (parseFloat(fy) - 3).toFixed(1);
+    return `<line x1="0" y1="${fy}" x2="${w}" y2="${fy}" stroke="${FIB_COLORS[i]}" stroke-width="1.1" stroke-dasharray="6,4" opacity="0.75"/>
+      <rect x="${w - 132}" y="${parseFloat(labelY) - 11}" width="128" height="14" fill="#0b0e14" opacity="0.85" rx="2"/>
+      <text x="${w - 6}" y="${labelY}" fill="${FIB_COLORS[i]}" font-size="12" font-weight="700" text-anchor="end">Fib ${r}  ${fp.toPrecision(4)}</text>`;
   }).join('') : '';
 
-  // 범례
+  // 범례 (MA + Fib 가이드)
   const legend = `
-    <g font-size="10" font-family="monospace">
-      <rect x="6" y="6" width="178" height="56" fill="#0b0e14" opacity="0.75" rx="3"/>
-      <text x="12" y="18" fill="#fbbf24">— MA7</text>
-      <text x="12" y="30" fill="#60a5fa">— MA25</text>
-      <text x="12" y="42" fill="#a78bfa">— MA99</text>
-      <text x="12" y="54" fill="#ec4899" font-weight="bold">━ VWMA100</text>
-      <rect x="90" y="8" width="90" height="46" fill="none"/>
-      <text x="95" y="18" fill="#94a3b8">- Fib 0.236</text>
-      <text x="95" y="30" fill="#fbbf24">- Fib 0.382</text>
-      <text x="95" y="42" fill="#60a5fa">- Fib 0.500</text>
-      <text x="95" y="54" fill="#4ade80">- Fib 0.618</text>
+    <g font-size="13" font-family="monospace">
+      <rect x="6" y="6" width="220" height="76" fill="#0b0e14" opacity="0.88" rx="4" stroke="#243045" stroke-width="0.5"/>
+      <text x="14" y="22" fill="#fbbf24" font-weight="700">━ MA7</text>
+      <text x="14" y="38" fill="#60a5fa" font-weight="700">━ MA25</text>
+      <text x="14" y="54" fill="#a78bfa" font-weight="700">━ MA99</text>
+      <text x="14" y="70" fill="#ec4899" font-weight="800">━ VWMA100</text>
+      <text x="118" y="22" fill="#94a3b8" font-weight="600">┄ Fib 0.236</text>
+      <text x="118" y="38" fill="#fbbf24" font-weight="600">┄ Fib 0.382</text>
+      <text x="118" y="54" fill="#60a5fa" font-weight="600">┄ Fib 0.500</text>
+      <text x="118" y="70" fill="#4ade80" font-weight="600">┄ Fib 0.618</text>
     </g>`;
 
   // 볼륨 바
@@ -2533,11 +2534,12 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
     return `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" fill="${color}" opacity="0.55"/>`;
   }).join('');
 
-  // 그리드 (5개 가로선)
+  // 그리드 (5개 가로선) — 가격 레이블은 좌측에 배치(범례와 겹치는 상단 2개는 생략)
   const grid = [0, 0.25, 0.5, 0.75, 1].map(t => {
     const y = ch - t * ch;
     const p = minP + t * rangeP;
-    return `<line x1="0" y1="${y}" x2="${w}" y2="${y}" stroke="#243045" stroke-width="0.5" opacity="0.5"/><text x="${w-2}" y="${y-1}" fill="#8b99a8" font-size="10" text-anchor="end">${p.toPrecision(4)}</text>`;
+    const showLabel = y > 90; // 범례(y 6~82) 영역 회피
+    return `<line x1="0" y1="${y}" x2="${w}" y2="${y}" stroke="#243045" stroke-width="0.5" opacity="0.5"/>${showLabel ? `<text x="6" y="${y-3}" fill="#cbd5e1" font-size="11" font-weight="600">${p.toPrecision(4)}</text>` : ''}`;
   }).join('');
 
   // RSI 패널
@@ -2554,22 +2556,22 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   const rsiPanel = `
     <line x1="0" y1="${rsiTop - 5}" x2="${w}" y2="${rsiTop - 5}" stroke="#243045" stroke-width="0.8"/>
     <rect x="0" y="${rsiTop}" width="${w}" height="${rh}" fill="rgba(11,14,20,0.25)"/>
-    <line x1="0" y1="${toRY(70)}" x2="${w}" y2="${toRY(70)}" stroke="#ef4444" stroke-width="0.7" stroke-dasharray="3,3" opacity="0.55"/>
-    <line x1="0" y1="${toRY(50)}" x2="${w}" y2="${toRY(50)}" stroke="#475569" stroke-width="0.5" opacity="0.4"/>
-    <line x1="0" y1="${toRY(30)}" x2="${w}" y2="${toRY(30)}" stroke="#4ade80" stroke-width="0.7" stroke-dasharray="3,3" opacity="0.55"/>
-    ${rsiPts.length >= 2 ? `<polyline points="${rsiPts.join(' ')}" fill="none" stroke="${rsiColor}" stroke-width="1.3" opacity="0.92"/>` : ''}
-    <text x="4" y="${rsiTop + 10}" fill="#8b99a8" font-size="9">RSI(14)</text>
-    <text x="28" y="${toRY(70) - 2}" fill="#ef4444" font-size="8" opacity="0.7">70</text>
-    <text x="28" y="${toRY(30) + 9}" fill="#4ade80" font-size="8" opacity="0.7">30</text>
-    ${currRSI !== null ? `<text x="${w - 4}" y="${rsiTop + 11}" fill="${rsiColor}" font-size="10" text-anchor="end" font-weight="bold">RSI ${currRSI.toFixed(1)}</text>` : ''}`;
+    <line x1="0" y1="${toRY(70)}" x2="${w}" y2="${toRY(70)}" stroke="#ef4444" stroke-width="0.9" stroke-dasharray="4,3" opacity="0.7"/>
+    <line x1="0" y1="${toRY(50)}" x2="${w}" y2="${toRY(50)}" stroke="#475569" stroke-width="0.5" opacity="0.5"/>
+    <line x1="0" y1="${toRY(30)}" x2="${w}" y2="${toRY(30)}" stroke="#4ade80" stroke-width="0.9" stroke-dasharray="4,3" opacity="0.7"/>
+    ${rsiPts.length >= 2 ? `<polyline points="${rsiPts.join(' ')}" fill="none" stroke="${rsiColor}" stroke-width="1.6" opacity="0.95"/>` : ''}
+    <text x="6" y="${rsiTop + 13}" fill="#cbd5e1" font-size="12" font-weight="700">RSI(14)</text>
+    <text x="60" y="${toRY(70) - 3}" fill="#ef4444" font-size="11" font-weight="700">70</text>
+    <text x="60" y="${toRY(30) + 12}" fill="#4ade80" font-size="11" font-weight="700">30</text>
+    ${currRSI !== null ? `<text x="${w - 6}" y="${rsiTop + 14}" fill="${rsiColor}" font-size="13" text-anchor="end" font-weight="800">RSI ${currRSI.toFixed(1)}</text>` : ''}`;
 
   // 시간축
   const firstDate = new Date(candles[0].t);
   const lastDate  = new Date(candles[candles.length-1].t);
   const fmt = d => `${d.getMonth()+1}/${d.getDate()}`;
-  const xLabels = `<text x="4" y="${totalH - 3}" fill="#8b99a8" font-size="10">${fmt(firstDate)}</text><text x="${w-4}" y="${totalH - 3}" fill="#8b99a8" font-size="10" text-anchor="end">${fmt(lastDate)}</text>`;
+  const xLabels = `<text x="6" y="${totalH - 4}" fill="#cbd5e1" font-size="11" font-weight="600">${fmt(firstDate)}</text><text x="${w-6}" y="${totalH - 4}" fill="#cbd5e1" font-size="11" font-weight="600" text-anchor="end">${fmt(lastDate)}</text>`;
 
-  return `<svg width="100%" viewBox="0 0 ${w} ${totalH}" preserveAspectRatio="none" style="display:block;">${grid}${fibLayer}${priceParts}${maLayer}${legend}<line x1="0" y1="${ch+5}" x2="${w}" y2="${ch+5}" stroke="#243045" stroke-width="0.5"/>${volParts}${rsiPanel}${xLabels}<text x="4" y="${ch+9}" fill="#8b99a8" font-size="9">Vol</text></svg>`;
+  return `<svg width="100%" viewBox="0 0 ${w} ${totalH}" preserveAspectRatio="none" style="display:block;">${grid}${fibLayer}${priceParts}${maLayer}${legend}<line x1="0" y1="${ch+5}" x2="${w}" y2="${ch+5}" stroke="#243045" stroke-width="0.5"/>${volParts}${rsiPanel}${xLabels}<text x="6" y="${ch+12}" fill="#cbd5e1" font-size="10" font-weight="700">Vol</text></svg>`;
 }
 
 function fundingBarSVG(rates, w = 1100, h = 160, history = null) {
@@ -2803,7 +2805,13 @@ function renderSignalsTab(r) {
 function openModal(symbol) {
   const r = state.rowMap.get(symbol);
   if (!r) return;
-  $('m_symbol').textContent = `${r.symbol} ${r.cg ? '— ' + r.cg.name : ''}`;
+  const priceStr = r.price >= 1 ? r.price.toFixed(3) : r.price >= 0.01 ? r.price.toFixed(5) : r.price.toExponential(2);
+  const ch24 = r.change24 ?? 0;
+  const ch24Color = ch24 >= 0 ? '#4ade80' : '#f87171';
+  const ch24Str = `${ch24 >= 0 ? '+' : ''}${ch24.toFixed(2)}%`;
+  $('m_symbol').innerHTML = `${r.symbol} ${r.cg ? '— ' + r.cg.name : ''}
+    <span style="margin-left:14px; font-size:15px; font-family:monospace; color:#e2e8f0; font-weight:700;">$${priceStr}</span>
+    <span style="margin-left:8px; font-size:13px; color:${ch24Color}; font-weight:600;">${ch24Str}</span>`;
   $('m_meta').innerHTML = `
     Score <span class="score ${r.score >= 80 ? 's-elite' : r.score >= 60 ? 's-high' : 's-mid'}">${r.score}</span>
     · 상장 ${r.ageDays ?? '?'}일 · CEX ${r.cexCount}/4 · ${signalChips(r)}
