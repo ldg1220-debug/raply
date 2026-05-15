@@ -2108,7 +2108,7 @@ async function runScan() {
         const item = pre[i];
         try {
           const [klines, oi, fundHist, oiHist, lsPos, lsAcc, takerHist] = await Promise.all([
-            Binance.loadKlines(item.candidate.symbol, 180),
+            Binance.loadKlines(item.candidate.symbol, 365),
             Binance.loadOI(item.candidate.symbol),
             Binance.loadFundingHistory(item.candidate.symbol, 21),
             Binance.loadOIHistory(item.candidate.symbol),
@@ -2832,7 +2832,7 @@ async function diagnoseToken(input) {
     }
 
     const [klines, oi, fundHist, oiHist, lsPos, lsAcc, takerHist] = await Promise.all([
-      Binance.loadKlines(perp.symbol, 180),
+      Binance.loadKlines(perp.symbol, 365),
       Binance.loadOI(perp.symbol),
       Binance.loadFundingHistory(perp.symbol, 21),
       Binance.loadOIHistory(perp.symbol),
