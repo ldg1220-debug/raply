@@ -109,10 +109,10 @@
   header h1 { margin: 0; font-size: var(--text-lg); font-weight: var(--w-semi); letter-spacing: -0.01em; }
   header .sub { color: var(--muted); font-size: var(--text-xs); margin-left: var(--space-2); font-weight: var(--w-normal); }
   .warning-bar {
-    background: rgba(251,191,36,.05);
-    border-bottom: 1px solid rgba(251,191,36,.15);
+    background: rgba(251,191,36,.08);
+    border-bottom: 1px solid rgba(251,191,36,.20);
     padding: var(--space-2) var(--space-5);
-    color: var(--warn);
+    color: rgba(251,191,36,.75);
     font-size: var(--text-xs);
     line-height: 1.5;
   }
@@ -139,7 +139,7 @@
   input:focus, select:focus { border-color: var(--accent); }
   button.primary {
     background: var(--accent);
-    color: #022;
+    color: var(--bg);
     border-color: var(--accent);
     font-weight: var(--w-semi);
   }
@@ -213,12 +213,14 @@
   .filter-group-label {
     grid-column: 1 / -1;
     font-size: var(--text-2xs);
-    color: var(--accent);
+    color: var(--text-3);
     font-weight: var(--w-semi);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     padding-top: var(--space-3);
+    padding-left: var(--space-2);
     border-top: 1px solid var(--border);
+    border-left: 2px solid var(--accent);
     margin-top: var(--space-1);
   }
   .filter-group-label:first-child { border-top: none; padding-top: 0; margin-top: 0; }
@@ -232,14 +234,12 @@
   }
   .plan-zone:last-child { margin-bottom: 0; }
   .plan-zone-hd {
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     font-weight: var(--w-semi);
     margin-bottom: var(--space-2);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
   }
-  .plan-zone--buy  { background: rgba(74,222,128,.04);  border-color: rgba(74,222,128,.15); }
-  .plan-zone--sell { background: rgba(251,146,60,.04);   border-color: rgba(251,146,60,.15); }
+  .plan-zone--buy  { background: rgba(74,222,128,.07);  border-color: rgba(74,222,128,.20); }
+  .plan-zone--sell { background: rgba(251,146,60,.07);   border-color: rgba(251,146,60,.20); }
   .plan-zone--trigger { background: var(--surface-2); }
   .preset-status { color: var(--accent-2); font-size: var(--text-xs); margin-left: auto; font-weight: var(--w-medium); }
   .status {
@@ -323,7 +323,7 @@
   .grade-C { background: rgba(251,191,36,.13); color: var(--warn); }
   .grade-D { background: rgba(248,113,113,.13); color: var(--neg); }
   .diag-section {
-    margin: var(--space-4) 0;
+    margin: var(--space-3) 0;
     padding: var(--space-4);
     background: var(--surface);
     border-radius: var(--r-md);
@@ -365,7 +365,7 @@
   /* 변형: hero — 점수/등급 상단 카드 (더 도드라지게) */
   .diag-section--hero {
     padding: var(--space-5);
-    background: linear-gradient(180deg, rgba(255,255,255,0.025), transparent 60%), var(--surface);
+    background: linear-gradient(180deg, rgba(255,255,255,0.04), transparent 70%), var(--surface);
     border: 1px solid var(--border-2);
   }
   /* 변형: bare — 차트 등 자체 컨테이너 들어가는 경우 */
@@ -628,7 +628,7 @@
     background: var(--surface-2);
     border: 1px solid var(--border);
     border-radius: var(--r);
-    padding: var(--space-3);
+    padding: var(--space-2);
     transition: border-color .12s ease;
   }
   .stat-card:hover { border-color: var(--border-2); }
@@ -640,7 +640,7 @@
     font-weight: var(--w-medium);
   }
   .stat-card .stat-value {
-    font-size: var(--text-md);
+    font-size: var(--text-lg);
     font-weight: var(--w-semi);
     margin-top: var(--space-1);
     font-variant-numeric: tabular-nums;
