@@ -4645,95 +4645,156 @@ async function runGradeValidation() {
 function renderGradeValidation(results) {
   const valid = results.filter(r => r.grade);
   const errors = results.filter(r => r.error);
-  const hits = valid.filter(r => r.hit);
-  const overs = valid.filter(r => r.over); // 과소평가
+  const hits   = valid.filter(r => r.hit);
+  const overs  = valid.filter(r => r.over);
 
-  // 등급별 통계
+  // ── 점수 계층: 실제 투자 의향 기준 ──────────────────────────
+  const TIERS = [
+    { label: '추천 (≥50pt)', min: 50,  max: 999, color: '#4ade80' },
+    { label: '관심 (40-49)', min: 40,  max: 49,  color: '#a3e635' },
+    { label: '관망 (35-39)', min: 35,  max: 39,  color: '#fbbf24' },
+    { label: '노이즈 (<35)',  min: -1,  max: 34,  color: '#71717a' },
+  ];
+  const tierRows = TIERS.map(t => {
+    const tier = valid.filter(r => r.accScore >= t.min && r.accScore <= t.max);
+    const tierHits = tier.filter(r => r.hit);
+    const pct = tier.length ? Math.round(tierHits.length / tier.length * 100) : null;
+    const pctTxt = pct === null ? '-' : `${pct}%`;
+    const barW = pct === null ? 0 : pct;
+    const barC = pct >= 70 ? '#4ade80' : pct >= 50 ? '#fbbf24' : '#f87171';
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:5px 8px; font-size:12px; color:${t.color}; white-space:nowrap;">${t.label}</td>
+      <td style="padding:5px 8px; font-size:13px; font-weight:700; color:${barC};">${tierHits.length}/${tier.length}</td>
+      <td style="padding:5px 8px;">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <div style="width:80px; height:6px; background:var(--surface-3); border-radius:3px; overflow:hidden;">
+            <div style="width:${barW}%; height:100%; background:${barC}; border-radius:3px;"></div>
+          </div>
+          <span style="font-size:12px; font-weight:600; color:${barC};">${pctTxt}</span>
+        </div>
+      </td>
+      <td style="padding:5px 8px; font-size:10px; color:var(--muted);">${
+        t.min < 35 ? '시장 노이즈 · 투자 고려 불가' :
+        t.min < 40 ? '기본 필터 통과 수준' :
+        t.min < 50 ? '매수 검토 가능' : '적극 추천 구간'
+      }</td>
+    </tr>`;
+  }).join('');
+
+  // ── "실질 추천" 기준 (≥40pt): 실제로 살 만한 점수 ──────────
+  const actionable = valid.filter(r => r.accScore >= 40);
+  const actHits    = actionable.filter(r => r.hit);
+  const actAcc     = actionable.length ? Math.round(actHits.length / actionable.length * 100) : 0;
+  const actColor   = actAcc >= 70 ? '#4ade80' : actAcc >= 50 ? '#fbbf24' : '#ef4444';
+  const overallAcc = valid.length ? Math.round(hits.length / valid.length * 100) : 0;
+
+  // ── 등급별 통계 ───────────────────────────────────────────────
   const byGrade = { A:[], B:[], C:[], D:[] };
   valid.forEach(r => { if (byGrade[r.grade]) byGrade[r.grade].push(r); });
   const gradeStats = ['A','B','C','D'].map(g => {
     const gr = byGrade[g];
     if (!gr.length) return '';
     const h = gr.filter(r => r.hit).length;
-    const gc = g === 'A' ? '#ef4444' : g === 'B' ? '#fb923c' : g === 'C' ? '#fbbf24' : '#94a3b8';
+    const gc = g==='A'?'#ef4444':g==='B'?'#fb923c':g==='C'?'#fbbf24':'#94a3b8';
     return `<span style="color:${gc};">${g}: ${h}/${gr.length}</span>`;
   }).filter(Boolean).join(' · ');
 
-  const acc = valid.length ? Math.round(hits.length / valid.length * 100) : 0;
-  const accColor = acc >= 70 ? '#4ade80' : acc >= 50 ? '#fbbf24' : '#ef4444';
+  // ── 과소/과대 분석 ────────────────────────────────────────────
+  const missedHigh = valid.filter(r => !r.hit && r.actual >= 7);
+  const overPred   = valid.filter(r => r.grade==='A' && r.actual < 20);
+  let analysisHtml = '';
+  if (missedHigh.length) {
+    analysisHtml += `<div style="margin-top:10px; padding:8px 10px; background:rgba(239,68,68,.08); border-left:3px solid #ef4444; border-radius:4px;">
+      <b style="color:#ef4444;">⚠ 과소 등급 (실제 ≥7x인데 B 미만): ${missedHigh.length}건</b>
+      <div style="font-size:11px; margin-top:4px; color:var(--muted);">
+        ${missedHigh.map(r=>`${r.symbol.replace('USDT','')} (${r.actual}x → ${r.grade}: ${(r.factors||[]).slice(0,2).join(', ')||'CG 데이터 부족'})`).join('<br>')}
+      </div></div>`;
+  }
+  if (overPred.length) {
+    analysisHtml += `<div style="margin-top:8px; padding:8px 10px; background:rgba(251,191,36,.08); border-left:3px solid #fbbf24; border-radius:4px;">
+      <b style="color:#fbbf24;">△ 과대 등급 (A 판정인데 실제 <20x): ${overPred.length}건</b>
+      <div style="font-size:11px; margin-top:4px; color:var(--muted);">
+        ${overPred.map(r=>`${r.symbol.replace('USDT','')} (실제 ${r.actual}x, 매집점수 ${r.accScore}pt)`).join('<br>')}
+      </div></div>`;
+  }
 
+  // ── 테이블 행: 저점수 행은 흐리게 ─────────────────────────────
   const rows = results.slice().sort((a,b) => b.actual - a.actual).map(r => {
     if (r.error) return `
-      <tr style="opacity:.5">
+      <tr style="opacity:.4">
         <td style="padding:3px 6px;">${r.symbol.replace('USDT','')}</td>
         <td style="padding:3px 6px;" class="muted">${r.actual}x</td>
         <td colspan="5" class="muted" style="padding:3px 6px; font-size:10px;">— ${r.error}</td>
       </tr>`;
+    const isNoise  = r.accScore < 35;
+    const rowOpacity = isNoise ? 'opacity:.45;' : '';
     const gc = r.grade==='A'?'#ef4444':r.grade==='B'?'#fb923c':r.grade==='C'?'#fbbf24':'#94a3b8';
     const ac = r.actual>=20?'#ef4444':r.actual>=7?'#fb923c':r.actual>=3?'#fbbf24':'#94a3b8';
+    const ptColor = r.accScore>=50?'#4ade80':r.accScore>=40?'#a3e635':r.accScore>=35?'#fbbf24':'#71717a';
+    const noiseBadge = isNoise ? `<span style="font-size:9px; background:rgba(113,113,122,.18); color:#71717a; border-radius:3px; padding:1px 4px; margin-left:4px;">노이즈</span>` : '';
     const hitMark = r.hit
-      ? (r.over ? `<span style="color:#fbbf24;" title="적중하나 과소평가 (실제가 상한 초과)">△</span>`
+      ? (r.over ? `<span style="color:#fbbf24;" title="적중 · 과소평가">△</span>`
                 : `<span style="color:#4ade80;">✓</span>`)
       : `<span style="color:#ef4444;">✗</span>`;
     const f = (r.factors||[]).slice(0,3).join(' · ');
-    return `<tr style="border-bottom:1px solid var(--border);">
-      <td style="padding:3px 6px;">${r.symbol.replace('USDT','')}</td>
+    return `<tr style="border-bottom:1px solid var(--border); ${rowOpacity}">
+      <td style="padding:3px 6px;">${r.symbol.replace('USDT','')}${noiseBadge}</td>
       <td style="padding:3px 6px;"><b style="color:${ac};">${r.actual}x</b></td>
       <td style="padding:3px 6px;"><b style="color:${gc};">${r.grade}</b> <span class="muted" style="font-size:10px;">(${r.gradeScore})</span></td>
       <td style="padding:3px 6px;" class="muted">${r.range[0]}~${r.range[1]}x</td>
       <td style="padding:3px 6px; text-align:center;">${hitMark}</td>
-      <td style="padding:3px 6px;"><span style="color:${r.accScore>=50?'#4ade80':r.accScore>=35?'#fbbf24':'var(--muted)'}; font-size:11px;">${r.accScore}pt</span></td>
+      <td style="padding:3px 6px;"><span style="color:${ptColor}; font-size:11px; font-weight:600;">${r.accScore}pt</span></td>
       <td style="padding:3px 6px; font-size:10px; color:var(--muted); max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${f}">${f}</td>
     </tr>`;
   }).join('');
 
-  // 과소평가 분석 — 무엇이 등급을 끌어내렸는가
-  const missedHigh = valid.filter(r => !r.hit && r.actual >= 7);  // 실제로 큰데 B 미만 판정
-  const overPred   = valid.filter(r => r.grade === 'A' && r.actual < 20); // A 판정했는데 실제 <20x
-
-  let analysisHtml = '';
-  if (missedHigh.length) {
-    analysisHtml += `<div style="margin-top:12px; padding:8px 10px; background:rgba(239,68,68,.08); border-left:3px solid #ef4444; border-radius:4px;">
-      <b style="color:#ef4444;">⚠ 과소 등급 (실제 ≥7x인데 B 미만 판정): ${missedHigh.length}건</b>
-      <div style="font-size:11px; margin-top:4px; color:var(--muted);">
-        ${missedHigh.map(r => `${r.symbol.replace('USDT','')} (${r.actual}x → ${r.grade}급: ${(r.factors||[]).slice(0,2).join(', ')||'CG 데이터 부족'})`).join('<br>')}
-      </div>
-    </div>`;
-  }
-  if (overPred.length) {
-    analysisHtml += `<div style="margin-top:8px; padding:8px 10px; background:rgba(251,191,36,.08); border-left:3px solid #fbbf24; border-radius:4px;">
-      <b style="color:#fbbf24;">△ 과대 등급 (A 판정했는데 실제 <20x): ${overPred.length}건</b>
-      <div style="font-size:11px; margin-top:4px; color:var(--muted);">
-        ${overPred.map(r => `${r.symbol.replace('USDT','')} (실제 ${r.actual}x, 매집점수 ${r.accScore}pt)`).join('<br>')}
-      </div>
-    </div>`;
-  }
-
   return `
-    <div style="margin-bottom:16px;">
-      <div style="font-size:24px; font-weight:800; color:${accColor};">${hits.length}/${valid.length} 적중 (${acc}%)</div>
-      <div style="margin-top:4px; font-size:13px;">${gradeStats}</div>
-      ${overs.length ? `<div class="muted" style="font-size:11px; margin-top:4px;">△ 과소평가(실제가 상한 초과): ${overs.length}건</div>` : ''}
-      ${errors.length ? `<div class="muted" style="font-size:11px; margin-top:2px;">데이터 없음 (180d 이전 펌프 등): ${errors.length}건</div>` : ''}
-      <div class="muted" style="font-size:10px; margin-top:6px;">
-        판정 기준: 실제 배수 ≥ 등급 하한 (A≥20x · B≥5x · C≥3x · D≥2x) | ✓=적중 △=과소평가(상한 초과) ✗=미적중
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; align-items:start;">
+      <!-- 실질 추천 적중률 -->
+      <div style="padding:14px 16px; background:var(--surface-2); border-radius:8px; border:1px solid var(--border-2);">
+        <div style="font-size:11px; color:var(--muted); margin-bottom:6px; font-weight:600; letter-spacing:.04em;">실질 추천 적중률 <span style="font-weight:400;">(매집점수 ≥40pt)</span></div>
+        <div style="font-size:30px; font-weight:800; color:${actColor}; line-height:1;">${actHits.length}/${actionable.length}</div>
+        <div style="font-size:20px; font-weight:700; color:${actColor}; margin-top:2px;">${actAcc}%</div>
+        <div style="font-size:10px; color:var(--muted); margin-top:6px;">살 마음이 드는 종목 기준</div>
       </div>
-      <div style="font-size:10px; margin-top:3px; color:#fbbf24;">
-        ⓘ A등급은 OI/MCap≥0.20 실증 필수 (없으면 pts 70+이어도 B 자동 하향)
-      </div>
-      <div class="muted" style="font-size:10px; margin-top:2px;">
-        ⚠ CG 유통률·MC는 현재 값 기준 (펌프 당시와 다를 수 있음) · 일부 토큰 180d 이전 펌프는 감지 불가
+      <!-- 전체 적중률 (참고) -->
+      <div style="padding:14px 16px; background:var(--surface); border-radius:8px; border:1px solid var(--border);">
+        <div style="font-size:11px; color:var(--text-dim); margin-bottom:6px; font-weight:600; letter-spacing:.04em;">전체 적중률 <span style="font-weight:400;">(참고값)</span></div>
+        <div style="font-size:24px; font-weight:700; color:var(--muted); line-height:1; opacity:.7;">${hits.length}/${valid.length}</div>
+        <div style="font-size:16px; font-weight:600; color:var(--muted); margin-top:2px; opacity:.7;">${overallAcc}%</div>
+        <div style="font-size:10px; color:var(--text-dim); margin-top:6px;">저점수 노이즈 포함 → 과장됨</div>
       </div>
     </div>
+
+    <!-- 점수대별 적중률 -->
+    <div style="margin-bottom:14px; border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <div style="padding:8px 12px; background:var(--surface-2); font-size:11px; font-weight:600; color:var(--muted); letter-spacing:.04em; border-bottom:1px solid var(--border);">점수대별 적중률</div>
+      <table style="width:100%; border-collapse:collapse;">
+        ${tierRows}
+      </table>
+    </div>
+
+    <div style="margin-top:4px; font-size:13px; color:var(--text-2);">${gradeStats}</div>
+    ${overs.length ? `<div class="muted" style="font-size:11px; margin-top:4px;">△ 과소평가(실제가 상한 초과): ${overs.length}건</div>` : ''}
+    ${errors.length ? `<div class="muted" style="font-size:11px; margin-top:2px;">데이터 없음 (180d 이전 펌프 등): ${errors.length}건</div>` : ''}
+    <div class="muted" style="font-size:10px; margin-top:6px;">
+      판정 기준: 실제 배수 ≥ 등급 하한 (A≥20x · B≥5x · C≥3x · D≥2x) | ✓=적중 △=과소평가(상한 초과) ✗=미적중
+    </div>
+    <div style="font-size:10px; margin-top:3px; color:#fbbf24;">
+      ⓘ A등급은 OI/MCap≥0.20 실증 필수 (없으면 pts 70+이어도 B 자동 하향)
+    </div>
+    <div class="muted" style="font-size:10px; margin-top:2px;">
+      ⚠ CG 유통률·MC는 현재 값 기준 (펌프 당시와 다를 수 있음) · 일부 토큰 180d 이전 펌프는 감지 불가
+    </div>
     ${analysisHtml}
-    <table style="width:100%; font-size:12px; border-collapse:collapse; margin-top:12px;">
+    <table style="width:100%; font-size:12px; border-collapse:collapse; margin-top:14px;">
       <thead><tr style="color:var(--muted); font-size:11px; border-bottom:1px solid var(--border);">
         <th style="padding:4px 6px; text-align:left;">심볼</th>
         <th style="padding:4px 6px; text-align:left;">실제</th>
         <th style="padding:4px 6px; text-align:left;">Grade</th>
         <th style="padding:4px 6px; text-align:left;">예상범위</th>
         <th style="padding:4px 6px; text-align:center;">적중</th>
-        <th style="padding:4px 6px; text-align:left;">누적점수</th>
+        <th style="padding:4px 6px; text-align:left;">매집점수</th>
         <th style="padding:4px 6px; text-align:left;">주요 요인</th>
       </tr></thead>
       <tbody>${rows}</tbody>
