@@ -6,30 +6,30 @@
 <title>Pump Pattern Scanner v0.4</title>
 <style>
   :root {
-    /* ── Surface (배경 4단계 — 미세한 네이비 다크) ── */
-    --bg:        #0c0e14;
-    --surface:   #13151e;
-    --surface-2: #1b1e28;
-    --surface-3: #242733;
+    /* ── Surface — 다크 기본 (XP 하늘빛 딥 네이비) ── */
+    --bg:        #0d1829;
+    --surface:   #142035;
+    --surface-2: #1c2d48;
+    --surface-3: #253c5e;
 
-    /* ── Text (전경 5단계) ── */
-    --text:      #fafafa;
-    --text-2:    #d4d4d8;
-    --text-3:    #a1a1aa;
-    --muted:     #71717a;
-    --text-dim:  #52525b;
+    /* ── Text ── */
+    --text:      #e8f0fe;
+    --text-2:    #b8cce8;
+    --text-3:    #7fa0c4;
+    --muted:     #5a7ea0;
+    --text-dim:  #3d5a78;
 
-    /* ── Border (테두리 3단계 — 알파 기반으로 미세하게) ── */
-    --border:    rgba(255,255,255,0.06);
-    --border-2:  rgba(255,255,255,0.10);
-    --border-3:  rgba(255,255,255,0.18);
+    /* ── Border (블루 알파 기반) ── */
+    --border:    rgba(100,160,255,0.09);
+    --border-2:  rgba(100,160,255,0.16);
+    --border-3:  rgba(100,160,255,0.28);
 
-    /* ── Accent (단일 액센트 — cyan, 상호작용 요소용) ── */
-    --accent:      #22d3ee;
-    --accent-2:    #67e8f9;
-    --accent-soft: rgba(34,211,238,0.12);
+    /* ── Accent ── */
+    --accent:      #38bdf8;
+    --accent-2:    #7dd3fc;
+    --accent-soft: rgba(56,189,248,0.12);
 
-    /* ── Semantic (가격/상태 색상 — 차분한 톤) ── */
+    /* ── Semantic ── */
     --pos:    #4ade80;
     --neg:    #f87171;
     --warn:   #fbbf24;
@@ -38,7 +38,7 @@
     --pink:   #f472b6;
     --danger: #f87171;
 
-    /* ── 하위호환 (기존 JS template 에서 참조 중) ── */
+    /* ── 하위호환 ── */
     --panel:   var(--surface);
     --panel-2: var(--surface-2);
     --card:    var(--surface-2);
@@ -80,9 +80,43 @@
     --r-full: 999px;
 
     /* ── Shadow ── */
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.25);
-    --shadow:    0 4px 12px rgba(0,0,0,0.35);
-    --shadow-lg: 0 12px 32px rgba(0,0,0,0.5);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.35);
+    --shadow:    0 4px 14px rgba(0,0,0,0.45);
+    --shadow-lg: 0 12px 36px rgba(0,0,0,0.6);
+  }
+
+  /* ── 라이트 모드 (XP 하늘빛 화이트) ── */
+  body.theme-light {
+    --bg:        #ddeeff;
+    --surface:   #f0f7ff;
+    --surface-2: #e0eefa;
+    --surface-3: #cce0f5;
+
+    --text:      #0a1a30;
+    --text-2:    #1a3556;
+    --text-3:    #2d5480;
+    --muted:     #4a72a0;
+    --text-dim:  #7a9ec8;
+
+    --border:    rgba(30,80,160,0.12);
+    --border-2:  rgba(30,80,160,0.22);
+    --border-3:  rgba(30,80,160,0.38);
+
+    --accent:      #0077cc;
+    --accent-2:    #0099ee;
+    --accent-soft: rgba(0,119,204,0.12);
+
+    --pos:    #16a34a;
+    --neg:    #dc2626;
+    --warn:   #d97706;
+    --info:   #2563eb;
+    --purple: #7c3aed;
+    --pink:   #db2777;
+    --danger: #dc2626;
+
+    --shadow-sm: 0 1px 3px rgba(0,60,140,0.12);
+    --shadow:    0 4px 14px rgba(0,60,140,0.18);
+    --shadow-lg: 0 12px 36px rgba(0,60,140,0.25);
   }
   * { box-sizing: border-box; }
   body {
@@ -776,6 +810,33 @@
   }
   .watch-btn:hover { color: var(--warn); background: transparent; }
 
+  /* ── 라이트모드 보정 ── */
+  body.theme-light button,
+  body.theme-light select,
+  body.theme-light input {
+    background: var(--surface);
+    color: var(--text);
+    border-color: var(--border-2);
+  }
+  body.theme-light button:hover,
+  body.theme-light select:hover {
+    background: var(--surface-2);
+  }
+  body.theme-light button.primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  body.theme-light button.primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+  body.theme-light tbody tr:hover { background: rgba(0,80,180,0.05); }
+  body.theme-light tbody tr.score-high { background: rgba(22,163,74,.05); }
+  body.theme-light tbody tr.score-high:hover { background: rgba(22,163,74,.10); }
+  body.theme-light .badge { border-color: var(--border-2); }
+  body.theme-light .score { background: var(--surface-2); }
+  body.theme-light .diag-section { background: var(--surface); }
+  body.theme-light .metric-row { background: var(--surface-2); }
+  body.theme-light .modal-body { background: var(--bg); }
+
   @media (max-width: 768px) {
     table { min-width: 1100px; font-size: 11px; }
   }
@@ -808,6 +869,7 @@
       <button id="dumpScanBtn" class="btn-ghost" title="180일 신고가 근접 + 최근 30일 내 ATH 갱신 종목 고점 위험 스캔">🔻 고점</button>
       <button id="watchBtn" class="btn-ghost">★</button>
     </div>
+    <button id="themeBtn" class="btn-ghost" title="다크/라이트 모드 전환" style="font-size:15px; padding: var(--space-1) var(--space-2);">🌙</button>
     <button id="scanBtn" class="primary">스캔 시작</button>
   </div>
 </header>
@@ -5815,6 +5877,19 @@ document.querySelectorAll('thead th[data-sort]').forEach(th => {
     render();
   });
 });
+
+// ── 테마 토글 ──────────────────────────────────────────────────
+(function initTheme() {
+  const saved = localStorage.getItem('raply.theme') || 'dark';
+  if (saved === 'light') document.body.classList.add('theme-light');
+  const btn = $('themeBtn');
+  btn.textContent = saved === 'light' ? '☀️' : '🌙';
+  btn.addEventListener('click', () => {
+    const isLight = document.body.classList.toggle('theme-light');
+    localStorage.setItem('raply.theme', isLight ? 'light' : 'dark');
+    btn.textContent = isLight ? '☀️' : '🌙';
+  });
+})();
 
 $('scanBtn').addEventListener('click', runScan);
 
