@@ -812,12 +812,13 @@
   .watch-btn:hover { color: var(--warn); background: transparent; }
 
   /* ── 심층 백테스트 모달 컴팩트 테이블 ── */
-  #bt-body .diag-section { padding: var(--space-3) var(--space-3); }
-  #bt-body table { font-size: 10px; border-collapse: collapse; width: 100%; }
+  #bt-body .diag-section { padding: var(--space-3); }
+  #bt-body .bt-table-wrap { overflow-x: auto; }
+  #bt-body table { font-size: 10px; border-collapse: collapse; white-space: nowrap; }
   #bt-body table th,
-  #bt-body table td { padding: 2px 5px; white-space: nowrap; }
+  #bt-body table td { padding: 2px 6px; }
   #bt-body table th:first-child,
-  #bt-body table td:first-child { white-space: normal; min-width: 80px; max-width: 130px; }
+  #bt-body table td:first-child { white-space: normal; min-width: 90px; max-width: 160px; }
 
   /* ── 라이트모드 보정 ── */
   body.theme-light button,
@@ -5020,32 +5021,36 @@ function renderDeepResults(evolutions) {
 
     <div class="diag-section" style="border-color:#ef4444;">
       <h4 style="color:#ef4444;">⚠️ 고점 위험도 검증 — 피크 시점에 점수가 폭증하는가?</h4>
-      <table style="width:100%; font-size:11px;">
-        <thead><tr style="color:var(--muted);">
-          <th style="text-align:left;">단계</th>
-          ${DEEP_PHASES.map(ph => `<th>${ph.name}<br><span class="muted" style="font-size:9px;">(${ph.short})</span></th>`).join('')}
-        </tr></thead>
-        <tbody>
-          <tr><td><b>평균 고점 위험도</b></td>
-            ${DEEP_PHASES.map(ph => {
-              const v = phaseDumpAvg[ph.name];
-              const cls = v >= 80 ? 'neg' : v >= 50 ? 'warn' : 'muted';
-              return `<td class="${cls}" style="font-weight:700;">${v.toFixed(1)}</td>`;
-            }).join('')}
-          </tr>
-          <tr><td><b>등급 분포</b><br><span class="muted" style="font-size:10px;">🚨 apex / 🔥 crit / ⚠ high</span></td>
-            ${dumpDistCells}
-          </tr>
-        </tbody>
-      </table>
-      <h4 style="color:#ef4444; margin-top:14px;">D1~D9 시그널별 진화</h4>
-      <table style="width:100%; font-size:11px;">
-        <thead><tr style="color:var(--muted);">
-          <th style="text-align:left;">시그널</th>
-          ${DEEP_PHASES.map(ph => `<th>${ph.name}</th>`).join('')}
-        </tr></thead>
-        <tbody>${dumpSigEvoRows}</tbody>
-      </table>
+      <div class="bt-table-wrap">
+        <table>
+          <thead><tr style="color:var(--muted);">
+            <th style="text-align:left;">단계</th>
+            ${DEEP_PHASES.map(ph => `<th>${ph.name} <span class="muted" style="font-size:9px;">(${ph.short})</span></th>`).join('')}
+          </tr></thead>
+          <tbody>
+            <tr><td><b>평균 고점 위험도</b></td>
+              ${DEEP_PHASES.map(ph => {
+                const v = phaseDumpAvg[ph.name];
+                const cls = v >= 80 ? 'neg' : v >= 50 ? 'warn' : 'muted';
+                return `<td class="${cls}" style="font-weight:700;">${v.toFixed(1)}</td>`;
+              }).join('')}
+            </tr>
+            <tr><td><b>등급 분포</b> <span class="muted" style="font-size:9px;">🚨apex 🔥crit ⚠high</span></td>
+              ${dumpDistCells}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <h4 style="color:#ef4444; margin-top:12px;">D1~D9 시그널별 진화</h4>
+      <div class="bt-table-wrap">
+        <table>
+          <thead><tr style="color:var(--muted);">
+            <th style="text-align:left;">시그널</th>
+            ${DEEP_PHASES.map(ph => `<th>${ph.name}</th>`).join('')}
+          </tr></thead>
+          <tbody>${dumpSigEvoRows}</tbody>
+        </table>
+      </div>
       <div class="muted" style="font-size:10px; margin-top:6px;">
         피크/사후 시점에 강하게 발현하는 시그널 = 고점 검출에 유효. 초입에서도 높으면 false positive 위험.
       </div>
@@ -5053,38 +5058,44 @@ function renderDeepResults(evolutions) {
 
     <div class="diag-section">
       <h4>⚠️ 종목별 고점 위험도 진화</h4>
-      <table style="width:100%; font-size:11px;">
-        <thead><tr style="color:var(--muted);">
-          <th style="text-align:left;">Symbol</th><th>펌프</th>
-          ${DEEP_PHASES.map(ph => `<th>${ph.name}</th>`).join('')}
-          <th>Δ</th>
-        </tr></thead>
-        <tbody>${dumpEvoRows}</tbody>
-      </table>
-      <div class="muted" style="font-size:10px; margin-top:6px;">각 셀: 고점 위험도 (색상=위험등급). Δ = 피크 - 초입.</div>
+      <div class="bt-table-wrap">
+        <table>
+          <thead><tr style="color:var(--muted);">
+            <th style="text-align:left;">Symbol</th><th>펌프</th>
+            ${DEEP_PHASES.map(ph => `<th>${ph.name}</th>`).join('')}
+            <th>Δ</th>
+          </tr></thead>
+          <tbody>${dumpEvoRows}</tbody>
+        </table>
+      </div>
+      <div class="muted" style="font-size:10px; margin-top:4px;">각 셀: 고점 위험도 (색상=위험등급). Δ = 피크 - 초입.</div>
     </div>
 
     ${recommendHtml}
 
     <div class="diag-section">
       <h4>📊 매집 시그널 진화 (펌프 종목 평균)</h4>
-      <table style="width:100%; font-size:11px;">
-        <thead><tr style="color:var(--muted);"><th style="text-align:left;">시그널</th><th>초입(-21d)</th><th>말기(-3d)</th><th>피크(0d)</th><th>분류</th><th>권장</th></tr></thead>
-        <tbody>${sigEvoRows}</tbody>
-      </table>
+      <div class="bt-table-wrap">
+        <table>
+          <thead><tr style="color:var(--muted);"><th style="text-align:left;">시그널</th><th>초입(-21d)</th><th>말기(-3d)</th><th>피크(0d)</th><th>분류</th><th>권장</th></tr></thead>
+          <tbody>${sigEvoRows}</tbody>
+        </table>
+      </div>
     </div>
 
     <div class="diag-section">
       <h4>📈 종목별 매집 점수 진화 (Top ${evolutions.length})</h4>
-      <table style="width:100%; font-size:11px;">
-        <thead><tr style="color:var(--muted);">
-          <th style="text-align:left;">Symbol</th><th>펌프</th>
-          ${DEEP_PHASES.map(ph => `<th>${ph.name}</th>`).join('')}
-          <th>Δ</th><th>BT</th>
-        </tr></thead>
-        <tbody>${evoRows}</tbody>
-      </table>
-      <div class="muted" style="font-size:10px; margin-top:6px;">행 클릭 시 워치리스트 추가. Δ = 피크 점수 - 초입 점수 (시그널 누적 정도).</div>
+      <div class="bt-table-wrap">
+        <table>
+          <thead><tr style="color:var(--muted);">
+            <th style="text-align:left;">Symbol</th><th>펌프</th>
+            ${DEEP_PHASES.map(ph => `<th>${ph.name}</th>`).join('')}
+            <th>Δ</th><th>BT</th>
+          </tr></thead>
+          <tbody>${evoRows}</tbody>
+        </table>
+      </div>
+      <div class="muted" style="font-size:10px; margin-top:4px;">행 클릭 시 워치리스트 추가. Δ = 피크 점수 - 초입 점수 (시그널 누적 정도).</div>
     </div>
   `;
 }
