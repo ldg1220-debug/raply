@@ -699,6 +699,7 @@
   .modal-body {
     padding: var(--space-5);
     overflow: auto;
+    min-width: 0;
     flex: 1;
     background: var(--bg);
   }
@@ -809,6 +810,14 @@
     transition: color .12s ease;
   }
   .watch-btn:hover { color: var(--warn); background: transparent; }
+
+  /* ── 심층 백테스트 모달 컴팩트 테이블 ── */
+  #bt-body .diag-section { padding: var(--space-3) var(--space-3); }
+  #bt-body table { font-size: 10px; border-collapse: collapse; width: 100%; }
+  #bt-body table th,
+  #bt-body table td { padding: 2px 5px; white-space: nowrap; }
+  #bt-body table th:first-child,
+  #bt-body table td:first-child { white-space: normal; min-width: 80px; max-width: 130px; }
 
   /* ── 라이트모드 보정 ── */
   body.theme-light button,
@@ -4995,14 +5004,14 @@ function renderDeepResults(evolutions) {
   $('bt-body').innerHTML = `
     <div class="diag-section" style="text-align:center;">
       <div style="font-size:13px; color:var(--muted);">심층 백테스트 — ${evolutions.length}개 펌프 종목 × ${DEEP_PHASES.length}단계 시점</div>
-      <div style="margin: 10px 0; display: flex; justify-content: center; gap: 18px; flex-wrap: wrap;">
+      <div style="margin: 10px 0; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
         ${DEEP_PHASES.map(ph => `
-          <div style="min-width: 88px;">
-            <div style="color:${ph.color}; font-size:11px; font-weight:600;">${ph.name} (${ph.short})</div>
-            <div style="font-size: 20px; font-weight: 700;">${phaseScoreAvg[ph.name].toFixed(1)}</div>
-            <div class="muted" style="font-size:10px;">매집 점수</div>
-            <div style="font-size: 18px; font-weight: 700; color:${phaseDumpAvg[ph.name] >= 70 ? '#ef4444' : phaseDumpAvg[ph.name] >= 50 ? '#fb923c' : phaseDumpAvg[ph.name] >= 30 ? '#fbbf24' : 'var(--muted)'}; margin-top:6px;">${phaseDumpAvg[ph.name].toFixed(1)}</div>
-            <div class="muted" style="font-size:10px;">⚠️ 고점 위험도</div>
+          <div style="min-width: 72px;">
+            <div style="color:${ph.color}; font-size:10px; font-weight:600;">${ph.name} (${ph.short})</div>
+            <div style="font-size: 18px; font-weight: 700;">${phaseScoreAvg[ph.name].toFixed(1)}</div>
+            <div class="muted" style="font-size:9px;">매집 점수</div>
+            <div style="font-size: 16px; font-weight: 700; color:${phaseDumpAvg[ph.name] >= 70 ? '#ef4444' : phaseDumpAvg[ph.name] >= 50 ? '#fb923c' : phaseDumpAvg[ph.name] >= 30 ? '#fbbf24' : 'var(--muted)'}; margin-top:4px;">${phaseDumpAvg[ph.name].toFixed(1)}</div>
+            <div class="muted" style="font-size:9px;">⚠️ 고점 위험도</div>
           </div>
         `).join('')}
       </div>
