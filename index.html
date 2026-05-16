@@ -197,6 +197,57 @@
   }
   .preset-btn:hover { background: var(--surface-2); color: var(--text); }
 
+  /* ── 검색 조건 토글 ── */
+  #filterDetails > summary.filter-toggle {
+    cursor: pointer;
+    list-style: none;
+    padding: var(--space-2) var(--space-5);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-2xs);
+    color: var(--text-3);
+    font-weight: var(--w-semi);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    user-select: none;
+    transition: background .12s ease;
+  }
+  #filterDetails > summary.filter-toggle::-webkit-details-marker { display: none; }
+  #filterDetails > summary.filter-toggle:hover { background: var(--surface-2); }
+  #filterDetails > summary.filter-toggle::after {
+    content: '›';
+    font-size: 16px;
+    line-height: 1;
+    margin-left: auto;
+    opacity: 0.4;
+    transition: transform .18s ease;
+    font-weight: var(--w-normal);
+  }
+  #filterDetails[open] > summary.filter-toggle::after { transform: rotate(90deg); }
+  .filter-summary-chips {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    flex: 1;
+    font-size: var(--text-2xs);
+    font-weight: var(--w-normal);
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text-3);
+  }
+  #filterDetails[open] .filter-summary-chips { display: none; }
+  .filter-chip {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 1px 6px;
+    color: var(--text-3);
+    white-space: nowrap;
+  }
+
   /* ── 헤더 컨트롤 그룹 ── */
   .ctrl-group { display: flex; align-items: center; gap: var(--space-1); }
   .ctrl-sep { width: 1px; height: 18px; background: var(--border-2); margin: 0 var(--space-1); flex-shrink: 0; }
@@ -776,6 +827,8 @@
   </div>
 </details>
 
+<details id="filterDetails" open>
+<summary class="filter-toggle">검색 조건<span id="filterSummaryChips" class="filter-summary-chips"></span></summary>
 <section class="filters">
   <div class="filter-group-label">가격 · 변동</div>
   <div class="filter">
@@ -894,6 +947,7 @@
   <button id="myPresetDel" class="preset-btn">🗑 삭제</button>
   <span id="presetStatus" class="preset-status"></span>
 </div>
+</details>
 
 <div class="status" id="status">대기 중 — "스캔 시작" 버튼을 눌러 데이터를 불러오세요.</div>
 
@@ -2388,6 +2442,30 @@ window.diagToggleWatch = function(symbol) {
   render();
 };
 
+function updateFilterSummaryChips() {
+  const el = $('filterSummaryChips');
+  if (!el) return;
+  const v = id => parseFloat(document.getElementById(id)?.value) || 0;
+  const chips = [];
+  const minScore = v('f_minScore');
+  const minDays = v('f_minDays');
+  const minVol = v('f_minVol');
+  const maxRise14 = v('f_maxRise14');
+  const maxGain = v('f_maxGain');
+  const maxCirc = v('f_maxCirc');
+  const minCex = v('f_minCex');
+  const minFundPos = v('f_minFundPos');
+  if (minScore > 0) chips.push(`점수≥${minScore}`);
+  if (minDays > 0) chips.push(`상장≥${minDays}d`);
+  if (minVol > 0) chips.push(`거래대금≥${(minVol/1000).toFixed(0)}K`);
+  if (maxRise14 < 300) chips.push(`14d≤${maxRise14}%`);
+  if (maxGain < 900) chips.push(`저점대비≤${maxGain}x`);
+  if (maxCirc < 100) chips.push(`유통률≤${maxCirc}%`);
+  if (minCex > 0) chips.push(`CEX≥${minCex}`);
+  if (minFundPos > 0) chips.push(`펀딩양수≥${minFundPos}%`);
+  el.innerHTML = chips.map(c => `<span class="filter-chip">${c}</span>`).join('');
+}
+
 async function runScan() {
   if (state.scanning) return;
   state.scanning = true;
@@ -2603,6 +2681,13 @@ async function runScan() {
     }
 
     render();
+
+    // 스캔 완료 후 필터 패널 자동 접기
+    const fd = $('filterDetails');
+    if (fd) {
+      fd.open = false;
+      updateFilterSummaryChips();
+    }
 
     // 비동기로 Top10 홀더 데이터 채우기 (GoPlus, EVM 체인만)
     loadTop10ForRows(rows);
