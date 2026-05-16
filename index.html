@@ -5265,7 +5265,7 @@ function renderPotentialAndPlan(r) {
   const fmtP = p => p >= 1 ? p.toFixed(3) : p >= 0.01 ? p.toFixed(5) : p.toExponential(2);
 
   const factorsHtml = crime.factors.length
-    ? crime.factors.map(f => `<span style="display:inline-block; margin:2px 4px 2px 0; padding:2px 8px; background:rgba(255,255,255,.05); border-radius:4px; font-size:11px;">${f}</span>`).join('')
+    ? crime.factors.map(f => `<span class="factor-pill">${f}</span>`).join('')
     : '<span class="muted">결정 요인 없음 — 데이터 부족</span>';
 
   const axes = [
@@ -5330,31 +5330,28 @@ function renderPotentialAndPlan(r) {
   }
 
   return `
-    <div class="diag-section" style="border-color:${crime.color};">
-      <h4 style="color:${crime.color}; margin-bottom:10px;">🎯 펌프 잠재력 (Crime Grade)</h4>
-      <div style="display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-bottom:10px;">
-        <div style="display:inline-block; padding:6px 14px; border-radius:8px;
-                    background:${crime.color}22; border:2px solid ${crime.color};
-                    color:${crime.color}; font-weight:800; font-size:18px;">
-          ${crime.grade}급 · ${crime.label}
+    <div class="diag-section diag-section--hero" style="border-color:${crime.color};">
+      <h4 style="color:${crime.color};">🎯 펌프 잠재력 (Crime Grade)</h4>
+      <div style="display:flex; align-items:flex-start; gap:var(--space-5); flex-wrap:wrap; margin-bottom:var(--space-3);">
+        <div class="grade-chip" style="background:${crime.color}18; color:${crime.color};">${crime.grade}</div>
+        <div class="kpi" style="flex:1; min-width:120px;">
+          <span class="kpi-label">Crime Grade</span>
+          <span class="kpi-value" style="color:${crime.color}; font-size:var(--text-xl);">${crime.label}</span>
+          <span class="kpi-sub">예상 ${crime.range[0]}~${crime.range[1]}x · 구조 점수 ${crime.score}/100</span>
         </div>
-        <div>
-          <div style="font-size:13px;">예상 펌프 배수 <b style="color:${crime.color}; font-size:18px;">${crime.range[0]}~${crime.range[1]}x</b></div>
-          <div style="font-size:11px; color:var(--muted);">90d 저점 기준 · 구조 점수 ${crime.score}/100</div>
-        </div>
-        <div style="padding:6px 14px; border-radius:8px; background:${crime.convictionColor}18; border:1.5px solid ${crime.convictionColor}55;">
-          <div style="font-size:10px; color:var(--muted); margin-bottom:2px;">매집 확신도</div>
-          <div style="color:${crime.convictionColor}; font-weight:800; font-size:16px;">${crime.conviction} <span style="font-size:12px; font-weight:400;">${crime.convictionLabel}</span></div>
+        <div class="kpi">
+          <span class="kpi-label">매집 확신도</span>
+          <span class="kpi-value" style="font-size:var(--text-xl); color:${crime.convictionColor};">${crime.conviction}</span>
+          <span class="kpi-sub" style="color:${crime.convictionColor};">${crime.convictionLabel}</span>
         </div>
       </div>
-      <div style="margin-top:4px; font-size:11px; color:var(--muted); margin-bottom:6px;">
-        💡 <b>확신도</b>는 "지금 갈 것 같은가"를 판단 (점수≥65 + OI/MCap≥0.20 + BB≤0.60 = HIGH).
-        <b>등급</b>은 "갈 때 얼마나 오를 수 있는가" (구조적 폭발력).
+      <div style="font-size:var(--text-xs); color:var(--muted); margin-bottom:var(--space-3); line-height:1.6;">
+        💡 <b>확신도</b>는 "지금 갈 것 같은가" (점수≥65 + OI/MCap≥0.20 + BB≤0.60 = HIGH). <b>등급</b>은 "갈 때 얼마나 오를 수 있는가".
       </div>
-      <div style="margin-top:6px; font-size:11px; color:var(--muted); margin-bottom:4px;">📋 등급 산출 근거:</div>
-      <div style="margin-bottom:4px;">${factorsHtml}</div>
-      ${crime.grade === 'A' ? `<div style="margin-top:8px; font-size:11px; padding:5px 10px; background:rgba(239,68,68,.08); border-left:3px solid #ef4444; border-radius:3px; color:#ef4444;">🚨 <b>A등급(RAVE급)은 연 1~2회 수준의 희귀 이벤트.</b> OI 매집 실증 필수. 단독 포지션 금지.</div>` : ''}
-      ${crime.oiMissing ? `<div style="margin-top:6px; font-size:11px; padding:4px 8px; background:rgba(251,191,36,.08); border-left:2px solid #fbbf24; border-radius:3px; color:#fbbf24;">⚠ OI/MCap 데이터 없음 — A등급 발급 불가. 등급 실제보다 낮게 평가될 수 있음.</div>` : ''}
+      <div style="font-size:var(--text-xs); color:var(--muted); margin-bottom:var(--space-2);">📋 등급 산출 근거</div>
+      <div>${factorsHtml}</div>
+      ${crime.grade === 'A' ? `<div class="alert-inline danger">🚨 <b>A등급(RAVE급)은 연 1~2회 수준의 희귀 이벤트.</b> OI 매집 실증 필수. 단독 포지션 금지.</div>` : ''}
+      ${crime.oiMissing ? `<div class="alert-inline warn">⚠ OI/MCap 데이터 없음 — A등급 발급 불가. 등급 실제보다 낮게 평가될 수 있음.</div>` : ''}
     </div>
 
     <div class="diag-section" style="border-color:${risk.color};">
@@ -5514,32 +5511,27 @@ function renderDiagnosisTab(r) {
   const isApex = dump.topRisk === 'apex';
 
   const apexDiagBanner = isApex ? `
-    <div style="
-      padding: 14px 18px; margin-bottom: 4px;
-      background: linear-gradient(135deg, rgba(255,45,85,.18), rgba(239,68,68,.10));
-      border: 2px solid #ff2d55; border-radius: 10px;
-      text-align: center;
-      animation: apexPulse 1.8s ease-in-out infinite alternate;
-    ">
-      <div style="font-size: 20px; font-weight: 800; color: #ff2d55;">🚨 이번 상승사이클 최고점 인접</div>
-      <div style="font-size: 11px; color: #ff6b81; margin-top: 5px;">고점 위험도 ${dump.score}/100 · 즉각 익절 / 신규 진입 절대 금지</div>
+    <div class="apex-banner">
+      <div class="apex-banner-dot"></div>
+      <div class="apex-banner-text"><b>이번 상승사이클 최고점 인접</b> — 고점 위험도 ${dump.score}/100 · 즉각 익절 / 신규 진입 절대 금지</div>
     </div>` : '';
 
   return `
     ${apexDiagBanner}
-    <div class="diag-section" style="text-align:center;">
-      <div style="font-size: 13px; color: var(--muted);">진단 결과</div>
-      <div style="margin: 8px 0;">
-        <span style="font-size: 36px; font-weight: 700;">${r.score}</span>
-        <span style="font-size: 18px; color: var(--muted);">/100</span>
-        <span class="diag-grade grade-${grade.g}">${grade.g}</span>
-        ${r.liveEquivalentScore && r.liveEquivalentScore !== r.score ? `<div class="muted" style="font-size:11px; margin-top:4px;">백테스트 환산 (가용 max ${r._availableMax || 100}/100): 라이브 ≈ <b>${r.liveEquivalentScore}</b></div>` : ''}
+    <div class="diag-section diag-section--hero">
+      <div style="display:flex; align-items:center; gap:var(--space-5); flex-wrap:wrap;">
+        <div class="grade-chip grade-${grade.g}">${grade.g}</div>
+        <div class="kpi" style="flex:1;">
+          <span class="kpi-label">매집 점수</span>
+          <div class="kpi-value">${r.score}<span style="font-size:var(--text-md); font-weight:var(--w-normal); color:var(--muted);">/100</span></div>
+          <span class="kpi-sub">${grade.desc}</span>
+        </div>
+        <div style="align-self:flex-start;">
+          <button id="diagWatchBtn" class="diag-watch-btn ${watched ? 'watched' : ''}" onclick="diagToggleWatch('${r.symbol}')">${watched ? '★ 워치리스트에서 제거' : '☆ 워치리스트 추가'}</button>
+        </div>
       </div>
-      <div style="font-size: 13px;">${grade.desc}</div>
-      ${comments.length ? `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; line-height: 1.6; color: var(--text);">${comments.map(c => '• ' + c).join('<br>')}</div>` : ''}
-      <div style="margin-top: 12px;">
-        <button id="diagWatchBtn" class="diag-watch-btn ${watched ? 'watched' : ''}" onclick="diagToggleWatch('${r.symbol}')">${watched ? '★ 워치리스트에서 제거' : '☆ 워치리스트 추가'}</button>
-      </div>
+      ${r.liveEquivalentScore && r.liveEquivalentScore !== r.score ? `<div style="font-size:var(--text-xs); color:var(--muted); margin-top:var(--space-2);">백테스트 환산 (가용 max ${r._availableMax || 100}/100): 라이브 ≈ <b>${r.liveEquivalentScore}</b></div>` : ''}
+      ${comments.length ? `<div style="margin-top:var(--space-3); padding-top:var(--space-3); border-top:1px solid var(--border); line-height:1.6;">${comments.map(c => `<div style="font-size:var(--text-xs); color:var(--text-2); padding:2px 0;">• ${c}</div>`).join('')}</div>` : ''}
     </div>
 
     <div class="diag-section" style="padding:0; background:transparent; border:none;">
