@@ -6,11 +6,11 @@
 <title>Pump Pattern Scanner v0.4</title>
 <style>
   :root {
-    /* ── Surface (배경 4단계) ── */
-    --bg:        #09090b;
-    --surface:   #131316;
-    --surface-2: #1c1c20;
-    --surface-3: #27272b;
+    /* ── Surface (배경 4단계 — 미세한 네이비 다크) ── */
+    --bg:        #0c0e14;
+    --surface:   #13151e;
+    --surface-2: #1b1e28;
+    --surface-3: #242733;
 
     /* ── Text (전경 5단계) ── */
     --text:      #fafafa;
@@ -2898,7 +2898,8 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   const maxP = Math.max(...highs), minP = Math.min(...lows);
   const rangeP = maxP - minP || 1;
   const maxV = Math.max(...vols, 1);
-  const barW = w / candles.length;
+  const RIGHT_PAD = 60; // 마지막 캔들 우측 여백 (Fib 라벨 가림 방지)
+  const barW = (w - RIGHT_PAD) / candles.length;
   const toY  = p => ch - ((p - minP) / rangeP) * ch;
   const toVY = v => ch + 10 + (vh - (v / maxV) * vh);
   const cxOf = i => i * barW + barW * 0.5;
@@ -2957,14 +2958,14 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
     const fy = toY(fp);
     const txt = fp.toPrecision(4);
     const labelW = txt.length * 6.5 + 10;
-    const lx = w - labelW - 4;
-    return `<rect id="fib-rect-${i}" data-fp="${fp}" x="${lx}" y="${(fy - 7).toFixed(1)}" width="${labelW}" height="13" fill="#0b0e14" opacity="0.85" rx="2" stroke="${FIB_COLORS[i]}" stroke-width="0.7"/>
+    const lx = w - RIGHT_PAD + 2; // 우측 여백 안에 배치 (캔들과 겹치지 않음)
+    return `<rect id="fib-rect-${i}" data-fp="${fp}" x="${lx}" y="${(fy - 7).toFixed(1)}" width="${labelW}" height="13" fill="#0c0e14" opacity="0.85" rx="2" stroke="${FIB_COLORS[i]}" stroke-width="0.7"/>
       <text id="fib-text-${i}" data-fp="${fp}" x="${(lx + labelW / 2).toFixed(1)}" y="${(fy + 3).toFixed(1)}" fill="${FIB_COLORS[i]}" font-size="10" font-weight="700" font-family="monospace" text-anchor="middle">${txt}</text>`;
   }).join('') : '';
   const fibLabels = fibRange > 0 ? (() => {
     const boxW = 188, rowH = 14, padTop = 16, padBot = 6;
     const boxH = FIB_RATIOS.length * rowH + padTop + padBot;
-    const boxX = w - boxW - 6;
+    const boxX = w - RIGHT_PAD - boxW - 6; // 우측 여백 바깥(캔들 영역 안)에서 가장 오른쪽
     const boxY = 6;
     let rows = '';
     FIB_RATIOS.forEach((r, i) => {
@@ -2977,7 +2978,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
     });
     // 드래그 가능한 그룹으로 래핑 (style:cursor + transform 으로 이동)
     return `<g id="fib-panel" transform="translate(0,0)" style="cursor:grab;">
-      <rect x="${boxX}" y="${boxY}" width="${boxW}" height="${boxH}" fill="#0b0e14" opacity="0.85" rx="4" stroke="#475569" stroke-width="0.8"/>
+      <rect x="${boxX}" y="${boxY}" width="${boxW}" height="${boxH}" fill="#0c0e14" opacity="0.85" rx="4" stroke="#475569" stroke-width="0.8"/>
       <text x="${boxX + 8}" y="${boxY + 12}" fill="#94a3b8" font-size="10" font-weight="700">⋮⋮ Fib · 90d 고저</text>
       ${rows}
     </g>`;
@@ -2986,7 +2987,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   // 범례 (MA만)
   const legend = `
     <g font-size="13" font-family="monospace">
-      <rect x="6" y="6" width="104" height="76" fill="#0b0e14" opacity="0.88" rx="4" stroke="#243045" stroke-width="0.5"/>
+      <rect x="6" y="6" width="104" height="76" fill="#0c0e14" opacity="0.88" rx="4" stroke="#243045" stroke-width="0.5"/>
       <text x="14" y="22" fill="#fbbf24" font-weight="700">━ MA7</text>
       <text x="14" y="38" fill="#60a5fa" font-weight="700">━ MA25</text>
       <text x="14" y="54" fill="#a78bfa" font-weight="700">━ MA99</text>
@@ -3026,7 +3027,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   // RSI 패널 — 배경/임계선(고정), 폴리라인(줌 대상), 라벨(고정) 분리
   const rsiBg = `
     <line x1="0" y1="${rsiTop - 5}" x2="${w}" y2="${rsiTop - 5}" stroke="#243045" stroke-width="0.8"/>
-    <rect x="0" y="${rsiTop}" width="${w}" height="${rh}" fill="rgba(11,14,20,0.25)"/>
+    <rect x="0" y="${rsiTop}" width="${w}" height="${rh}" fill="rgba(12,14,20,0.25)"/>
     <line x1="0" y1="${toRY(70)}" x2="${w}" y2="${toRY(70)}" stroke="#ef4444" stroke-width="0.9" stroke-dasharray="4,3" opacity="0.7"/>
     <line x1="0" y1="${toRY(50)}" x2="${w}" y2="${toRY(50)}" stroke="#475569" stroke-width="0.5" opacity="0.5"/>
     <line x1="0" y1="${toRY(30)}" x2="${w}" y2="${toRY(30)}" stroke="#4ade80" stroke-width="0.9" stroke-dasharray="4,3" opacity="0.7"/>`;
@@ -3070,7 +3071,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
       <text id="ch-date" x="0" y="${totalH - 9}" fill="#cbd5e1" font-size="10" font-weight="600" font-family="monospace" text-anchor="middle"></text>
     </g>
     <g id="ch-tip" style="display:none; pointer-events:none;">
-      <rect id="ch-tip-bg" x="0" y="0" width="172" height="108" fill="#0b0e14" opacity="0.95" stroke="#475569" stroke-width="0.6" rx="4"/>
+      <rect id="ch-tip-bg" x="0" y="0" width="172" height="108" fill="#0c0e14" opacity="0.95" stroke="#475569" stroke-width="0.6" rx="4"/>
       <text id="ch-tip-date" x="0" y="0" fill="#cbd5e1" font-size="11" font-weight="800" font-family="monospace"></text>
       <text id="ch-tip-o"    x="0" y="0" fill="#94a3b8" font-size="11" font-family="monospace"></text>
       <text id="ch-tip-h"    x="0" y="0" fill="#4ade80" font-size="11" font-family="monospace"></text>
