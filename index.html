@@ -851,7 +851,7 @@
 <header>
   <div>
     <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v1.7</span></h1>
-    <span class="sub">17-Signal · S21 RAVE 콤보 · 🔻 고점 진단 (D1~D9) · 4-6개월 차트 · FDV/MC 필터 · Top10 홀더</span>
+    <span class="sub">18-Signal · S21 강화·S22 신규 · 🔻 고점 진단 (D1~D9) · 4-6개월 차트 · FDV/MC 필터 · Top10 홀더</span>
   </div>
   <div class="controls">
     <div class="ctrl-group">
@@ -882,7 +882,7 @@
   <summary>탐지 시그널 및 점수 기준 (펼치기)</summary>
   <div style="color: var(--muted); font-size: 11px; line-height: 1.7; margin-top: 8px;">
     <b>Hard Exclude</b> — Binance Spot에 이미 상장 / 선물 상장 N일 미만 / ATH 대비 -95% 이하 / 저점대비 N배 이상 / 유통률 N% 초과 / CEX N곳 미만 / 펀딩 양수율 N% 미만 / OI/MCap N 미만 / 저볼륨<br>
-    <b>가산 시그널 (17종, 합산 ≤100점) · 조기 진입 최적화</b> — CEX(3) · 유통률(12) · <b>BB압축(13)⚡⚡</b> · <b>펀딩 양수율 단계화(9)</b>·크기(7)·<b>추세(8)⚡</b>·베이시스(7) · 매집 3종(19) · 디버전스(7) · OI/MCap(8) · 유기+OI Spike(10) · HigherLows(4)🟡 · Body압축(5) · 매수우위(3)🟡 · <b>S21 RAVE 시그니처 콤보(15)</b><br>
+    <b>가산 시그널 (18종, 합산 ≤100점) · 조기 진입 최적화</b> — CEX(3) · 유통률(12) · <b>BB압축(13)⚡⚡</b> · <b>펀딩 양수율 단계화(9)</b>·크기(7)·<b>추세(8)⚡</b>·베이시스(7) · 매집 3종(19) · 디버전스(7) · OI/MCap(8) · <b>유기+OI Spike(15)⚡</b> · HigherLows(4)🟡 · Body압축(5) · 매수우위(3)🟡 · <b>S21 RAVE 콤보(15, 임계값 강화)</b> · <b>S22 공급×OI×BB 콤보(12)🔴</b><br>
     <b>컨텍스트 패널티 (완화)</b> — rise14 &gt; 50% 또는 저점대비 &gt; 3.5x 시 펀딩 점수 50% 감점 · <b>후기 진입 페널티</b>: HL+매수우위 ≥5/7 AND BB압축 &lt; 5/13 시 -5pt + ⏰ 배지<br>
     <b>펀딩 컨텍스트 패널티</b> — 14d 상승률 &gt; 30% 또는 저점대비 &gt; 2.5x 시 S6cont/S6size/S7 50% 감점 (후행 신호 무력화)<br>
     <b>알람 배지</b> — 🚨 CRIME (펀딩+ Basis≥0.5% 양수율≥60%) · 🎯 발사임박 (유기+OI Spike) · 🕵 조작 의심 (횡보+양수 펀딩 70%+)
@@ -1900,15 +1900,15 @@ function computeScore(row) {
   }
   b.S14 = s14;
 
-  // S15: 유기(Quiet Zone) + OI Spike 콤보 (max 10)
-  // 90d vol 대비 14d vol < 0.5 + cv90 < 0.10 + OI 14d ratio >= 1.2
+  // S15: 유기(Quiet Zone) + OI Spike 콤보 (max 15, 상향)
+  // 거래량 침묵 + 절대 변동 소멸 + OI 급증 = 매집 완료 직전 가장 강한 선행 신호
   let s15 = 0;
   const quiet = row.volQuietRatio !== null && row.volQuietRatio !== undefined && row.volQuietRatio < 0.5;
   const dead = row.cv90 !== null && row.cv90 !== undefined && row.cv90 < 0.10;
   const oiSpike = row.oiTrend?.ratio !== null && row.oiTrend?.ratio !== undefined && row.oiTrend.ratio >= 1.2;
-  if (quiet && dead && oiSpike) s15 = 10;
-  else if (quiet && oiSpike) s15 = 6;
-  else if (dead && oiSpike) s15 = 4;
+  if (quiet && dead && oiSpike) s15 = 15;   // 완전한 Quiet Accumulation 패턴
+  else if (quiet && oiSpike) s15 = 9;
+  else if (dead && oiSpike) s15 = 5;
   b.S15 = s15;
 
   // S16 삭제 (v1.3, 심층 백테스트에서 0.2/5 무용)
@@ -1943,26 +1943,37 @@ function computeScore(row) {
   }
   b.S19 = s19;
 
-  // S21: RAVE 시그니처 콤보 (max 15) — BB압축 + 펀딩양수율 + 펀딩추세 동시 발현
-  // 조합의 특수성을 보상 (각각 임계값 절반 이상 시 충족)
-  const c12 = (row.bbScore || 0) >= 4;        // BB압축 절반 이상 (4/8)
-  const c6c = row.fundPosRatio >= 0.55;       // 펀딩양수율 55%+
-  const c7  = (row.fundingTrend?.score || 0) >= 3; // 펀딩추세 3+
+  // S21: RAVE 시그니처 콤보 (max 15) — 임계값 강화: 강한 신호에만 지급
+  // 각 조건을 75% 이상 충족해야 인정 → 평범한 토큰은 콤보 미발동
+  const c12 = (row.bbScore || 0) >= 6;            // BB압축 강함 (6/8, bbRatio < 0.70)
+  const c6c = row.fundPosRatio >= 0.85;            // 펀딩양수율 85%+ (21개 중 18개)
+  const c7  = (row.fundingTrend?.score || 0) >= 5; // 펀딩추세 강함 (5/8)
   const comboCount = (c12 ? 1 : 0) + (c6c ? 1 : 0) + (c7 ? 1 : 0);
   let s21 = 0;
-  if (comboCount === 3) s21 = 15;       // 완벽한 시그니처
-  else if (comboCount === 2) s21 = 7;   // 부분 시그니처
+  if (comboCount === 3) s21 = 15;      // 완벽한 시그니처 (동일)
+  else if (comboCount === 2) s21 = 4;  // 부분 (7→4, 2개만으론 확신 불가)
   b.S21 = s21;
+
+  // S22: 공급 희소성 × OI 비중 × BB 압축 콤보 (max 12, 신규)
+  // 유통률이 낮고 + OI가 시총 대비 크고 + 가격이 압축된 토큰 → 세력 매집 완료 직전
+  const c22_circ = row.cg?.circMax !== null && row.cg?.circMax !== undefined && row.cg.circMax < 0.25;
+  const c22_oi   = row.oiMcap !== null && row.oiMcap !== undefined && row.oiMcap >= 0.15;
+  const c22_bb   = (row.bbScore || 0) >= 4;  // 중간 이상 압축
+  const n22 = (c22_circ ? 1 : 0) + (c22_oi ? 1 : 0) + (c22_bb ? 1 : 0);
+  let s22 = 0;
+  if (n22 === 3) s22 = 12;   // 세 조건 동시: 크라임 선행 패턴
+  else if (n22 === 2) s22 = 4;
+  b.S22 = s22;
 
   // 데이터 가용성 메타 (백테스트 정규화용)
   const isBacktest = row.isBacktest === true;
   // 항상 가용: S2,S3,S6cont,S6size,S7,S12,S17,S18,S19,S21
-  // 백테스트 부분 (OI/L-S 30일 한계 위반 시): S8,S9,S10,S11,S13,S14,S15 미가용
+  // 백테스트 부분 (OI/L-S 30일 한계 위반 시): S8,S9,S10,S11,S13,S14,S15,S22 미가용
   // S8(베이시스): 백테스트 항상 0
   let availableMax = 100;
   if (isBacktest) {
     availableMax -= 7; // S8
-    if (!row.fullBacktest) availableMax -= (9+6+4+7+8+10); // S9,S10,S11,S13,S14,S15
+    if (!row.fullBacktest) availableMax -= (9+6+4+7+8+15+12); // S9,S10,S11,S13,S14,S15(15),S22(12)
   }
   row._availableMax = availableMax;
 
@@ -4402,9 +4413,9 @@ const DEEP_PHASES = [
   { name: '피크', short: '0d',   offsetDays: 0,   color: '#f87171' },
   { name: '사후', short: '+3d',  offsetDays: -3,  color: '#a78bfa' }
 ];
-const SIG_KEYS = ['S2','S3','S6cont','S6size','S7','S8','S9','S10','S11','S12','S13','S14','S15','S17','S18','S19','S21'];
-const SIG_MAX  = {S2:3,S3:12,S6cont:9,S6size:7,S7:8,S8:7,S9:9,S10:6,S11:4,S12:13,S13:7,S14:8,S15:10,S17:4,S18:5,S19:3,S21:15};
-const SIG_NAME = {S2:'CEX',S3:'유통률',S6cont:'펀딩양수율⚡',S6size:'펀딩크기',S7:'펀딩추세⚡',S8:'베이시스',S9:'OI추세',S10:'L/S편향',S11:'Taker',S12:'BB압축⚡⚡',S13:'디버전스',S14:'OI/MCap',S15:'발사임박',S17:'HigherLows🟡',S18:'Body압축',S19:'매수우위🟡',S21:'RAVE 콤보⭐'};
+const SIG_KEYS = ['S2','S3','S6cont','S6size','S7','S8','S9','S10','S11','S12','S13','S14','S15','S17','S18','S19','S21','S22'];
+const SIG_MAX  = {S2:3,S3:12,S6cont:9,S6size:7,S7:8,S8:7,S9:9,S10:6,S11:4,S12:13,S13:7,S14:8,S15:15,S17:4,S18:5,S19:3,S21:15,S22:12};
+const SIG_NAME = {S2:'CEX',S3:'유통률',S6cont:'펀딩양수율⚡',S6size:'펀딩크기',S7:'펀딩추세⚡',S8:'베이시스',S9:'OI추세',S10:'L/S편향',S11:'Taker',S12:'BB압축⚡⚡',S13:'디버전스',S14:'OI/MCap',S15:'발사임박',S17:'HigherLows🟡',S18:'Body압축',S19:'매수우위🟡',S21:'RAVE 콤보⭐',S22:'공급×OI×BB🔴'};
 
 async function runDeepBacktest() {
   const btn = $('deepBtBtn');
@@ -5195,17 +5206,30 @@ function buildSignalDiagnostics(r) {
   });
   // S20 삭제 (v1.3, 피크 임박 시 0pt — 의미 X)
 
-  // S21: RAVE 시그니처 콤보
-  const c12 = (r.bbScore || 0) >= 4;
-  const c6c = r.fundPosRatio >= 0.55;
-  const c7  = (r.fundingTrend?.score || 0) >= 3;
+  // S21: RAVE 시그니처 콤보 (강화 임계값)
+  const c12 = (r.bbScore || 0) >= 6;
+  const c6c = r.fundPosRatio >= 0.85;
+  const c7  = (r.fundingTrend?.score || 0) >= 5;
   const cc = (c12?1:0)+(c6c?1:0)+(c7?1:0);
   items.push({
     code: 'S21', name: '⭐ RAVE 시그니처 콤보 (BB+펀딩+추세)', max: 15, score: b.S21 || 0,
-    detail: `BB압축 ${c12?'✓':'✗'} · 펀딩양수율 ${c6c?'✓':'✗'} · 펀딩추세 ${c7?'✓':'✗'} (${cc}/3 충족)`,
-    advice: cc === 3 ? '✓ 만점 (RAVE급 시그니처 완벽)' :
-            cc === 2 ? '7pt — 1개 더 충족 시 +8pt (만점)' :
-            cc === 1 ? '0pt — 2개 더 충족 시 +7pt' :
+    detail: `BB압축≥6 ${c12?'✓':'✗'} · 펀딩양수율≥85% ${c6c?'✓':'✗'} · 펀딩추세≥5 ${c7?'✓':'✗'} (${cc}/3 충족)`,
+    advice: cc === 3 ? '✓ 만점 (강한 3중 시그니처)' :
+            cc === 2 ? '4pt — 1개 더 강화 시 +11pt (만점)' :
+            cc === 1 ? '0pt — 강한 신호 2개 더 필요' :
+            '0pt — BB≥6 · 펀딩양수율85%+ · 펀딩추세5+ 모두 필요'
+  });
+
+  // S22: 공급 희소성 × OI × BB 콤보
+  const c22_circ = r.cg?.circMax !== null && r.cg?.circMax !== undefined && r.cg.circMax < 0.25;
+  const c22_oi   = r.oiMcap !== null && r.oiMcap !== undefined && r.oiMcap >= 0.15;
+  const c22_bb   = (r.bbScore || 0) >= 4;
+  const cc22 = (c22_circ?1:0)+(c22_oi?1:0)+(c22_bb?1:0);
+  items.push({
+    code: 'S22', name: '🔴 공급희소×OI비중×BB압축 콤보', max: 12, score: b.S22 || 0,
+    detail: `유통률<25% ${c22_circ?'✓':'✗'} · OI/MCap≥15% ${c22_oi?'✓':'✗'} · BB압축≥4 ${c22_bb?'✓':'✗'} (${cc22}/3 충족)`,
+    advice: cc22 === 3 ? '✓ 만점 (크라임 선행 패턴 완성)' :
+            cc22 === 2 ? '4pt — 1개 더 시 +8pt (만점)' :
             '0pt — 세 조건 중 최소 2개 충족 필요'
   });
 
