@@ -588,13 +588,12 @@
     </div>
     <div class="modal-tabs">
       <button class="tab active" data-tab="diagnose">💡 진단</button>
-      <button class="tab" data-tab="price">Price &amp; Funding</button>
       <button class="tab" data-tab="exchanges">Exchanges &amp; Supply</button>
       <button class="tab" data-tab="signals">Signals</button>
     </div>
     <div class="modal-body">
       <div id="tab-diagnose" class="tab-panel active"></div>
-      <div id="tab-price" class="tab-panel"></div>
+      <div id="tab-price" class="tab-panel" style="display:none;"></div>
       <div id="tab-exchanges" class="tab-panel"></div>
       <div id="tab-signals" class="tab-panel"></div>
     </div>
@@ -1927,8 +1926,9 @@ window.openDumpModal = function(symbol) {
   state.rowMap.set(symbol, r);
   $('m_symbol').textContent = `${r.symbol} — 고점 위험 진단`;
   $('m_meta').innerHTML = `현재가 ${fmtNum(r.curr, 6)} · 180d max ${fmtNum(r.max180, 6)} · 근접 ${(r._dumpAnalysis.athProximity*100).toFixed(1)}%`;
-  $('tab-diagnose').innerHTML = renderDumpTab(r);
-  $('tab-price').innerHTML = `<div class="chart-block"><h3>${r.candlesAll?.length || 0}-Day 캔들 + 거래량</h3>${r.candlesAll ? bigCandleSVG(r.candlesAll) : ''}</div>`;
+  const dumpChart = r.candlesAll ? `<div class="chart-block"><h3>${r.candlesAll.length}-Day 캔들 + 거래량 <span style="font-size:11px; font-weight:400; color:var(--muted);">스크롤 줌 · 드래그 이동 · 더블클릭 초기화</span></h3>${bigCandleSVG(r.candlesAll)}</div>` : '';
+  $('tab-diagnose').innerHTML = dumpChart + renderDumpTab(r);
+  $('tab-price').innerHTML = '';
   $('tab-exchanges').innerHTML = '<div class="muted">고점 스캔 모드: 거래소 분석은 일반 진단 사용</div>';
   $('tab-signals').innerHTML = '<div class="muted">고점 스캔 모드</div>';
   $('modal').classList.add('show');
@@ -2507,14 +2507,15 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
     return `<line x1="0" y1="${fy}" x2="${w}" y2="${fy}" stroke="${FIB_COLORS[i]}" stroke-width="1.1" stroke-dasharray="6,4" opacity="0.75"/>`;
   }).join('') : '';
   // 인라인 가격 라벨 — 각 Fib 선의 우측 끝에 작은 pill (가격만)
+  // Y 자동 맞춤 시 JS 에서 rect.y / text.y 를 새 위치로 업데이트
   const fibInline = fibRange > 0 ? FIB_RATIOS.map((r, i) => {
     const fp = fibHigh - r * fibRange;
     const fy = toY(fp);
     const txt = fp.toPrecision(4);
     const labelW = txt.length * 6.5 + 10;
     const lx = w - labelW - 4;
-    return `<rect x="${lx}" y="${(fy - 7).toFixed(1)}" width="${labelW}" height="13" fill="#0b0e14" opacity="0.85" rx="2" stroke="${FIB_COLORS[i]}" stroke-width="0.7"/>
-      <text x="${(lx + labelW / 2).toFixed(1)}" y="${(fy + 3).toFixed(1)}" fill="${FIB_COLORS[i]}" font-size="10" font-weight="700" font-family="monospace" text-anchor="middle">${txt}</text>`;
+    return `<rect id="fib-rect-${i}" data-fp="${fp}" x="${lx}" y="${(fy - 7).toFixed(1)}" width="${labelW}" height="13" fill="#0b0e14" opacity="0.85" rx="2" stroke="${FIB_COLORS[i]}" stroke-width="0.7"/>
+      <text id="fib-text-${i}" data-fp="${fp}" x="${(lx + labelW / 2).toFixed(1)}" y="${(fy + 3).toFixed(1)}" fill="${FIB_COLORS[i]}" font-size="10" font-weight="700" font-family="monospace" text-anchor="middle">${txt}</text>`;
   }).join('') : '';
   const fibLabels = fibRange > 0 ? (() => {
     const boxW = 188, rowH = 14, padTop = 16, padBot = 6;
@@ -2559,12 +2560,12 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
     return `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" fill="${color}" opacity="0.55"/>`;
   }).join('');
 
-  // 그리드 (5개 가로선) — 가격 레이블은 좌측에 배치(범례와 겹치는 상단 2개는 생략)
-  const grid = [0, 0.25, 0.5, 0.75, 1].map(t => {
+  // 그리드 (5개 가로선) — Y 자동 맞춤 시 라벨 텍스트만 JS 에서 업데이트
+  const grid = [0, 0.25, 0.5, 0.75, 1].map((t, i) => {
     const y = ch - t * ch;
     const p = minP + t * rangeP;
     const showLabel = y > 90; // 범례(y 6~82) 영역 회피
-    return `<line x1="0" y1="${y}" x2="${w}" y2="${y}" stroke="#243045" stroke-width="0.5" opacity="0.5"/>${showLabel ? `<text x="6" y="${y-3}" fill="#cbd5e1" font-size="11" font-weight="600">${p.toPrecision(4)}</text>` : ''}`;
+    return `<line x1="0" y1="${y}" x2="${w}" y2="${y}" stroke="#243045" stroke-width="0.5" opacity="0.5"/>${showLabel ? `<text id="grid-label-${i}" x="6" y="${y-3}" fill="#cbd5e1" font-size="11" font-weight="600">${p.toPrecision(4)}</text>` : ''}`;
   }).join('');
 
   // RSI 패널
@@ -2600,9 +2601,17 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   const fmt = d => `${d.getMonth()+1}/${d.getDate()}`;
   const xLabels = `<text x="6" y="${totalH - 4}" fill="#cbd5e1" font-size="11" font-weight="600">${fmt(firstDate)}</text><text x="${w-6}" y="${totalH - 4}" fill="#cbd5e1" font-size="11" font-weight="600" text-anchor="end">${fmt(lastDate)}</text>`;
 
-  // 줌 대상(X축 따라 분포): 캔들, MA·VWMA 폴리라인, 볼륨 바, RSI 폴리라인
-  // 줌 외부(고정): 그리드선·Fib선·RSI 배경/임계선·범례·Fib 가격라벨·RSI 라벨·시간축
-  const zoomGroup = `<g id="chartZoomG">${priceParts}${maLayer}${volParts}${rsiPolyline}</g>`;
+  // 줌 그룹 구조:
+  //   chartZoomG (X 줌·팬 transform)
+  //     ├── cz-price (Y 자동 맞춤): Fib 가로선 + 캔들 + MA 폴리라인
+  //     ├── cz-vol   (Y 자동 맞춤): 볼륨 바
+  //     └── cz-rsi   (Y 고정 0~100): RSI 폴리라인
+  // 그룹 외부(고정): 격자선/RSI 배경·임계선/범례/Fib 인라인 라벨/Fib 패널/RSI 라벨/시간축/Vol 제목/크로스헤어
+  const zoomGroup = `<g id="chartZoomG">
+    <g id="cz-price">${fibLines}${priceParts}${maLayer}</g>
+    <g id="cz-vol">${volParts}</g>
+    <g id="cz-rsi">${rsiPolyline}</g>
+  </g>`;
   const volDivider = `<line x1="0" y1="${ch+5}" x2="${w}" y2="${ch+5}" stroke="#243045" stroke-width="0.5"/>`;
   const volTitle   = `<text x="6" y="${ch+12}" fill="#cbd5e1" font-size="10" font-weight="700">Vol</text>`;
 
@@ -2633,7 +2642,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
     rsi14, vwma100, ma99, ma25, ma7
   };
 
-  return `<svg id="bigchartsvg" width="100%" viewBox="0 0 ${w} ${totalH}" preserveAspectRatio="none" style="display:block; cursor:crosshair; touch-action:none;">${grid}${fibLines}${fibInline}${rsiBg}${zoomGroup}${volDivider}${legend}${fibLabels}${rsiLabels}${xLabels}${volTitle}${crosshair}</svg>`;
+  return `<svg id="bigchartsvg" width="100%" viewBox="0 0 ${w} ${totalH}" preserveAspectRatio="none" style="display:block; cursor:crosshair; touch-action:none;">${grid}${rsiBg}${zoomGroup}${fibInline}${volDivider}${legend}${fibLabels}${rsiLabels}${xLabels}${volTitle}${crosshair}</svg>`;
 }
 
 function fundingBarSVG(rates, w = 1100, h = 160, history = null) {
@@ -2671,8 +2680,8 @@ function fundingBarSVG(rates, w = 1100, h = 160, history = null) {
   </svg>`;
 }
 
-function renderPriceTab(r) {
-  const stats = `
+function renderStatsGrid(r) {
+  return `
     <div class="stat-grid">
       <div class="stat-card"><div class="stat-label">현재가</div><div class="stat-value">${fmtNum(r.price, 6)}</div></div>
       <div class="stat-card"><div class="stat-label">24h 변동</div><div class="stat-value">${fmtPct(r.change24)}</div></div>
@@ -2683,10 +2692,17 @@ function renderPriceTab(r) {
       <div class="stat-card"><div class="stat-label">펀딩 양수율</div><div class="stat-value">${(r.fundPosRatio * 100).toFixed(0)}%</div></div>
       <div class="stat-card"><div class="stat-label">예상 연 펀딩</div><div class="stat-value pos">${r.fundingApr.toFixed(0)}%</div></div>
     </div>`;
+}
+function renderBigChartBlock(r) {
   const allDays = r.candlesAll?.length || 0;
-  const bigChart = `<div class="chart-block"><h3>${allDays}-Day 캔들 + 거래량 (MA7/25/99 · VWMA100) <span style="font-size:11px; font-weight:400; color:var(--muted);">스크롤 줌 · 드래그 이동 · 더블클릭 초기화</span></h3>${r.candlesAll && r.candlesAll.length ? bigCandleSVG(r.candlesAll) : '<div class="muted">데이터 부족</div>'}</div>`;
-  const funding = `<div class="chart-block"><h3>21회 펀딩 히스토리 (≈ 7일, 8h 단위) — 단위: %/8h</h3>${fundingBarSVG(r.fundRates, 1100, 160, r.fundHistory)}</div>`;
-  return stats + bigChart + funding;
+  return `<div class="chart-block"><h3>${allDays}-Day 캔들 + 거래량 (MA7/25/99 · VWMA100) <span style="font-size:11px; font-weight:400; color:var(--muted);">스크롤 줌 · 드래그 이동 · 더블클릭 초기화 · 커서로 가격 확인</span></h3>${r.candlesAll && r.candlesAll.length ? bigCandleSVG(r.candlesAll) : '<div class="muted">데이터 부족</div>'}</div>`;
+}
+function renderFundingBlock(r) {
+  return `<div class="chart-block"><h3>21회 펀딩 히스토리 (≈ 7일, 8h 단위) — 단위: %/8h</h3>${fundingBarSVG(r.fundRates, 1100, 160, r.fundHistory)}</div>`;
+}
+function renderPriceTab(r) {
+  // 호환용 (현재는 사용 안 함 — 콘텐츠가 진단 탭으로 통합됨)
+  return renderStatsGrid(r) + renderBigChartBlock(r) + renderFundingBlock(r);
 }
 
 function renderExchangesTab(r) {
@@ -2877,13 +2893,88 @@ function setupChartZoom() {
   const origW  = vbNums[2];
   let scale = 1, panX = 0;
 
+  const czPrice = document.getElementById('cz-price');
+  const czVol   = document.getElementById('cz-vol');
+  const gridLabels = [0,1,2,3,4].map(i => document.getElementById(`grid-label-${i}`));
+  const fibRects = [0,1,2,3,4].map(i => document.getElementById(`fib-rect-${i}`));
+  const fibTexts = [0,1,2,3,4].map(i => document.getElementById(`fib-text-${i}`));
+
+  const fmtPx = p => p >= 1 ? p.toFixed(3) : p >= 0.01 ? p.toFixed(5) : p.toExponential(2);
+
+  // Y 자동 맞춤 결과를 크로스헤어와 공유
+  let curVMinP = minP, curVMaxP = maxP, curVRangeP = rangeP;
+
+  // 가시 캔들 구간 → 가격·볼륨 Y 자동 맞춤
+  const recomputeY = () => {
+    const leftData  = panX;
+    const rightData = panX + origW / scale;
+    const li = Math.max(0, Math.floor(leftData / barW));
+    const ri = Math.min(candles.length - 1, Math.ceil(rightData / barW));
+    let vMinP = Infinity, vMaxP = -Infinity, vMaxV = 0;
+    for (let i = li; i <= ri; i++) {
+      const c = candles[i]; if (!c) continue;
+      if (c.h > vMaxP) vMaxP = c.h;
+      if (c.l < vMinP) vMinP = c.l;
+      if (c.v > vMaxV) vMaxV = c.v;
+    }
+    if (!isFinite(vMaxP) || !isFinite(vMinP) || vMaxP <= vMinP) { vMinP = minP; vMaxP = maxP; }
+    // 위·아래 5% 패딩
+    const pad = (vMaxP - vMinP) * 0.05;
+    vMaxP += pad; vMinP = Math.max(0, vMinP - pad);
+    curVMinP = vMinP; curVMaxP = vMaxP; curVRangeP = vMaxP - vMinP;
+
+    // 가격 Y 변환: yForP(p) = ch * (1 - (p-minP)/rangeP)
+    // 목표: yForP_new(vMaxP) = 0, yForP_new(vMinP) = ch
+    const syP = rangeP / (vMaxP - vMinP);
+    const tyP = syP * ch * ((vMaxP - minP) / rangeP - 1);
+    if (czPrice) czPrice.setAttribute('transform', `translate(0, ${tyP.toFixed(2)}) scale(1, ${syP.toFixed(4)})`);
+
+    // 볼륨 Y 변환: 바닥(ch+10+vh) 기준 스케일링
+    if (czVol && vMaxV > 0) {
+      const syV = maxV / vMaxV;
+      const baseline = ch + 10 + vh;
+      const tyV = (1 - syV) * baseline;
+      czVol.setAttribute('transform', `translate(0, ${tyV.toFixed(2)}) scale(1, ${syV.toFixed(4)})`);
+    }
+
+    // 격자 라벨 텍스트 업데이트 (현재 가시 범위 기준)
+    const visRange = vMaxP - vMinP;
+    [0, 0.25, 0.5, 0.75, 1].forEach((t, i) => {
+      const lbl = gridLabels[i];
+      if (!lbl) return;
+      const p = vMaxP - t * visRange;
+      lbl.textContent = p.toPrecision(4);
+    });
+
+    // Fib 인라인 라벨 Y 위치 업데이트 (price → screen y)
+    const newYFor = p => ch * (1 - (p - vMinP) / visRange);
+    for (let i = 0; i < 5; i++) {
+      const rect = fibRects[i]; const txt = fibTexts[i];
+      if (!rect || !txt) continue;
+      const fp = parseFloat(rect.getAttribute('data-fp'));
+      const ny = newYFor(fp);
+      // 가시 영역(0~ch) 밖이면 숨김
+      if (ny < -10 || ny > ch + 10) {
+        rect.style.display = 'none'; txt.style.display = 'none';
+      } else {
+        rect.style.display = ''; txt.style.display = '';
+        rect.setAttribute('y', (ny - 7).toFixed(1));
+        txt.setAttribute('y', (ny + 3).toFixed(1));
+      }
+    }
+  };
+
   const apply = () => {
     zoomG.setAttribute('transform', `translate(${(-panX * scale).toFixed(2)}, 0) scale(${scale.toFixed(4)}, 1)`);
+    recomputeY();
   };
   const clampPan = () => {
     const maxPan = origW * (1 - 1 / scale);
     panX = Math.max(0, Math.min(maxPan, panX));
   };
+
+  // 초기 1회 Y 맞춤 (전체 캔들 범위로)
+  recomputeY();
 
   svg.style.userSelect = 'none';
 
@@ -2931,10 +3022,10 @@ function setupChartZoom() {
     hline.setAttribute('y1', myView);
     hline.setAttribute('y2', myView);
 
-    // 우측 가격(또는 RSI값) 라벨
+    // 우측 가격(또는 RSI값) 라벨 — Y 자동 맞춤 후 현재 가시 범위로 변환
     let labelTxt = '', labelShow = true;
     if (myView <= ch) {
-      const p = minP + (1 - myView / ch) * rangeP;
+      const p = curVMinP + (1 - myView / ch) * curVRangeP;
       labelTxt = '$' + fmtP(p);
       pTxt.setAttribute('fill', '#fbbf24');
       pBg.setAttribute('stroke', '#fbbf24');
@@ -3084,7 +3175,7 @@ function openModal(symbol) {
     · 상장 ${r.ageDays ?? '?'}일 · CEX ${r.cexCount}/4 · ${signalChips(r)}
   `;
   $('tab-diagnose').innerHTML = renderDiagnosisTab(r);
-  $('tab-price').innerHTML = renderPriceTab(r);
+  $('tab-price').innerHTML = '';  // 통합됨 — 차트/통계/펀딩 모두 진단 탭에 표시
   $('tab-exchanges').innerHTML = renderExchangesTab(r);
   $('tab-signals').innerHTML = renderSignalsTab(r);
   $('modal').classList.add('show');
@@ -5173,6 +5264,15 @@ function renderDiagnosisTab(r) {
       </div>
     </div>
 
+    <div class="diag-section" style="padding:0; background:transparent; border:none;">
+      ${renderBigChartBlock(r)}
+    </div>
+
+    <div class="diag-section">
+      <h4>📊 주요 지표</h4>
+      ${renderStatsGrid(r)}
+    </div>
+
     <div class="diag-section" style="border-color: ${dumpLbl.color}; ${isApex ? 'background: rgba(255,45,85,.06);' : ''}">
       <h4 style="color: ${dumpLbl.color}; margin-bottom: 10px;">고점 위험도 (Dump Risk Score)</h4>
       <div style="display:flex; align-items:center; gap: 18px; flex-wrap:wrap;">
@@ -5201,6 +5301,11 @@ function renderDiagnosisTab(r) {
     </div>
 
     ${renderPotentialAndPlan(r)}
+
+    <div class="diag-section">
+      <h4>💸 펀딩 히스토리</h4>
+      ${renderFundingBlock(r)}
+    </div>
 
     ${hardX.length ? `
     <div class="diag-section" style="border-color: var(--danger);">
