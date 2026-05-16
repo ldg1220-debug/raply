@@ -196,6 +196,51 @@
     transition: background .12s ease, color .12s ease;
   }
   .preset-btn:hover { background: var(--surface-2); color: var(--text); }
+
+  /* ── 헤더 컨트롤 그룹 ── */
+  .ctrl-group { display: flex; align-items: center; gap: var(--space-1); }
+  .ctrl-sep { width: 1px; height: 18px; background: var(--border-2); margin: 0 var(--space-1); flex-shrink: 0; }
+  .btn-ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    padding: var(--space-1) var(--space-2);
+  }
+  .btn-ghost:hover { background: var(--surface-2); border-color: var(--border); color: var(--text-2); }
+
+  /* ── 필터 그룹 라벨 ── */
+  .filter-group-label {
+    grid-column: 1 / -1;
+    font-size: var(--text-2xs);
+    color: var(--accent);
+    font-weight: var(--w-semi);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border);
+    margin-top: var(--space-1);
+  }
+  .filter-group-label:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+
+  /* ── 트레이드 플랜 존 ── */
+  .plan-zone {
+    border-radius: var(--r);
+    padding: var(--space-3);
+    margin-bottom: var(--space-2);
+    border: 1px solid var(--border);
+  }
+  .plan-zone:last-child { margin-bottom: 0; }
+  .plan-zone-hd {
+    font-size: var(--text-xs);
+    font-weight: var(--w-semi);
+    margin-bottom: var(--space-2);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .plan-zone--buy  { background: rgba(74,222,128,.04);  border-color: rgba(74,222,128,.15); }
+  .plan-zone--sell { background: rgba(251,146,60,.04);   border-color: rgba(251,146,60,.15); }
+  .plan-zone--trigger { background: var(--surface-2); }
   .preset-status { color: var(--accent-2); font-size: var(--text-xs); margin-left: auto; font-weight: var(--w-medium); }
   .status {
     padding: var(--space-2) var(--space-5);
@@ -697,14 +742,21 @@
     <span class="sub">17-Signal · S21 RAVE 콤보 · 🔻 고점 진단 (D1~D9) · 4-6개월 차트 · FDV/MC 필터 · Top10 홀더</span>
   </div>
   <div class="controls">
-    <input id="diagInput" type="text" placeholder="심볼 진단 (예: KGEN)" class="diag-input" />
-    <button id="diagBtn">🔍 진단</button>
-    <input id="btMinRatio" type="number" step="0.5" value="3" class="diag-input" style="width:70px;" title="최소 펌프 배수 (3x 권장)" />
-    <button id="backtestBtn">🔬 역검증</button>
-    <button id="deepBtBtn" title="펌프 -21d/-10d/-3d/피크 4단계 비교">🔬+ 심층</button>
-    <button id="gradeValBtn" title="실제 Crime 47종목 대상 Crime Grade 정확도 검증 (실제 API 데이터 사용)">📊 Grade검증</button>
-    <button id="dumpScanBtn" title="180일 신고가 근접 + 최근 30일 내 ATH 갱신 종목 고점 위험 스캔">🔻 고점</button>
-    <button id="watchBtn">★ Watchlist</button>
+    <div class="ctrl-group">
+      <input id="diagInput" type="text" placeholder="심볼 진단 (예: KGEN)" class="diag-input" />
+      <button id="diagBtn">🔍 진단</button>
+    </div>
+    <div class="ctrl-group">
+      <input id="btMinRatio" type="number" step="0.5" value="3" class="diag-input" style="width:60px;" title="최소 펌프 배수 (3x 권장)" />
+      <button id="backtestBtn">역검증</button>
+      <button id="deepBtBtn" class="btn-ghost" title="펌프 -21d/-10d/-3d/피크 4단계 비교">심층</button>
+    </div>
+    <div class="ctrl-sep"></div>
+    <div class="ctrl-group">
+      <button id="gradeValBtn" class="btn-ghost" title="실제 Crime 47종목 대상 Crime Grade 정확도 검증 (실제 API 데이터 사용)">Grade</button>
+      <button id="dumpScanBtn" class="btn-ghost" title="180일 신고가 근접 + 최근 30일 내 ATH 갱신 종목 고점 위험 스캔">🔻 고점</button>
+      <button id="watchBtn" class="btn-ghost">★</button>
+    </div>
     <button id="scanBtn" class="primary">스캔 시작</button>
   </div>
 </header>
@@ -725,6 +777,7 @@
 </details>
 
 <section class="filters">
+  <div class="filter-group-label">가격 · 변동</div>
   <div class="filter">
     <label>최소 펀딩비 % (8h)</label>
     <input type="number" id="f_funding" list="dl_funding" step="0.001" value="0" />
@@ -745,6 +798,7 @@
     <input type="number" id="f_maxDaily" list="dl_maxDaily" step="1" value="50" />
     <datalist id="dl_maxDaily"><option value="20">20</option><option value="30">30</option><option value="50">50</option></datalist>
   </div>
+  <div class="filter-group-label">규모 · 기간</div>
   <div class="filter">
     <label>최소 24h 거래대금 USDT</label>
     <input type="number" id="f_minVol" list="dl_minVol" step="10000" value="100000" />
@@ -760,6 +814,7 @@
     <input type="number" id="f_minScore" list="dl_minScore" step="1" value="35" />
     <datalist id="dl_minScore"><option value="25">25 (탐색)</option><option value="35">35 (균형)</option><option value="50">50 (엄격)</option></datalist>
   </div>
+  <div class="filter-group-label">구조 · OI</div>
   <div class="filter">
     <label>저점대비 최대 배수 (x)</label>
     <input type="number" id="f_maxGain" list="dl_maxGain" step="0.1" value="2.5" />
@@ -785,6 +840,7 @@
     <input type="number" id="f_minOiMcap" list="dl_minOiMcap" step="0.05" value="0" min="0" />
     <datalist id="dl_minOiMcap"><option value="0">0</option><option value="0.1">0.1</option><option value="0.2">0.2 (RAVE급)</option><option value="0.3">0.3</option></datalist>
   </div>
+  <div class="filter-group-label">고급 필터</div>
   <div class="filter">
     <label>과거 펌프 이력 최대 (180d max/min)</label>
     <input type="number" id="f_maxPriorPump" list="dl_maxPriorPump" step="0.5" value="0" min="0" title="180일 내 max/min 비율 — 이 값 이상이면 이미 펌프-덤프 끝난 토큰. 0=제한없음 (점수+매집신호로 판별)" />
@@ -5326,28 +5382,34 @@ function renderPotentialAndPlan(r) {
       </div>`;
 
     planHtml = `
-      <div style="font-weight:700; color:#4ade80; margin-top:6px; margin-bottom:4px;">🟢 매수 존</div>
-      ${planRow('#4ade80', '1차', `$${fmtP(plan.entry[0].price)}`, `${plan.entry[0].label} · 현재가 대비 ${((plan.entry[0].price/plan.currentPrice-1)*100).toFixed(1)}%`)}
-      ${planRow('#22d3ee', '2차', `$${fmtP(plan.entry[1].price)}`, `${plan.entry[1].label} · 현재가 대비 ${((plan.entry[1].price/plan.currentPrice-1)*100).toFixed(1)}%`)}
-      ${planRow('#dc2626', '⛔ 손절', `$${fmtP(plan.stopLoss.price)}`, plan.stopLoss.label)}
+      <div class="plan-zone plan-zone--buy">
+        <div class="plan-zone-hd" style="color:#4ade80;">🟢 매수 존</div>
+        ${planRow('#4ade80', '1차 진입', `$${fmtP(plan.entry[0].price)}`, `${plan.entry[0].label} · 현재가 대비 ${((plan.entry[0].price/plan.currentPrice-1)*100).toFixed(1)}%`)}
+        ${planRow('#22d3ee', '2차 진입', `$${fmtP(plan.entry[1].price)}`, `${plan.entry[1].label} · 현재가 대비 ${((plan.entry[1].price/plan.currentPrice-1)*100).toFixed(1)}%`)}
+        ${planRow('#dc2626', '⛔ 손절', `$${fmtP(plan.stopLoss.price)}`, plan.stopLoss.label)}
+      </div>
 
-      <div style="font-weight:700; color:#fb923c; margin:14px 0 4px;">🔴 익절 존 (90d 저점 $${fmtP(plan.refLow)} 기준 배수)</div>
-      ${plan.targets.map((t, i) => planRow(
-        ['#fbbf24','#fb923c','#ef4444'][i],
-        t.tier + ' 익절',
-        `$${fmtP(t.price)}`,
-        `${t.multiple}x · ${t.portion}% 청산`
-      )).join('')}
+      <div class="plan-zone plan-zone--sell">
+        <div class="plan-zone-hd" style="color:#fb923c;">🔴 익절 존 <span style="font-weight:400; color:var(--muted); text-transform:none;">90d 저점 $${fmtP(plan.refLow)} 기준</span></div>
+        ${plan.targets.map((t, i) => planRow(
+          ['#fbbf24','#fb923c','#ef4444'][i],
+          t.tier + ' 익절',
+          `$${fmtP(t.price)}`,
+          `${t.multiple}x · ${t.portion}% 청산`
+        )).join('')}
+      </div>
 
-      <div style="font-weight:700; margin:14px 0 4px;">📌 진입 트리거 (지지가 도달 시 모두 충족)</div>
-      <ul style="margin:4px 0 4px 18px; font-size:12px;">
-        ${plan.entryTriggers.map(t => `<li style="margin:2px 0;">${t}</li>`).join('')}
-      </ul>
+      <div class="plan-zone plan-zone--trigger">
+        <div class="plan-zone-hd">📌 진입 트리거</div>
+        <ul style="margin:0 0 0 16px; padding:0;">
+          ${plan.entryTriggers.map(t => `<li style="margin:3px 0; font-size:var(--text-xs); color:var(--text-2);">${t}</li>`).join('')}
+        </ul>
+      </div>
 
-      <div style="font-weight:700; margin:14px 0 4px;">⚠ 청산 트리거 (도달 시 즉시 행동)</div>
-      <div>
+      <div class="plan-zone plan-zone--trigger">
+        <div class="plan-zone-hd">⚠ 청산 트리거</div>
         ${plan.exitTriggers.map(t => `
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:var(--space-3); padding:4px var(--space-2); margin:2px 0; background:var(--surface-2); border-radius:var(--r-sm); border-left:2px solid ${t.color};">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:var(--space-3); padding:4px var(--space-2); margin:2px 0; background:var(--surface-3); border-radius:var(--r-sm); border-left:2px solid ${t.color};">
             <span style="color:${t.color}; font-weight:700; font-size:var(--text-xs); flex:1;">${t.label}</span>
             <span style="font-size:var(--text-xs); color:var(--muted); white-space:nowrap;">→ ${t.action}</span>
           </div>`).join('')}
@@ -5396,13 +5458,10 @@ function renderPotentialAndPlan(r) {
         const fmtPl = p => p >= 1 ? p.toFixed(3) : p >= 0.01 ? p.toFixed(5) : p.toExponential(2);
         // RSI 블록
         const rsiBlock = plan.rsiSignal ? `
-          <div style="display:flex; align-items:center; gap:12px; padding:8px 10px; margin-bottom:8px;
-                      background:${plan.rsiSignal.color}12; border-left:3px solid ${plan.rsiSignal.color}; border-radius:4px;">
-            <div>
-              <div style="font-size:12px; font-weight:700; color:${plan.rsiSignal.color};">RSI(14) ${plan.rsi.toFixed(1)} — ${plan.rsiSignal.label}</div>
-              <div style="font-size:11px; color:var(--muted); margin-top:2px;">${plan.rsiSignal.advice}</div>
-            </div>
-          </div>` : '<div class="muted" style="font-size:11px; margin-bottom:8px;">RSI 데이터 부족</div>';
+          <div class="alert-inline" style="background:${plan.rsiSignal.color}12; border-left-color:${plan.rsiSignal.color}; color:${plan.rsiSignal.color}; margin-bottom:var(--space-2);">
+            <b>RSI(14) ${plan.rsi.toFixed(1)} — ${plan.rsiSignal.label}</b>
+            <div style="font-size:var(--text-2xs); margin-top:2px; color:var(--muted);">${plan.rsiSignal.advice}</div>
+          </div>` : '<div class="muted" style="font-size:var(--text-xs); margin-bottom:var(--space-2);">RSI 데이터 부족</div>';
 
         // MA·VWMA 포지션
         const maRows = [
@@ -5413,32 +5472,29 @@ function renderPotentialAndPlan(r) {
           plan.bbLower ? { label:'BB 하단',  v:plan.bbLower, rel: plan.currentPrice > plan.bbLower ? '가격 위 (밴드 내부)' : '가격 아래 — 과매도 이탈', c: plan.currentPrice > plan.bbLower ? '#94a3b8':'#4ade80' } : null,
         ].filter(Boolean);
         const maBlock = `
-          <div style="margin-bottom:8px;">
-            <div style="font-size:11px; font-weight:700; margin-bottom:4px; color:var(--muted);">이동평균선 포지션 (현재가 $${fmtPl(plan.currentPrice)})</div>
+          <div style="margin-bottom:var(--space-3);">
+            <div class="metric-row-label" style="display:block; margin-bottom:var(--space-1);">이동평균선 포지션 (현재가 $${fmtPl(plan.currentPrice)})</div>
             ${maRows.map(r => `
-              <div style="display:flex; justify-content:space-between; align-items:center; padding:3px 8px; margin:2px 0;
-                          background:rgba(255,255,255,.03); border-radius:3px; font-size:11px;">
-                <span style="color:var(--muted); min-width:70px;">${r.label}</span>
-                <span style="font-family:monospace;">$${fmtPl(r.v)}</span>
-                <span style="color:${r.c}; font-size:10px;">${r.rel}</span>
+              <div class="metric-row">
+                <span class="metric-row-label">${r.label}</span>
+                <span class="metric-row-value">$${fmtPl(r.v)}</span>
+                <span class="metric-row-tag" style="color:${r.c};">${r.rel}</span>
               </div>`).join('')}
-            ${plan.crossSignal ? `<div style="margin-top:5px; padding:4px 8px; font-size:11px; background:${plan.crossSignal.color}15; border-left:2px solid ${plan.crossSignal.color}; border-radius:3px; color:${plan.crossSignal.color};">⚡ ${plan.crossSignal.type} — ${plan.crossSignal.desc}</div>` : ''}
+            ${plan.crossSignal ? `<div class="alert-inline" style="background:${plan.crossSignal.color}15; border-left-color:${plan.crossSignal.color}; color:${plan.crossSignal.color}; margin-top:var(--space-1);">⚡ ${plan.crossSignal.type} — ${plan.crossSignal.desc}</div>` : ''}
           </div>`;
 
         // 피보나치 지지·저항 (되돌림)
         const fibBlock = plan.fibLevels.length ? `
-          <div>
-            <div style="font-size:11px; font-weight:700; margin-bottom:4px; color:var(--muted);">피보나치 되돌림 — 지지/저항 (90d: 저점 $${fmtPl(plan.fibLow)} → 고점 $${fmtPl(plan.fibHigh)})</div>
+          <div style="margin-bottom:var(--space-2);">
+            <div class="metric-row-label" style="display:block; margin-bottom:var(--space-1);">피보나치 되돌림 (90d: 저점 $${fmtPl(plan.fibLow)} → 고점 $${fmtPl(plan.fibHigh)})</div>
             ${plan.fibLevels.map(f => {
               const isCurr = Math.abs(f.price - plan.currentPrice) / plan.currentPrice < 0.02;
               const isSupport = f.price < plan.currentPrice;
               const dist = ((f.price / plan.currentPrice - 1) * 100).toFixed(1);
-              return `<div style="display:flex; justify-content:space-between; align-items:center; padding:3px 8px; margin:2px 0;
-                        background:${isCurr ? f.color+'22' : 'rgba(255,255,255,.025)'}; border-radius:3px; font-size:11px;
-                        ${isCurr ? `border-left:2px solid ${f.color};` : ''}">
-                <span style="color:${f.color}; min-width:66px;">Fib ${f.ratio}</span>
-                <span style="font-family:monospace; color:${f.color};">$${fmtPl(f.price)}</span>
-                <span style="font-size:10px; color:${isSupport ? '#4ade80' : '#f87171'};">${isSupport ? '지지' : '저항'} ${dist}%${isCurr ? ' ← 현재가 근처' : ''}</span>
+              return `<div class="metric-row" style="${isCurr ? `background:${f.color}18; border-left:2px solid ${f.color}; padding-left:6px;` : ''}">
+                <span class="metric-row-label" style="color:${f.color};">Fib ${f.ratio}</span>
+                <span class="metric-row-value" style="color:${f.color};">$${fmtPl(f.price)}</span>
+                <span class="metric-row-tag" style="color:${isSupport ? '#4ade80' : '#f87171'};">${isSupport ? '지지' : '저항'} ${dist}%${isCurr ? ' ← 현재' : ''}</span>
               </div>`;
             }).join('')}
           </div>` : '';
@@ -5452,27 +5508,25 @@ function renderPotentialAndPlan(r) {
           2.618: '오버슈팅 영역'
         };
         const fibExtBlock = plan.fibExtensions && plan.fibExtensions.length ? `
-          <div style="margin-top:10px;">
-            <div style="font-size:11px; font-weight:700; margin-bottom:4px; color:var(--muted);">피보나치 확장 — 상방 목표 (90d 스윙폭 기준)</div>
+          <div style="margin-top:var(--space-3);">
+            <div class="metric-row-label" style="display:block; margin-bottom:var(--space-1);">피보나치 확장 — 상방 목표</div>
             ${plan.fibExtensions.map(e => `
-              <div style="display:flex; justify-content:space-between; align-items:center; padding:3px 8px; margin:2px 0;
-                          background:rgba(251,146,60,.06); border-radius:3px; font-size:11px;">
-                <span style="color:#fb923c; min-width:66px; font-weight:600;">Ext ${e.ratio}</span>
-                <span style="font-family:monospace; color:#fb923c;">$${fmtPl(e.price)}</span>
-                <span style="font-size:10px; color:#fb923c;">+${e.fromCurrent.toFixed(0)}% · ${FIB_EXT_DESC[e.ratio]}</span>
+              <div class="metric-row" style="border-left:2px solid #fb923c44;">
+                <span class="metric-row-label" style="color:#fb923c;">Ext ${e.ratio}</span>
+                <span class="metric-row-value" style="color:#fb923c;">$${fmtPl(e.price)}</span>
+                <span class="metric-row-tag" style="color:#fb923c;">+${e.fromCurrent.toFixed(0)}% · ${FIB_EXT_DESC[e.ratio]}</span>
               </div>`).join('')}
           </div>` : '';
 
         // 라운드 넘버 (심리적 저항)
         const roundsBlock = plan.roundNumbers && plan.roundNumbers.length ? `
-          <div style="margin-top:10px;">
-            <div style="font-size:11px; font-weight:700; margin-bottom:4px; color:var(--muted);">심리적 라운드 저항 (마디가 — 차익 실현 빈출 구간)</div>
+          <div style="margin-top:var(--space-3);">
+            <div class="metric-row-label" style="display:block; margin-bottom:var(--space-1);">심리적 라운드 저항</div>
             ${plan.roundNumbers.map(rn => `
-              <div style="display:flex; justify-content:space-between; align-items:center; padding:3px 8px; margin:2px 0;
-                          background:rgba(167,139,250,.06); border-radius:3px; font-size:11px;">
-                <span style="color:#a78bfa; min-width:66px; font-weight:600;">Round</span>
-                <span style="font-family:monospace; color:#a78bfa;">$${fmtPl(rn.price)}</span>
-                <span style="font-size:10px; color:#a78bfa;">+${rn.fromCurrent.toFixed(0)}%</span>
+              <div class="metric-row" style="border-left:2px solid #a78bfa44;">
+                <span class="metric-row-label" style="color:#a78bfa;">Round</span>
+                <span class="metric-row-value" style="color:#a78bfa;">$${fmtPl(rn.price)}</span>
+                <span class="metric-row-tag" style="color:#a78bfa;">+${rn.fromCurrent.toFixed(0)}%</span>
               </div>`).join('')}
           </div>` : '';
 
