@@ -292,6 +292,31 @@
     letter-spacing: 0.08em;
     font-weight: var(--w-semi);
   }
+  details.diag-section > summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: var(--w-semi);
+    user-select: none;
+  }
+  details.diag-section > summary::-webkit-details-marker { display: none; }
+  details.diag-section > summary::after {
+    content: '›';
+    font-size: 18px;
+    line-height: 1;
+    margin-left: auto;
+    opacity: 0.45;
+    transition: transform .18s;
+  }
+  details.diag-section[open] > summary::after { transform: rotate(90deg); }
+  details.diag-section[open] > summary { margin-bottom: var(--space-3); }
+
   /* 변형: hero — 점수/등급 상단 카드 (더 도드라지게) */
   .diag-section--hero {
     padding: var(--space-5);
@@ -551,7 +576,7 @@
   .tab-panel.active { display: block; }
   .stat-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    grid-template-columns: repeat(2, 1fr);
     gap: var(--space-2);
   }
   .stat-card {
@@ -5320,18 +5345,18 @@ function renderPotentialAndPlan(r) {
       </ul>
 
       <div style="font-weight:700; margin:14px 0 4px;">⚠ 청산 트리거 (도달 시 즉시 행동)</div>
-      <div style="font-size:12px;">
+      <div>
         ${plan.exitTriggers.map(t => `
-          <div style="display:flex; gap:8px; padding:3px 0; border-bottom:1px solid var(--border);">
-            <b style="color:${t.color}; min-width:230px;">${t.label}</b>
-            <span>→ ${t.action}</span>
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:var(--space-3); padding:4px var(--space-2); margin:2px 0; background:var(--surface-2); border-radius:var(--r-sm); border-left:2px solid ${t.color};">
+            <span style="color:${t.color}; font-weight:700; font-size:var(--text-xs); flex:1;">${t.label}</span>
+            <span style="font-size:var(--text-xs); color:var(--muted); white-space:nowrap;">→ ${t.action}</span>
           </div>`).join('')}
       </div>`;
   }
 
   return `
-    <div class="diag-section diag-section--hero" style="border-color:${crime.color};">
-      <h4 style="color:${crime.color};">🎯 펌프 잠재력 (Crime Grade)</h4>
+    <details class="diag-section diag-section--hero" style="border-color:${crime.color};" open>
+      <summary style="color:${crime.color};">🎯 펌프 잠재력 (Crime Grade)</summary>
       <div style="display:flex; align-items:flex-start; gap:var(--space-5); flex-wrap:wrap; margin-bottom:var(--space-3);">
         <div class="grade-chip" style="background:${crime.color}18; color:${crime.color};">${crime.grade}</div>
         <div class="kpi" style="flex:1; min-width:120px;">
@@ -5352,10 +5377,10 @@ function renderPotentialAndPlan(r) {
       <div>${factorsHtml}</div>
       ${crime.grade === 'A' ? `<div class="alert-inline danger">🚨 <b>A등급(RAVE급)은 연 1~2회 수준의 희귀 이벤트.</b> OI 매집 실증 필수. 단독 포지션 금지.</div>` : ''}
       ${crime.oiMissing ? `<div class="alert-inline warn">⚠ OI/MCap 데이터 없음 — A등급 발급 불가. 등급 실제보다 낮게 평가될 수 있음.</div>` : ''}
-    </div>
+    </details>
 
-    <div class="diag-section" style="border-color:${risk.color};">
-      <h4 style="color:${risk.color}; margin-bottom:10px;">⚠ 리스크 프로파일 — ${risk.label}</h4>
+    <details class="diag-section" style="border-color:${risk.color};">
+      <summary style="color:${risk.color};">⚠ 리스크 프로파일 — ${risk.label}</summary>
       <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:10px;">${axisHtml}</div>
       <div style="font-size:12px; margin-top:6px;">
         <b>예상 드로다운:</b> 펌프 후 <span style="color:${risk.color}; font-weight:700;">-${risk.drawdownEst}%</span> 수준
@@ -5363,10 +5388,10 @@ function renderPotentialAndPlan(r) {
       <ul style="margin:8px 0 0 18px; font-size:11px; color:var(--muted);">
         ${risksList}
       </ul>
-    </div>
+    </details>
 
-    <div class="diag-section">
-      <h4>📊 기술적 지표 분석</h4>
+    <details class="diag-section">
+      <summary>📊 기술적 지표 분석</summary>
       ${plan ? (() => {
         const fmtPl = p => p >= 1 ? p.toFixed(3) : p >= 0.01 ? p.toFixed(5) : p.toExponential(2);
         // RSI 블록
@@ -5453,12 +5478,12 @@ function renderPotentialAndPlan(r) {
 
         return rsiBlock + maBlock + fibBlock + fibExtBlock + roundsBlock;
       })() : '<div class="muted">캔들 데이터 부족 — 기술 분석 불가</div>'}
-    </div>
+    </details>
 
-    <div class="diag-section">
-      <h4>📋 트레이드 플랜</h4>
+    <details class="diag-section">
+      <summary>📋 트레이드 플랜</summary>
       ${planHtml}
-    </div>
+    </details>
   `;
 }
 
@@ -5538,13 +5563,13 @@ function renderDiagnosisTab(r) {
       ${renderBigChartBlock(r)}
     </div>
 
-    <div class="diag-section">
-      <h4>📊 주요 지표</h4>
+    <details class="diag-section">
+      <summary>📊 주요 지표</summary>
       ${renderStatsGrid(r)}
-    </div>
+    </details>
 
-    <div class="diag-section" style="border-color: ${dumpLbl.color}; ${isApex ? 'background: rgba(255,45,85,.06);' : ''}">
-      <h4 style="color: ${dumpLbl.color}; margin-bottom: 10px;">고점 위험도 (Dump Risk Score)</h4>
+    <details class="diag-section" style="border-color: ${dumpLbl.color}; ${isApex ? 'background: rgba(255,45,85,.06);' : ''}" open>
+      <summary style="color: ${dumpLbl.color};">고점 위험도 (Dump Risk Score)</summary>
       <div style="display:flex; align-items:center; gap: 18px; flex-wrap:wrap;">
         <div style="text-align:center; min-width: 80px;">
           <div style="font-size: 40px; font-weight: 800; color: ${dumpLbl.color}; line-height:1;">${dump.score}</div>
@@ -5568,47 +5593,47 @@ function renderDiagnosisTab(r) {
         }).join('')}
       </div>
       <div style="margin-top: 8px; font-size: 11px; color: var(--info);">🔻 고점 탭에서 D1~D9 전체 시그널 확인</div>
-    </div>
+    </details>
 
     ${renderPotentialAndPlan(r)}
 
-    <div class="diag-section">
-      <h4>💸 펀딩 히스토리</h4>
+    <details class="diag-section">
+      <summary>💸 펀딩 히스토리</summary>
       ${renderFundingBlock(r)}
-    </div>
+    </details>
 
     ${hardX.length ? `
-    <div class="diag-section" style="border-color: var(--danger);">
-      <h4 style="color: var(--danger);">⚠ 현재 필터 기준 위반 (${hardX.length}건)</h4>
+    <details class="diag-section" style="border-color: var(--danger);">
+      <summary style="color: var(--danger);">⚠ 현재 필터 기준 위반 (${hardX.length}건)</summary>
       ${hardX.map(h => `<div class="diag-row neg">• ${h.reason}</div>`).join('')}
       <div class="muted" style="font-size: 11px; margin-top: 6px;">진단은 위반 조건과 무관하게 점수만 계산. 스캔 결과에는 포함되지 않음.</div>
-    </div>` : `
-    <div class="diag-section" style="border-color: var(--accent);">
-      <h4 style="color: var(--accent);">✓ 현재 필터 기준 모두 통과</h4>
+    </details>` : `
+    <details class="diag-section" style="border-color: var(--accent);">
+      <summary style="color: var(--accent);">✓ 현재 필터 기준 모두 통과</summary>
       <div class="diag-row">스캔 시 결과에 포함됨 (점수 ≥ ${opt.minScore} 충족 여부 별도)</div>
-    </div>`}
+    </details>`}
 
-    <div class="diag-section">
-      <h4>강점 Top 3</h4>
+    <details class="diag-section">
+      <summary>강점 Top 3</summary>
       ${strengths.length ? strengths.map(s => `
         <div class="diag-row">
           <span class="diag-pts ${sigClass(s)}">${s.score.toFixed(1)}/${s.max}</span>
           <b>${s.name}</b> — ${s.detail}
         </div>`).join('') : '<div class="diag-row muted">강점 시그널 없음</div>'}
-    </div>
+    </details>
 
-    <div class="diag-section">
-      <h4>약점 Top 5 (개선 여지)</h4>
+    <details class="diag-section">
+      <summary>약점 Top 5 (개선 여지)</summary>
       ${weaknesses.length ? weaknesses.map(s => `
         <div class="diag-row">
           <span class="diag-pts ${sigClass(s)}">${s.score.toFixed(1)}/${s.max}</span>
           <b>${s.name}</b> — ${s.detail}
           <div style="margin-left: 12px; color: var(--accent); font-size: 11px; margin-top: 2px;">→ ${s.advice}</div>
         </div>`).join('') : '<div class="diag-row muted">약점 없음 (만점)</div>'}
-    </div>
+    </details>
 
-    <div class="diag-section" style="border-color: #a855f7;">
-      <h4 style="color: #c084fc;">📈 메리트 시나리오</h4>
+    <details class="diag-section" style="border-color: #a855f7;">
+      <summary style="color: #c084fc;">📈 메리트 시나리오</summary>
       <div class="diag-row">
         <b>현재:</b> ${r.score}점 (${grade.g})
       </div>
@@ -5622,10 +5647,10 @@ function renderDiagnosisTab(r) {
         </span>
       </div>
       ${r.gainFromLow < 2 && r.score < 50 ? `<div class="diag-row" style="margin-top: 6px;"><b>참고:</b> 매집 초기일수록 점수가 낮은 것이 정상. 향후 OI/펀딩 추세 변화 관찰 권장</div>` : ''}
-    </div>
+    </details>
 
     <details class="diag-section">
-      <summary style="cursor: pointer; color: var(--muted); font-size: 12px;">▶ 전체 시그널 17종 상세 (펼치기)</summary>
+      <summary>전체 시그널 17종 상세</summary>
       <div style="margin-top: 10px;">
         ${sigsHtml}
       </div>
