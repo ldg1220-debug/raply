@@ -292,6 +292,113 @@
     letter-spacing: 0.08em;
     font-weight: var(--w-semi);
   }
+  /* 변형: hero — 점수/등급 상단 카드 (더 도드라지게) */
+  .diag-section--hero {
+    padding: var(--space-5);
+    background: linear-gradient(180deg, rgba(255,255,255,0.025), transparent 60%), var(--surface);
+    border: 1px solid var(--border-2);
+  }
+  /* 변형: bare — 차트 등 자체 컨테이너 들어가는 경우 */
+  .diag-section--bare {
+    background: transparent;
+    border: none;
+    padding: 0;
+  }
+
+  /* ── 메트릭/팩터/얼럿 공통 컴포넌트 ── */
+  .kpi { display: flex; flex-direction: column; gap: 2px; }
+  .kpi-label {
+    font-size: var(--text-2xs);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: var(--w-medium);
+  }
+  .kpi-value {
+    font-size: var(--text-2xl);
+    font-weight: var(--w-bold);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .kpi-sub { font-size: var(--text-xs); color: var(--muted); }
+
+  .metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-2) var(--space-3);
+    background: var(--surface-2);
+    border-radius: var(--r-sm);
+    font-size: var(--text-sm);
+  }
+  .metric-row + .metric-row { margin-top: 3px; }
+  .metric-row-label { color: var(--muted); min-width: 80px; font-size: var(--text-xs); }
+  .metric-row-value { font-family: var(--font-mono); color: var(--text); font-variant-numeric: tabular-nums; }
+  .metric-row-tag { font-size: var(--text-2xs); margin-left: auto; }
+
+  .factor-pill {
+    display: inline-block;
+    padding: 3px var(--space-2);
+    background: var(--surface-2);
+    border-radius: var(--r-sm);
+    font-size: var(--text-xs);
+    color: var(--text-3);
+    margin: 2px 3px 2px 0;
+    font-weight: var(--w-medium);
+  }
+
+  .alert-inline {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--r);
+    font-size: var(--text-xs);
+    border-left: 2px solid;
+    margin-top: var(--space-2);
+    line-height: 1.5;
+  }
+  .alert-inline.danger { background: rgba(248,113,113,0.06); border-left-color: var(--neg); color: #fca5a5; }
+  .alert-inline.warn   { background: rgba(251,191,36,0.06); border-left-color: var(--warn); color: var(--warn); }
+  .alert-inline.info   { background: rgba(96,165,250,0.06); border-left-color: var(--info); color: var(--info); }
+
+  /* 등급 큰 뱃지 — 진단 모달 Hero 안에서 사용 */
+  .grade-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px; height: 56px;
+    border-radius: var(--r-md);
+    font-size: var(--text-3xl);
+    font-weight: var(--w-black);
+    letter-spacing: -0.02em;
+    font-family: var(--font-mono);
+  }
+  .grade-chip.grade-S { background: rgba(74,222,128,.12); color: var(--pos); }
+  .grade-chip.grade-A { background: rgba(96,165,250,.12); color: var(--info); }
+  .grade-chip.grade-B { background: rgba(168,85,247,.12); color: #c084fc; }
+  .grade-chip.grade-C { background: rgba(251,191,36,.10); color: var(--warn); }
+  .grade-chip.grade-D { background: rgba(248,113,113,.10); color: var(--neg); }
+
+  /* Apex 슬림 배너 */
+  .apex-banner {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    background: linear-gradient(90deg, rgba(255,45,85,.10), rgba(239,68,68,.05));
+    border: 1px solid rgba(255,45,85,0.35);
+    border-radius: var(--r-md);
+    margin-bottom: var(--space-3);
+  }
+  .apex-banner-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #ff2d55;
+    box-shadow: 0 0 0 0 rgba(255,45,85,0.6);
+    animation: apexPulse 1.6s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+  .apex-banner-text { color: #fca5a5; font-size: var(--text-sm); line-height: 1.5; flex: 1; }
+  .apex-banner-text b { color: #ff2d55; font-weight: var(--w-bold); }
   .diag-row { padding: var(--space-2) 0; border-bottom: 1px solid var(--border); font-size: var(--text-sm); line-height: 1.5; }
   .diag-row:last-child { border-bottom: none; }
   .diag-row b { color: var(--text); font-weight: var(--w-semi); }
@@ -2652,7 +2759,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
       pts.push(`${cxOf(i).toFixed(2)},${toY(vals[i]).toFixed(2)}`);
     }
     if (pts.length < 2) return '';
-    return `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="${strokeW}" ${dash ? `stroke-dasharray="${dash}"` : ''} opacity="0.95"/>`;
+    return `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="${strokeW}" vector-effect="non-scaling-stroke" ${dash ? `stroke-dasharray="${dash}"` : ''} opacity="0.95"/>`;
   };
   const ma7    = smaArr(closes, 7);
   const ma25   = smaArr(closes, 25);
@@ -2675,7 +2782,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   const fibLines = fibRange > 0 ? FIB_RATIOS.map((r, i) => {
     const fp = fibHigh - r * fibRange;
     const fy = toY(fp).toFixed(1);
-    return `<line x1="0" y1="${fy}" x2="${w}" y2="${fy}" stroke="${FIB_COLORS[i]}" stroke-width="1.1" stroke-dasharray="6,4" opacity="0.75"/>`;
+    return `<line x1="0" y1="${fy}" x2="${w}" y2="${fy}" stroke="${FIB_COLORS[i]}" stroke-width="1.1" stroke-dasharray="6,4" vector-effect="non-scaling-stroke" opacity="0.75"/>`;
   }).join('') : '';
   // 인라인 가격 라벨 — 각 Fib 선의 우측 끝에 작은 pill (가격만)
   // Y 자동 맞춤 시 JS 에서 rect.y / text.y 를 새 위치로 업데이트
@@ -2758,7 +2865,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
     <line x1="0" y1="${toRY(50)}" x2="${w}" y2="${toRY(50)}" stroke="#475569" stroke-width="0.5" opacity="0.5"/>
     <line x1="0" y1="${toRY(30)}" x2="${w}" y2="${toRY(30)}" stroke="#4ade80" stroke-width="0.9" stroke-dasharray="4,3" opacity="0.7"/>`;
   const rsiPolyline = rsiPts.length >= 2
-    ? `<polyline points="${rsiPts.join(' ')}" fill="none" stroke="${rsiColor}" stroke-width="1.6" opacity="0.95"/>`
+    ? `<polyline points="${rsiPts.join(' ')}" fill="none" stroke="${rsiColor}" stroke-width="1.6" vector-effect="non-scaling-stroke" opacity="0.95"/>`
     : '';
   const rsiLabels = `
     <text x="6" y="${rsiTop + 13}" fill="#cbd5e1" font-size="12" font-weight="700">RSI(14)</text>
