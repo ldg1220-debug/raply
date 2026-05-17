@@ -747,9 +747,8 @@
     letter-spacing: -0.005em;
   }
   .ex-table {
-    width: 100%;
+    width: auto;
     border-collapse: collapse;
-    min-width: 100%;
     font-size: var(--text-sm);
   }
   .ex-table th, .ex-table td {
@@ -816,13 +815,13 @@
   #bt-body .bt-table-wrap { overflow-x: auto; }
   #bt-body table {
     font-size: 10px; border-collapse: collapse;
-    white-space: nowrap; width: 100%; table-layout: fixed;
+    white-space: nowrap;
   }
   #bt-body table th, #bt-body table td {
-    padding: 2px 5px; overflow: hidden; text-overflow: ellipsis;
+    padding: 2px 5px;
   }
   #bt-body table th:first-child, #bt-body table td:first-child {
-    white-space: normal; width: 130px;
+    white-space: normal;
   }
 
   /* ── 라이트모드 보정 ── */
@@ -4190,7 +4189,7 @@ function renderRecommendations(results, opt) {
     suggestHtml = `
       <div class="diag-section" style="border-color: var(--accent);">
         <h4 style="color: var(--accent);">📊 백테스트 기반 자동 권장 세팅 (5x+ 종목 ${sug.bigN}개 중 ~85% 검출 기준)</h4>
-        <table style="width:100%; font-size:11px;">
+        <table style="font-size:11px;">
           <thead><tr style="color:var(--muted);"><th style="text-align:left;">항목</th><th>현재</th><th>권장</th></tr></thead>
           <tbody>
             ${cmp($('f_maxGain').value, sug.maxGain, '저점대비 최대', 'x')}
@@ -4219,14 +4218,14 @@ function renderRecommendations(results, opt) {
     ${suggestHtml}
     <div class="diag-section">
       <h4>❌ 누락 사유 분포 (전체 ${results.length}개 중)</h4>
-      <table style="width:100%; font-size:11px;">
+      <table style="font-size:11px;">
         <thead><tr style="color:var(--muted);"><th style="text-align:left;">사유</th><th>건수</th><th>비중</th></tr></thead>
         <tbody>${reasonRows || '<tr><td colspan="3" class="muted">없음</td></tr>'}</tbody>
       </table>
     </div>
     <div class="diag-section">
       <h4>📈 5x+ 펌프 종목에서 자주 나타난 시그널 Top 8</h4>
-      <table style="width:100%; font-size:11px;">
+      <table style="font-size:11px;">
         <thead><tr style="color:var(--muted);"><th style="text-align:left;">시그널</th><th>평균/최대</th><th>≥반점</th><th>≥1점</th></tr></thead>
         <tbody>${sigTop}</tbody>
       </table>
