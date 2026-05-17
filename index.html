@@ -6,30 +6,30 @@
 <title>Pump Pattern Scanner v0.4</title>
 <style>
   :root {
-    /* ── Surface (배경 4단계) ── */
-    --bg:        #09090b;
-    --surface:   #131316;
-    --surface-2: #1c1c20;
-    --surface-3: #27272b;
+    /* ── Surface — 다크 기본 (XP 하늘빛 딥 네이비) ── */
+    --bg:        #0d1829;
+    --surface:   #142035;
+    --surface-2: #1c2d48;
+    --surface-3: #253c5e;
 
-    /* ── Text (전경 5단계) ── */
-    --text:      #fafafa;
-    --text-2:    #d4d4d8;
-    --text-3:    #a1a1aa;
-    --muted:     #71717a;
-    --text-dim:  #52525b;
+    /* ── Text ── */
+    --text:      #e8f0fe;
+    --text-2:    #b8cce8;
+    --text-3:    #7fa0c4;
+    --muted:     #5a7ea0;
+    --text-dim:  #3d5a78;
 
-    /* ── Border (테두리 3단계 — 알파 기반으로 미세하게) ── */
-    --border:    rgba(255,255,255,0.06);
-    --border-2:  rgba(255,255,255,0.10);
-    --border-3:  rgba(255,255,255,0.18);
+    /* ── Border (블루 알파 기반) ── */
+    --border:    rgba(100,160,255,0.09);
+    --border-2:  rgba(100,160,255,0.16);
+    --border-3:  rgba(100,160,255,0.28);
 
-    /* ── Accent (단일 액센트 — cyan, 상호작용 요소용) ── */
-    --accent:      #22d3ee;
-    --accent-2:    #67e8f9;
-    --accent-soft: rgba(34,211,238,0.12);
+    /* ── Accent ── */
+    --accent:      #38bdf8;
+    --accent-2:    #7dd3fc;
+    --accent-soft: rgba(56,189,248,0.12);
 
-    /* ── Semantic (가격/상태 색상 — 차분한 톤) ── */
+    /* ── Semantic ── */
     --pos:    #4ade80;
     --neg:    #f87171;
     --warn:   #fbbf24;
@@ -38,7 +38,7 @@
     --pink:   #f472b6;
     --danger: #f87171;
 
-    /* ── 하위호환 (기존 JS template 에서 참조 중) ── */
+    /* ── 하위호환 ── */
     --panel:   var(--surface);
     --panel-2: var(--surface-2);
     --card:    var(--surface-2);
@@ -80,9 +80,43 @@
     --r-full: 999px;
 
     /* ── Shadow ── */
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.25);
-    --shadow:    0 4px 12px rgba(0,0,0,0.35);
-    --shadow-lg: 0 12px 32px rgba(0,0,0,0.5);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.35);
+    --shadow:    0 4px 14px rgba(0,0,0,0.45);
+    --shadow-lg: 0 12px 36px rgba(0,0,0,0.6);
+  }
+
+  /* ── 라이트 모드 (XP 하늘빛 화이트) ── */
+  body.theme-light {
+    --bg:        #ddeeff;
+    --surface:   #f0f7ff;
+    --surface-2: #e0eefa;
+    --surface-3: #cce0f5;
+
+    --text:      #0a1a30;
+    --text-2:    #1a3556;
+    --text-3:    #2d5480;
+    --muted:     #4a72a0;
+    --text-dim:  #7a9ec8;
+
+    --border:    rgba(30,80,160,0.12);
+    --border-2:  rgba(30,80,160,0.22);
+    --border-3:  rgba(30,80,160,0.38);
+
+    --accent:      #0077cc;
+    --accent-2:    #0099ee;
+    --accent-soft: rgba(0,119,204,0.12);
+
+    --pos:    #16a34a;
+    --neg:    #dc2626;
+    --warn:   #d97706;
+    --info:   #2563eb;
+    --purple: #7c3aed;
+    --pink:   #db2777;
+    --danger: #dc2626;
+
+    --shadow-sm: 0 1px 3px rgba(0,60,140,0.12);
+    --shadow:    0 4px 14px rgba(0,60,140,0.18);
+    --shadow-lg: 0 12px 36px rgba(0,60,140,0.25);
   }
   * { box-sizing: border-box; }
   body {
@@ -98,21 +132,21 @@
   ::selection { background: var(--accent-soft); color: var(--accent-2); }
   header {
     padding: var(--space-4) var(--space-5);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--border-2);
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
     gap: var(--space-3);
-    background: var(--surface);
+    background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface) 100%);
   }
   header h1 { margin: 0; font-size: var(--text-lg); font-weight: var(--w-semi); letter-spacing: -0.01em; }
   header .sub { color: var(--muted); font-size: var(--text-xs); margin-left: var(--space-2); font-weight: var(--w-normal); }
   .warning-bar {
-    background: rgba(251,191,36,.05);
-    border-bottom: 1px solid rgba(251,191,36,.15);
+    background: rgba(251,191,36,.08);
+    border-bottom: 1px solid rgba(251,191,36,.20);
     padding: var(--space-2) var(--space-5);
-    color: var(--warn);
+    color: rgba(251,191,36,.75);
     font-size: var(--text-xs);
     line-height: 1.5;
   }
@@ -139,7 +173,7 @@
   input:focus, select:focus { border-color: var(--accent); }
   button.primary {
     background: var(--accent);
-    color: #022;
+    color: var(--bg);
     border-color: var(--accent);
     font-weight: var(--w-semi);
   }
@@ -196,6 +230,102 @@
     transition: background .12s ease, color .12s ease;
   }
   .preset-btn:hover { background: var(--surface-2); color: var(--text); }
+
+  /* ── 검색 조건 토글 ── */
+  #filterDetails > summary.filter-toggle {
+    cursor: pointer;
+    list-style: none;
+    padding: var(--space-2) var(--space-5);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-2xs);
+    color: var(--text-3);
+    font-weight: var(--w-semi);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    user-select: none;
+    transition: background .12s ease;
+  }
+  #filterDetails > summary.filter-toggle::-webkit-details-marker { display: none; }
+  #filterDetails > summary.filter-toggle:hover { background: var(--surface-2); }
+  #filterDetails > summary.filter-toggle::after {
+    content: '›';
+    font-size: 16px;
+    line-height: 1;
+    margin-left: auto;
+    opacity: 0.4;
+    transition: transform .18s ease;
+    font-weight: var(--w-normal);
+  }
+  #filterDetails[open] > summary.filter-toggle::after { transform: rotate(90deg); }
+  .filter-summary-chips {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    flex: 1;
+    font-size: var(--text-2xs);
+    font-weight: var(--w-normal);
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text-3);
+  }
+  #filterDetails[open] .filter-summary-chips { display: none; }
+  .filter-chip {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 1px 6px;
+    color: var(--text-3);
+    white-space: nowrap;
+  }
+
+  /* ── 헤더 컨트롤 그룹 ── */
+  .ctrl-group { display: flex; align-items: center; gap: var(--space-1); }
+  .ctrl-sep { width: 1px; height: 18px; background: var(--border-2); margin: 0 var(--space-1); flex-shrink: 0; }
+  .btn-ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    padding: var(--space-1) var(--space-2);
+  }
+  .btn-ghost:hover { background: var(--surface-2); border-color: var(--border); color: var(--text-2); }
+
+  /* ── 필터 그룹 라벨 ── */
+  .filter-group-label {
+    grid-column: 1 / -1;
+    font-size: var(--text-2xs);
+    color: var(--text-3);
+    font-weight: var(--w-semi);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding-top: var(--space-3);
+    padding-left: var(--space-2);
+    border-top: 1px solid var(--border);
+    border-left: 2px solid var(--accent);
+    margin-top: var(--space-1);
+  }
+  .filter-group-label:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+
+  /* ── 트레이드 플랜 존 ── */
+  .plan-zone {
+    border-radius: var(--r);
+    padding: var(--space-3);
+    margin-bottom: var(--space-2);
+    border: 1px solid var(--border);
+  }
+  .plan-zone:last-child { margin-bottom: 0; }
+  .plan-zone-hd {
+    font-size: var(--text-sm);
+    font-weight: var(--w-semi);
+    margin-bottom: var(--space-2);
+  }
+  .plan-zone--buy  { background: rgba(74,222,128,.07);  border-color: rgba(74,222,128,.20); }
+  .plan-zone--sell { background: rgba(251,146,60,.07);   border-color: rgba(251,146,60,.20); }
+  .plan-zone--trigger { background: var(--surface-2); }
   .preset-status { color: var(--accent-2); font-size: var(--text-xs); margin-left: auto; font-weight: var(--w-medium); }
   .status {
     padding: var(--space-2) var(--space-5);
@@ -217,15 +347,15 @@
     background: var(--surface);
     color: var(--muted);
     text-align: right;
-    padding: var(--space-3) var(--space-2);
-    border-bottom: 1px solid var(--border);
-    font-weight: var(--w-medium);
+    padding: var(--space-3) var(--space-3);
+    border-bottom: 1px solid var(--border-2);
+    font-weight: var(--w-semi);
     cursor: pointer;
     user-select: none;
     white-space: nowrap;
     font-size: var(--text-2xs);
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.07em;
   }
   thead th:first-child, tbody td:first-child { text-align: left; }
   thead th.sorted { color: var(--accent-2); }
@@ -237,10 +367,10 @@
     white-space: nowrap;
     color: var(--text-2);
   }
-  tbody tr { cursor: pointer; transition: background .1s ease; }
-  tbody tr:hover { background: var(--surface); }
+  tbody tr { cursor: pointer; transition: background .1s ease, box-shadow .1s ease; }
+  tbody tr:hover { background: var(--surface); box-shadow: inset 3px 0 0 rgba(56,189,248,.25); }
   tbody tr.score-high { background: rgba(74,222,128,.03); }
-  tbody tr.score-high:hover { background: rgba(74,222,128,.06); }
+  tbody tr.score-high:hover { background: rgba(74,222,128,.07); box-shadow: inset 3px 0 0 rgba(74,222,128,.45); }
   .sym { font-weight: var(--w-semi); color: var(--text); }
   .pos { color: var(--pos); }
   .neg { color: var(--neg); }
@@ -278,25 +408,54 @@
   .grade-C { background: rgba(251,191,36,.13); color: var(--warn); }
   .grade-D { background: rgba(248,113,113,.13); color: var(--neg); }
   .diag-section {
-    margin: var(--space-4) 0;
+    margin: var(--space-3) 0;
     padding: var(--space-4);
     background: var(--surface);
     border-radius: var(--r-md);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-2);
+    transition: border-color .15s ease;
   }
   .diag-section h4 {
     margin: 0 0 var(--space-3);
+    font-size: var(--text-xs);
+    color: var(--text-3);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: var(--w-semi);
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--border);
+  }
+  details.diag-section > summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    margin: 0;
     font-size: var(--text-xs);
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-weight: var(--w-semi);
+    user-select: none;
   }
+  details.diag-section > summary::-webkit-details-marker { display: none; }
+  details.diag-section > summary::after {
+    content: '›';
+    font-size: 18px;
+    line-height: 1;
+    margin-left: auto;
+    opacity: 0.45;
+    transition: transform .18s;
+  }
+  details.diag-section[open] > summary::after { transform: rotate(90deg); }
+  details.diag-section[open] > summary { margin-bottom: var(--space-3); }
+
   /* 변형: hero — 점수/등급 상단 카드 (더 도드라지게) */
   .diag-section--hero {
     padding: var(--space-5);
-    background: linear-gradient(180deg, rgba(255,255,255,0.025), transparent 60%), var(--surface);
-    border: 1px solid var(--border-2);
+    background: linear-gradient(160deg, rgba(56,189,248,.05) 0%, rgba(255,255,255,.02) 50%, transparent), var(--surface);
+    border: 1px solid var(--border-3);
+    box-shadow: 0 2px 12px rgba(0,0,0,.15);
   }
   /* 변형: bare — 차트 등 자체 컨테이너 들어가는 경우 */
   .diag-section--bare {
@@ -429,13 +588,14 @@
   .diag-watch-btn.watched { background: rgba(251,191,36,.10); border-color: rgba(251,191,36,.40); color: var(--warn); }
   .score {
     font-weight: var(--w-bold);
-    padding: 2px 8px;
+    padding: 2px 9px;
     border-radius: var(--r-sm);
     background: var(--surface-2);
     font-variant-numeric: tabular-nums;
+    font-size: var(--text-sm);
   }
-  .score.s-elite { background: rgba(167,139,250,.12); color: var(--purple); border: 1px solid rgba(167,139,250,.4); }
-  .score.s-high  { background: rgba(74,222,128,.10); color: var(--pos); }
+  .score.s-elite { background: rgba(167,139,250,.12); color: var(--purple); border: 1px solid rgba(167,139,250,.4); box-shadow: 0 0 8px rgba(167,139,250,.15); }
+  .score.s-high  { background: rgba(74,222,128,.10); color: var(--pos); border: 1px solid rgba(74,222,128,.25); }
   .score.s-mid   { background: rgba(251,191,36,.10); color: var(--warn); }
   .chip {
     display: inline-block;
@@ -490,8 +650,8 @@
   .modal.show { display: block; }
   .modal-overlay {
     position: absolute; inset: 0;
-    background: rgba(0,0,0,.7);
-    backdrop-filter: blur(6px);
+    background: rgba(0,0,0,.76);
+    backdrop-filter: blur(10px);
   }
   .modal-box {
     position: absolute;
@@ -500,20 +660,20 @@
     width: 92vw; max-width: 960px;
     max-height: 90vh;
     background: var(--surface);
-    border: 1px solid var(--border-2);
+    border: 1px solid var(--border-3);
     border-radius: var(--r-lg);
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 24px 64px rgba(0,0,0,.65), 0 0 0 1px rgba(100,160,255,.06);
   }
   .modal-header {
     padding: var(--space-4) var(--space-5);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--border-2);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: var(--surface);
+    background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface) 100%);
   }
   .modal-header h2 {
     margin: 0;
@@ -533,17 +693,18 @@
     background: transparent;
     color: var(--muted);
     padding: var(--space-3) var(--space-4);
-    border-bottom: 1.5px solid transparent;
+    border-bottom: 2px solid transparent;
     border-radius: 0;
     font-size: var(--text-sm);
     font-weight: var(--w-medium);
     transition: color .12s ease, border-color .12s ease;
   }
   .modal-tabs .tab:hover { color: var(--text-2); background: transparent; }
-  .modal-tabs .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .modal-tabs .tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: var(--w-semi); }
   .modal-body {
     padding: var(--space-5);
-    overflow-y: auto;
+    overflow: auto;
+    min-width: 0;
     flex: 1;
     background: var(--bg);
   }
@@ -551,17 +712,17 @@
   .tab-panel.active { display: block; }
   .stat-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    grid-template-columns: repeat(2, 1fr);
     gap: var(--space-2);
   }
   .stat-card {
-    background: var(--surface-2);
+    background: linear-gradient(160deg, var(--surface-2) 0%, rgba(20,32,53,.9) 100%);
     border: 1px solid var(--border);
-    border-radius: var(--r);
+    border-radius: var(--r-md);
     padding: var(--space-3);
-    transition: border-color .12s ease;
+    transition: border-color .15s ease, box-shadow .15s ease;
   }
-  .stat-card:hover { border-color: var(--border-2); }
+  .stat-card:hover { border-color: var(--border-3); box-shadow: 0 2px 8px rgba(0,0,0,.2); }
   .stat-card .stat-label {
     font-size: var(--text-2xs);
     color: var(--muted);
@@ -570,30 +731,31 @@
     font-weight: var(--w-medium);
   }
   .stat-card .stat-value {
-    font-size: var(--text-md);
+    font-size: var(--text-lg);
     font-weight: var(--w-semi);
     margin-top: var(--space-1);
     font-variant-numeric: tabular-nums;
     color: var(--text);
   }
   .chart-block {
-    background: var(--surface-2);
-    border: 1px solid var(--border);
+    background: linear-gradient(180deg, var(--surface-2) 0%, rgba(20,32,53,.95) 100%);
+    border: 1px solid var(--border-2);
     border-radius: var(--r-md);
-    padding: var(--space-3);
+    padding: var(--space-4);
     margin-bottom: var(--space-3);
   }
   .chart-block h3 {
-    margin: 0 0 var(--space-2);
+    margin: 0 0 var(--space-3);
     font-size: var(--text-sm);
-    color: var(--text-3);
+    color: var(--text-2);
     font-weight: var(--w-semi);
     letter-spacing: -0.005em;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: var(--space-2);
   }
   .ex-table {
     width: 100%;
     border-collapse: collapse;
-    min-width: 100%;
     font-size: var(--text-sm);
   }
   .ex-table th, .ex-table td {
@@ -601,12 +763,15 @@
     border-bottom: 1px solid var(--border);
     text-align: left;
   }
+  .ex-table tbody tr:nth-child(even) { background: rgba(100,160,255,.03); }
+  .ex-table th:not(:first-child), .ex-table td:not(:first-child) {
+    width: 1%; white-space: nowrap;
+  }
   .ex-table th {
-    color: var(--muted);
+    color: var(--text-3);
     font-weight: var(--w-semi);
-    font-size: var(--text-2xs);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    font-size: var(--text-xs);
+    background: var(--surface-2);
   }
   .ex-yes { color: var(--pos); font-weight: var(--w-semi); }
   .ex-no { color: var(--text-dim); }
@@ -655,6 +820,51 @@
   }
   .watch-btn:hover { color: var(--warn); background: transparent; }
 
+  /* ── 심층 백테스트 모달 컴팩트 테이블 ── */
+  #bt-body .diag-section { padding: var(--space-3); }
+  #bt-body .bt-table-wrap { overflow-x: auto; }
+  #bt-body table {
+    font-size: 10px; border-collapse: collapse;
+    white-space: nowrap;
+    width: auto; min-width: 0;
+  }
+  #bt-body table th, #bt-body table td {
+    padding: 2px 5px;
+  }
+  #bt-body table th:first-child, #bt-body table td:first-child {
+    white-space: normal;
+  }
+  #bt-body table th:not(:first-child), #bt-body table td:not(:first-child) {
+    text-align: center;
+  }
+
+  /* ── 라이트모드 보정 ── */
+  body.theme-light button,
+  body.theme-light select,
+  body.theme-light input {
+    background: var(--surface);
+    color: var(--text);
+    border-color: var(--border-2);
+  }
+  body.theme-light button:hover,
+  body.theme-light select:hover {
+    background: var(--surface-2);
+  }
+  body.theme-light button.primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  body.theme-light button.primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+  body.theme-light tbody tr:hover { background: rgba(0,80,180,0.05); }
+  body.theme-light tbody tr.score-high { background: rgba(22,163,74,.05); }
+  body.theme-light tbody tr.score-high:hover { background: rgba(22,163,74,.10); }
+  body.theme-light .badge { border-color: var(--border-2); }
+  body.theme-light .score { background: var(--surface-2); }
+  body.theme-light .diag-section { background: var(--surface); }
+  body.theme-light .metric-row { background: var(--surface-2); }
+  body.theme-light .modal-body { background: var(--bg); }
+
   @media (max-width: 768px) {
     table { min-width: 1100px; font-size: 11px; }
   }
@@ -669,17 +879,25 @@
 <header>
   <div>
     <h1>Pump Pattern Scanner <span class="muted" style="font-size:11px;">v1.7</span></h1>
-    <span class="sub">17-Signal · S21 RAVE 콤보 · 🔻 고점 진단 (D1~D9) · 4-6개월 차트 · FDV/MC 필터 · Top10 홀더</span>
+    <span class="sub">18-Signal · S21 강화·S22 신규 · 🔻 고점 진단 (D1~D9) · 4-6개월 차트 · FDV/MC 필터 · Top10 홀더</span>
   </div>
   <div class="controls">
-    <input id="diagInput" type="text" placeholder="심볼 진단 (예: KGEN)" class="diag-input" />
-    <button id="diagBtn">🔍 진단</button>
-    <input id="btMinRatio" type="number" step="0.5" value="3" class="diag-input" style="width:70px;" title="최소 펌프 배수 (3x 권장)" />
-    <button id="backtestBtn">🔬 역검증</button>
-    <button id="deepBtBtn" title="펌프 -21d/-10d/-3d/피크 4단계 비교">🔬+ 심층</button>
-    <button id="gradeValBtn" title="실제 Crime 47종목 대상 Crime Grade 정확도 검증 (실제 API 데이터 사용)">📊 Grade검증</button>
-    <button id="dumpScanBtn" title="180일 신고가 근접 + 최근 30일 내 ATH 갱신 종목 고점 위험 스캔">🔻 고점</button>
-    <button id="watchBtn">★ Watchlist</button>
+    <div class="ctrl-group">
+      <input id="diagInput" type="text" placeholder="심볼 진단 (예: KGEN)" class="diag-input" />
+      <button id="diagBtn">🔍 진단</button>
+    </div>
+    <div class="ctrl-group">
+      <input id="btMinRatio" type="number" step="0.5" value="3" class="diag-input" style="width:60px;" title="최소 펌프 배수 (3x 권장)" />
+      <button id="backtestBtn">역검증</button>
+      <button id="deepBtBtn" class="btn-ghost" title="펌프 -21d/-10d/-3d/피크 4단계 비교">심층</button>
+    </div>
+    <div class="ctrl-sep"></div>
+    <div class="ctrl-group">
+      <button id="gradeValBtn" class="btn-ghost" title="실제 Crime 47종목 대상 Crime Grade 정확도 검증 (실제 API 데이터 사용)">Grade</button>
+      <button id="dumpScanBtn" class="btn-ghost" title="180일 신고가 근접 + 최근 30일 내 ATH 갱신 종목 고점 위험 스캔">🔻 고점</button>
+      <button id="watchBtn" class="btn-ghost">★</button>
+    </div>
+    <button id="themeBtn" class="btn-ghost" title="다크/라이트 모드 전환" style="font-size:15px; padding: var(--space-1) var(--space-2);">🌙</button>
     <button id="scanBtn" class="primary">스캔 시작</button>
   </div>
 </header>
@@ -692,14 +910,17 @@
   <summary>탐지 시그널 및 점수 기준 (펼치기)</summary>
   <div style="color: var(--muted); font-size: 11px; line-height: 1.7; margin-top: 8px;">
     <b>Hard Exclude</b> — Binance Spot에 이미 상장 / 선물 상장 N일 미만 / ATH 대비 -95% 이하 / 저점대비 N배 이상 / 유통률 N% 초과 / CEX N곳 미만 / 펀딩 양수율 N% 미만 / OI/MCap N 미만 / 저볼륨<br>
-    <b>가산 시그널 (17종, 합산 ≤100점) · 조기 진입 최적화</b> — CEX(3) · 유통률(12) · <b>BB압축(13)⚡⚡</b> · <b>펀딩 양수율 단계화(9)</b>·크기(7)·<b>추세(8)⚡</b>·베이시스(7) · 매집 3종(19) · 디버전스(7) · OI/MCap(8) · 유기+OI Spike(10) · HigherLows(4)🟡 · Body압축(5) · 매수우위(3)🟡 · <b>S21 RAVE 시그니처 콤보(15)</b><br>
+    <b>가산 시그널 (18종, 합산 ≤100점) · 조기 진입 최적화</b> — CEX(3) · 유통률(12) · <b>BB압축(13)⚡⚡</b> · <b>펀딩 양수율 단계화(9)</b>·크기(7)·<b>추세(8)⚡</b>·베이시스(7) · 매집 3종(19) · 디버전스(7) · OI/MCap(8) · <b>유기+OI Spike(15)⚡</b> · HigherLows(4)🟡 · Body압축(5) · 매수우위(3)🟡 · <b>S21 RAVE 콤보(15, 임계값 강화)</b> · <b>S22 공급×OI×BB 콤보(12)🔴</b><br>
     <b>컨텍스트 패널티 (완화)</b> — rise14 &gt; 50% 또는 저점대비 &gt; 3.5x 시 펀딩 점수 50% 감점 · <b>후기 진입 페널티</b>: HL+매수우위 ≥5/7 AND BB압축 &lt; 5/13 시 -5pt + ⏰ 배지<br>
     <b>펀딩 컨텍스트 패널티</b> — 14d 상승률 &gt; 30% 또는 저점대비 &gt; 2.5x 시 S6cont/S6size/S7 50% 감점 (후행 신호 무력화)<br>
     <b>알람 배지</b> — 🚨 CRIME (펀딩+ Basis≥0.5% 양수율≥60%) · 🎯 발사임박 (유기+OI Spike) · 🕵 조작 의심 (횡보+양수 펀딩 70%+)
   </div>
 </details>
 
+<details id="filterDetails" open>
+<summary class="filter-toggle">검색 조건<span id="filterSummaryChips" class="filter-summary-chips"></span></summary>
 <section class="filters">
+  <div class="filter-group-label">가격 · 변동</div>
   <div class="filter">
     <label>최소 펀딩비 % (8h)</label>
     <input type="number" id="f_funding" list="dl_funding" step="0.001" value="0" />
@@ -720,6 +941,7 @@
     <input type="number" id="f_maxDaily" list="dl_maxDaily" step="1" value="50" />
     <datalist id="dl_maxDaily"><option value="20">20</option><option value="30">30</option><option value="50">50</option></datalist>
   </div>
+  <div class="filter-group-label">규모 · 기간</div>
   <div class="filter">
     <label>최소 24h 거래대금 USDT</label>
     <input type="number" id="f_minVol" list="dl_minVol" step="10000" value="100000" />
@@ -735,6 +957,7 @@
     <input type="number" id="f_minScore" list="dl_minScore" step="1" value="35" />
     <datalist id="dl_minScore"><option value="25">25 (탐색)</option><option value="35">35 (균형)</option><option value="50">50 (엄격)</option></datalist>
   </div>
+  <div class="filter-group-label">구조 · OI</div>
   <div class="filter">
     <label>저점대비 최대 배수 (x)</label>
     <input type="number" id="f_maxGain" list="dl_maxGain" step="0.1" value="2.5" />
@@ -760,6 +983,7 @@
     <input type="number" id="f_minOiMcap" list="dl_minOiMcap" step="0.05" value="0" min="0" />
     <datalist id="dl_minOiMcap"><option value="0">0</option><option value="0.1">0.1</option><option value="0.2">0.2 (RAVE급)</option><option value="0.3">0.3</option></datalist>
   </div>
+  <div class="filter-group-label">고급 필터</div>
   <div class="filter">
     <label>과거 펌프 이력 최대 (180d max/min)</label>
     <input type="number" id="f_maxPriorPump" list="dl_maxPriorPump" step="0.5" value="0" min="0" title="180일 내 max/min 비율 — 이 값 이상이면 이미 펌프-덤프 끝난 토큰. 0=제한없음 (점수+매집신호로 판별)" />
@@ -813,6 +1037,7 @@
   <button id="myPresetDel" class="preset-btn">🗑 삭제</button>
   <span id="presetStatus" class="preset-status"></span>
 </div>
+</details>
 
 <div class="status" id="status">대기 중 — "스캔 시작" 버튼을 눌러 데이터를 불러오세요.</div>
 
@@ -1703,15 +1928,15 @@ function computeScore(row) {
   }
   b.S14 = s14;
 
-  // S15: 유기(Quiet Zone) + OI Spike 콤보 (max 10)
-  // 90d vol 대비 14d vol < 0.5 + cv90 < 0.10 + OI 14d ratio >= 1.2
+  // S15: 유기(Quiet Zone) + OI Spike 콤보 (max 15, 상향)
+  // 거래량 침묵 + 절대 변동 소멸 + OI 급증 = 매집 완료 직전 가장 강한 선행 신호
   let s15 = 0;
   const quiet = row.volQuietRatio !== null && row.volQuietRatio !== undefined && row.volQuietRatio < 0.5;
   const dead = row.cv90 !== null && row.cv90 !== undefined && row.cv90 < 0.10;
   const oiSpike = row.oiTrend?.ratio !== null && row.oiTrend?.ratio !== undefined && row.oiTrend.ratio >= 1.2;
-  if (quiet && dead && oiSpike) s15 = 10;
-  else if (quiet && oiSpike) s15 = 6;
-  else if (dead && oiSpike) s15 = 4;
+  if (quiet && dead && oiSpike) s15 = 15;   // 완전한 Quiet Accumulation 패턴
+  else if (quiet && oiSpike) s15 = 9;
+  else if (dead && oiSpike) s15 = 5;
   b.S15 = s15;
 
   // S16 삭제 (v1.3, 심층 백테스트에서 0.2/5 무용)
@@ -1746,26 +1971,37 @@ function computeScore(row) {
   }
   b.S19 = s19;
 
-  // S21: RAVE 시그니처 콤보 (max 15) — BB압축 + 펀딩양수율 + 펀딩추세 동시 발현
-  // 조합의 특수성을 보상 (각각 임계값 절반 이상 시 충족)
-  const c12 = (row.bbScore || 0) >= 4;        // BB압축 절반 이상 (4/8)
-  const c6c = row.fundPosRatio >= 0.55;       // 펀딩양수율 55%+
-  const c7  = (row.fundingTrend?.score || 0) >= 3; // 펀딩추세 3+
+  // S21: RAVE 시그니처 콤보 (max 15) — 임계값 강화: 강한 신호에만 지급
+  // 각 조건을 75% 이상 충족해야 인정 → 평범한 토큰은 콤보 미발동
+  const c12 = (row.bbScore || 0) >= 6;            // BB압축 강함 (6/8, bbRatio < 0.70)
+  const c6c = row.fundPosRatio >= 0.85;            // 펀딩양수율 85%+ (21개 중 18개)
+  const c7  = (row.fundingTrend?.score || 0) >= 5; // 펀딩추세 강함 (5/8)
   const comboCount = (c12 ? 1 : 0) + (c6c ? 1 : 0) + (c7 ? 1 : 0);
   let s21 = 0;
-  if (comboCount === 3) s21 = 15;       // 완벽한 시그니처
-  else if (comboCount === 2) s21 = 7;   // 부분 시그니처
+  if (comboCount === 3) s21 = 15;      // 완벽한 시그니처 (동일)
+  else if (comboCount === 2) s21 = 4;  // 부분 (7→4, 2개만으론 확신 불가)
   b.S21 = s21;
+
+  // S22: 공급 희소성 × OI 비중 × BB 압축 콤보 (max 12, 신규)
+  // 유통률이 낮고 + OI가 시총 대비 크고 + 가격이 압축된 토큰 → 세력 매집 완료 직전
+  const c22_circ = row.cg?.circMax !== null && row.cg?.circMax !== undefined && row.cg.circMax < 0.25;
+  const c22_oi   = row.oiMcap !== null && row.oiMcap !== undefined && row.oiMcap >= 0.15;
+  const c22_bb   = (row.bbScore || 0) >= 4;  // 중간 이상 압축
+  const n22 = (c22_circ ? 1 : 0) + (c22_oi ? 1 : 0) + (c22_bb ? 1 : 0);
+  let s22 = 0;
+  if (n22 === 3) s22 = 12;   // 세 조건 동시: 크라임 선행 패턴
+  else if (n22 === 2) s22 = 4;
+  b.S22 = s22;
 
   // 데이터 가용성 메타 (백테스트 정규화용)
   const isBacktest = row.isBacktest === true;
   // 항상 가용: S2,S3,S6cont,S6size,S7,S12,S17,S18,S19,S21
-  // 백테스트 부분 (OI/L-S 30일 한계 위반 시): S8,S9,S10,S11,S13,S14,S15 미가용
+  // 백테스트 부분 (OI/L-S 30일 한계 위반 시): S8,S9,S10,S11,S13,S14,S15,S22 미가용
   // S8(베이시스): 백테스트 항상 0
   let availableMax = 100;
   if (isBacktest) {
     availableMax -= 7; // S8
-    if (!row.fullBacktest) availableMax -= (9+6+4+7+8+10); // S9,S10,S11,S13,S14,S15
+    if (!row.fullBacktest) availableMax -= (9+6+4+7+8+15+12); // S9,S10,S11,S13,S14,S15(15),S22(12)
   }
   row._availableMax = availableMax;
 
@@ -2307,6 +2543,30 @@ window.diagToggleWatch = function(symbol) {
   render();
 };
 
+function updateFilterSummaryChips() {
+  const el = $('filterSummaryChips');
+  if (!el) return;
+  const v = id => parseFloat(document.getElementById(id)?.value) || 0;
+  const chips = [];
+  const minScore = v('f_minScore');
+  const minDays = v('f_minDays');
+  const minVol = v('f_minVol');
+  const maxRise14 = v('f_maxRise14');
+  const maxGain = v('f_maxGain');
+  const maxCirc = v('f_maxCirc');
+  const minCex = v('f_minCex');
+  const minFundPos = v('f_minFundPos');
+  if (minScore > 0) chips.push(`점수≥${minScore}`);
+  if (minDays > 0) chips.push(`상장≥${minDays}d`);
+  if (minVol > 0) chips.push(`거래대금≥${(minVol/1000).toFixed(0)}K`);
+  if (maxRise14 < 300) chips.push(`14d≤${maxRise14}%`);
+  if (maxGain < 900) chips.push(`저점대비≤${maxGain}x`);
+  if (maxCirc < 100) chips.push(`유통률≤${maxCirc}%`);
+  if (minCex > 0) chips.push(`CEX≥${minCex}`);
+  if (minFundPos > 0) chips.push(`펀딩양수≥${minFundPos}%`);
+  el.innerHTML = chips.map(c => `<span class="filter-chip">${c}</span>`).join('');
+}
+
 async function runScan() {
   if (state.scanning) return;
   state.scanning = true;
@@ -2523,6 +2783,13 @@ async function runScan() {
 
     render();
 
+    // 스캔 완료 후 필터 패널 자동 접기
+    const fd = $('filterDetails');
+    if (fd) {
+      fd.open = false;
+      updateFilterSummaryChips();
+    }
+
     // 비동기로 Top10 홀더 데이터 채우기 (GoPlus, EVM 체인만)
     loadTop10ForRows(rows);
   } catch (e) {
@@ -2732,7 +2999,8 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   const maxP = Math.max(...highs), minP = Math.min(...lows);
   const rangeP = maxP - minP || 1;
   const maxV = Math.max(...vols, 1);
-  const barW = w / candles.length;
+  const RIGHT_PAD = 60; // 마지막 캔들 우측 여백 (Fib 라벨 가림 방지)
+  const barW = (w - RIGHT_PAD) / candles.length;
   const toY  = p => ch - ((p - minP) / rangeP) * ch;
   const toVY = v => ch + 10 + (vh - (v / maxV) * vh);
   const cxOf = i => i * barW + barW * 0.5;
@@ -2791,14 +3059,14 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
     const fy = toY(fp);
     const txt = fp.toPrecision(4);
     const labelW = txt.length * 6.5 + 10;
-    const lx = w - labelW - 4;
-    return `<rect id="fib-rect-${i}" data-fp="${fp}" x="${lx}" y="${(fy - 7).toFixed(1)}" width="${labelW}" height="13" fill="#0b0e14" opacity="0.85" rx="2" stroke="${FIB_COLORS[i]}" stroke-width="0.7"/>
+    const lx = w - RIGHT_PAD + 2; // 우측 여백 안에 배치 (캔들과 겹치지 않음)
+    return `<rect id="fib-rect-${i}" data-fp="${fp}" x="${lx}" y="${(fy - 7).toFixed(1)}" width="${labelW}" height="13" fill="#0c0e14" opacity="0.85" rx="2" stroke="${FIB_COLORS[i]}" stroke-width="0.7"/>
       <text id="fib-text-${i}" data-fp="${fp}" x="${(lx + labelW / 2).toFixed(1)}" y="${(fy + 3).toFixed(1)}" fill="${FIB_COLORS[i]}" font-size="10" font-weight="700" font-family="monospace" text-anchor="middle">${txt}</text>`;
   }).join('') : '';
   const fibLabels = fibRange > 0 ? (() => {
     const boxW = 188, rowH = 14, padTop = 16, padBot = 6;
     const boxH = FIB_RATIOS.length * rowH + padTop + padBot;
-    const boxX = w - boxW - 6;
+    const boxX = w - RIGHT_PAD - boxW - 6; // 우측 여백 바깥(캔들 영역 안)에서 가장 오른쪽
     const boxY = 6;
     let rows = '';
     FIB_RATIOS.forEach((r, i) => {
@@ -2811,7 +3079,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
     });
     // 드래그 가능한 그룹으로 래핑 (style:cursor + transform 으로 이동)
     return `<g id="fib-panel" transform="translate(0,0)" style="cursor:grab;">
-      <rect x="${boxX}" y="${boxY}" width="${boxW}" height="${boxH}" fill="#0b0e14" opacity="0.85" rx="4" stroke="#475569" stroke-width="0.8"/>
+      <rect x="${boxX}" y="${boxY}" width="${boxW}" height="${boxH}" fill="#0c0e14" opacity="0.85" rx="4" stroke="#475569" stroke-width="0.8"/>
       <text x="${boxX + 8}" y="${boxY + 12}" fill="#94a3b8" font-size="10" font-weight="700">⋮⋮ Fib · 90d 고저</text>
       ${rows}
     </g>`;
@@ -2820,7 +3088,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   // 범례 (MA만)
   const legend = `
     <g font-size="13" font-family="monospace">
-      <rect x="6" y="6" width="104" height="76" fill="#0b0e14" opacity="0.88" rx="4" stroke="#243045" stroke-width="0.5"/>
+      <rect x="6" y="6" width="104" height="76" fill="#0c0e14" opacity="0.88" rx="4" stroke="#243045" stroke-width="0.5"/>
       <text x="14" y="22" fill="#fbbf24" font-weight="700">━ MA7</text>
       <text x="14" y="38" fill="#60a5fa" font-weight="700">━ MA25</text>
       <text x="14" y="54" fill="#a78bfa" font-weight="700">━ MA99</text>
@@ -2860,7 +3128,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   // RSI 패널 — 배경/임계선(고정), 폴리라인(줌 대상), 라벨(고정) 분리
   const rsiBg = `
     <line x1="0" y1="${rsiTop - 5}" x2="${w}" y2="${rsiTop - 5}" stroke="#243045" stroke-width="0.8"/>
-    <rect x="0" y="${rsiTop}" width="${w}" height="${rh}" fill="rgba(11,14,20,0.25)"/>
+    <rect x="0" y="${rsiTop}" width="${w}" height="${rh}" fill="rgba(12,14,20,0.25)"/>
     <line x1="0" y1="${toRY(70)}" x2="${w}" y2="${toRY(70)}" stroke="#ef4444" stroke-width="0.9" stroke-dasharray="4,3" opacity="0.7"/>
     <line x1="0" y1="${toRY(50)}" x2="${w}" y2="${toRY(50)}" stroke="#475569" stroke-width="0.5" opacity="0.5"/>
     <line x1="0" y1="${toRY(30)}" x2="${w}" y2="${toRY(30)}" stroke="#4ade80" stroke-width="0.9" stroke-dasharray="4,3" opacity="0.7"/>`;
@@ -2904,7 +3172,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
       <text id="ch-date" x="0" y="${totalH - 9}" fill="#cbd5e1" font-size="10" font-weight="600" font-family="monospace" text-anchor="middle"></text>
     </g>
     <g id="ch-tip" style="display:none; pointer-events:none;">
-      <rect id="ch-tip-bg" x="0" y="0" width="172" height="108" fill="#0b0e14" opacity="0.95" stroke="#475569" stroke-width="0.6" rx="4"/>
+      <rect id="ch-tip-bg" x="0" y="0" width="172" height="108" fill="#0c0e14" opacity="0.95" stroke="#475569" stroke-width="0.6" rx="4"/>
       <text id="ch-tip-date" x="0" y="0" fill="#cbd5e1" font-size="11" font-weight="800" font-family="monospace"></text>
       <text id="ch-tip-o"    x="0" y="0" fill="#94a3b8" font-size="11" font-family="monospace"></text>
       <text id="ch-tip-h"    x="0" y="0" fill="#4ade80" font-size="11" font-family="monospace"></text>
@@ -3935,7 +4203,7 @@ function renderRecommendations(results, opt) {
     suggestHtml = `
       <div class="diag-section" style="border-color: var(--accent);">
         <h4 style="color: var(--accent);">📊 백테스트 기반 자동 권장 세팅 (5x+ 종목 ${sug.bigN}개 중 ~85% 검출 기준)</h4>
-        <table style="width:100%; font-size:11px;">
+        <table style="font-size:11px;">
           <thead><tr style="color:var(--muted);"><th style="text-align:left;">항목</th><th>현재</th><th>권장</th></tr></thead>
           <tbody>
             ${cmp($('f_maxGain').value, sug.maxGain, '저점대비 최대', 'x')}
@@ -3964,14 +4232,14 @@ function renderRecommendations(results, opt) {
     ${suggestHtml}
     <div class="diag-section">
       <h4>❌ 누락 사유 분포 (전체 ${results.length}개 중)</h4>
-      <table style="width:100%; font-size:11px;">
+      <table style="font-size:11px;">
         <thead><tr style="color:var(--muted);"><th style="text-align:left;">사유</th><th>건수</th><th>비중</th></tr></thead>
         <tbody>${reasonRows || '<tr><td colspan="3" class="muted">없음</td></tr>'}</tbody>
       </table>
     </div>
     <div class="diag-section">
       <h4>📈 5x+ 펌프 종목에서 자주 나타난 시그널 Top 8</h4>
-      <table style="width:100%; font-size:11px;">
+      <table style="font-size:11px;">
         <thead><tr style="color:var(--muted);"><th style="text-align:left;">시그널</th><th>평균/최대</th><th>≥반점</th><th>≥1점</th></tr></thead>
         <tbody>${sigTop}</tbody>
       </table>
@@ -4173,9 +4441,9 @@ const DEEP_PHASES = [
   { name: '피크', short: '0d',   offsetDays: 0,   color: '#f87171' },
   { name: '사후', short: '+3d',  offsetDays: -3,  color: '#a78bfa' }
 ];
-const SIG_KEYS = ['S2','S3','S6cont','S6size','S7','S8','S9','S10','S11','S12','S13','S14','S15','S17','S18','S19','S21'];
-const SIG_MAX  = {S2:3,S3:12,S6cont:9,S6size:7,S7:8,S8:7,S9:9,S10:6,S11:4,S12:13,S13:7,S14:8,S15:10,S17:4,S18:5,S19:3,S21:15};
-const SIG_NAME = {S2:'CEX',S3:'유통률',S6cont:'펀딩양수율⚡',S6size:'펀딩크기',S7:'펀딩추세⚡',S8:'베이시스',S9:'OI추세',S10:'L/S편향',S11:'Taker',S12:'BB압축⚡⚡',S13:'디버전스',S14:'OI/MCap',S15:'발사임박',S17:'HigherLows🟡',S18:'Body압축',S19:'매수우위🟡',S21:'RAVE 콤보⭐'};
+const SIG_KEYS = ['S2','S3','S6cont','S6size','S7','S8','S9','S10','S11','S12','S13','S14','S15','S17','S18','S19','S21','S22'];
+const SIG_MAX  = {S2:3,S3:12,S6cont:9,S6size:7,S7:8,S8:7,S9:9,S10:6,S11:4,S12:13,S13:7,S14:8,S15:15,S17:4,S18:5,S19:3,S21:15,S22:12};
+const SIG_NAME = {S2:'CEX',S3:'유통률',S6cont:'펀딩양수율⚡',S6size:'펀딩크기',S7:'펀딩추세⚡',S8:'베이시스',S9:'OI추세',S10:'L/S편향',S11:'Taker',S12:'BB압축⚡⚡',S13:'디버전스',S14:'OI/MCap',S15:'발사임박',S17:'HigherLows🟡',S18:'Body압축',S19:'매수우위🟡',S21:'RAVE 콤보⭐',S22:'공급×OI×BB🔴'};
 
 async function runDeepBacktest() {
   const btn = $('deepBtBtn');
@@ -4416,95 +4684,156 @@ async function runGradeValidation() {
 function renderGradeValidation(results) {
   const valid = results.filter(r => r.grade);
   const errors = results.filter(r => r.error);
-  const hits = valid.filter(r => r.hit);
-  const overs = valid.filter(r => r.over); // 과소평가
+  const hits   = valid.filter(r => r.hit);
+  const overs  = valid.filter(r => r.over);
 
-  // 등급별 통계
+  // ── 점수 계층: 실제 투자 의향 기준 ──────────────────────────
+  const TIERS = [
+    { label: '추천 (≥50pt)', min: 50,  max: 999, color: '#4ade80' },
+    { label: '관심 (40-49)', min: 40,  max: 49,  color: '#a3e635' },
+    { label: '관망 (35-39)', min: 35,  max: 39,  color: '#fbbf24' },
+    { label: '노이즈 (<35)',  min: -1,  max: 34,  color: '#71717a' },
+  ];
+  const tierRows = TIERS.map(t => {
+    const tier = valid.filter(r => r.accScore >= t.min && r.accScore <= t.max);
+    const tierHits = tier.filter(r => r.hit);
+    const pct = tier.length ? Math.round(tierHits.length / tier.length * 100) : null;
+    const pctTxt = pct === null ? '-' : `${pct}%`;
+    const barW = pct === null ? 0 : pct;
+    const barC = pct >= 70 ? '#4ade80' : pct >= 50 ? '#fbbf24' : '#f87171';
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:5px 8px; font-size:12px; color:${t.color}; white-space:nowrap;">${t.label}</td>
+      <td style="padding:5px 8px; font-size:13px; font-weight:700; color:${barC};">${tierHits.length}/${tier.length}</td>
+      <td style="padding:5px 8px;">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <div style="width:80px; height:6px; background:var(--surface-3); border-radius:3px; overflow:hidden;">
+            <div style="width:${barW}%; height:100%; background:${barC}; border-radius:3px;"></div>
+          </div>
+          <span style="font-size:12px; font-weight:600; color:${barC};">${pctTxt}</span>
+        </div>
+      </td>
+      <td style="padding:5px 8px; font-size:10px; color:var(--muted);">${
+        t.min < 35 ? '시장 노이즈 · 투자 고려 불가' :
+        t.min < 40 ? '기본 필터 통과 수준' :
+        t.min < 50 ? '매수 검토 가능' : '적극 추천 구간'
+      }</td>
+    </tr>`;
+  }).join('');
+
+  // ── "실질 추천" 기준 (≥40pt): 실제로 살 만한 점수 ──────────
+  const actionable = valid.filter(r => r.accScore >= 40);
+  const actHits    = actionable.filter(r => r.hit);
+  const actAcc     = actionable.length ? Math.round(actHits.length / actionable.length * 100) : 0;
+  const actColor   = actAcc >= 70 ? '#4ade80' : actAcc >= 50 ? '#fbbf24' : '#ef4444';
+  const overallAcc = valid.length ? Math.round(hits.length / valid.length * 100) : 0;
+
+  // ── 등급별 통계 ───────────────────────────────────────────────
   const byGrade = { A:[], B:[], C:[], D:[] };
   valid.forEach(r => { if (byGrade[r.grade]) byGrade[r.grade].push(r); });
   const gradeStats = ['A','B','C','D'].map(g => {
     const gr = byGrade[g];
     if (!gr.length) return '';
     const h = gr.filter(r => r.hit).length;
-    const gc = g === 'A' ? '#ef4444' : g === 'B' ? '#fb923c' : g === 'C' ? '#fbbf24' : '#94a3b8';
+    const gc = g==='A'?'#ef4444':g==='B'?'#fb923c':g==='C'?'#fbbf24':'#94a3b8';
     return `<span style="color:${gc};">${g}: ${h}/${gr.length}</span>`;
   }).filter(Boolean).join(' · ');
 
-  const acc = valid.length ? Math.round(hits.length / valid.length * 100) : 0;
-  const accColor = acc >= 70 ? '#4ade80' : acc >= 50 ? '#fbbf24' : '#ef4444';
+  // ── 과소/과대 분석 ────────────────────────────────────────────
+  const missedHigh = valid.filter(r => !r.hit && r.actual >= 7);
+  const overPred   = valid.filter(r => r.grade==='A' && r.actual < 20);
+  let analysisHtml = '';
+  if (missedHigh.length) {
+    analysisHtml += `<div style="margin-top:10px; padding:8px 10px; background:rgba(239,68,68,.08); border-left:3px solid #ef4444; border-radius:4px;">
+      <b style="color:#ef4444;">⚠ 과소 등급 (실제 ≥7x인데 B 미만): ${missedHigh.length}건</b>
+      <div style="font-size:11px; margin-top:4px; color:var(--muted);">
+        ${missedHigh.map(r=>`${r.symbol.replace('USDT','')} (${r.actual}x → ${r.grade}: ${(r.factors||[]).slice(0,2).join(', ')||'CG 데이터 부족'})`).join('<br>')}
+      </div></div>`;
+  }
+  if (overPred.length) {
+    analysisHtml += `<div style="margin-top:8px; padding:8px 10px; background:rgba(251,191,36,.08); border-left:3px solid #fbbf24; border-radius:4px;">
+      <b style="color:#fbbf24;">△ 과대 등급 (A 판정인데 실제 <20x): ${overPred.length}건</b>
+      <div style="font-size:11px; margin-top:4px; color:var(--muted);">
+        ${overPred.map(r=>`${r.symbol.replace('USDT','')} (실제 ${r.actual}x, 매집점수 ${r.accScore}pt)`).join('<br>')}
+      </div></div>`;
+  }
 
+  // ── 테이블 행: 저점수 행은 흐리게 ─────────────────────────────
   const rows = results.slice().sort((a,b) => b.actual - a.actual).map(r => {
     if (r.error) return `
-      <tr style="opacity:.5">
+      <tr style="opacity:.4">
         <td style="padding:3px 6px;">${r.symbol.replace('USDT','')}</td>
         <td style="padding:3px 6px;" class="muted">${r.actual}x</td>
         <td colspan="5" class="muted" style="padding:3px 6px; font-size:10px;">— ${r.error}</td>
       </tr>`;
+    const isNoise  = r.accScore < 35;
+    const rowOpacity = isNoise ? 'opacity:.45;' : '';
     const gc = r.grade==='A'?'#ef4444':r.grade==='B'?'#fb923c':r.grade==='C'?'#fbbf24':'#94a3b8';
     const ac = r.actual>=20?'#ef4444':r.actual>=7?'#fb923c':r.actual>=3?'#fbbf24':'#94a3b8';
+    const ptColor = r.accScore>=50?'#4ade80':r.accScore>=40?'#a3e635':r.accScore>=35?'#fbbf24':'#71717a';
+    const noiseBadge = isNoise ? `<span style="font-size:9px; background:rgba(113,113,122,.18); color:#71717a; border-radius:3px; padding:1px 4px; margin-left:4px;">노이즈</span>` : '';
     const hitMark = r.hit
-      ? (r.over ? `<span style="color:#fbbf24;" title="적중하나 과소평가 (실제가 상한 초과)">△</span>`
+      ? (r.over ? `<span style="color:#fbbf24;" title="적중 · 과소평가">△</span>`
                 : `<span style="color:#4ade80;">✓</span>`)
       : `<span style="color:#ef4444;">✗</span>`;
     const f = (r.factors||[]).slice(0,3).join(' · ');
-    return `<tr style="border-bottom:1px solid var(--border);">
-      <td style="padding:3px 6px;">${r.symbol.replace('USDT','')}</td>
+    return `<tr style="border-bottom:1px solid var(--border); ${rowOpacity}">
+      <td style="padding:3px 6px;">${r.symbol.replace('USDT','')}${noiseBadge}</td>
       <td style="padding:3px 6px;"><b style="color:${ac};">${r.actual}x</b></td>
       <td style="padding:3px 6px;"><b style="color:${gc};">${r.grade}</b> <span class="muted" style="font-size:10px;">(${r.gradeScore})</span></td>
       <td style="padding:3px 6px;" class="muted">${r.range[0]}~${r.range[1]}x</td>
       <td style="padding:3px 6px; text-align:center;">${hitMark}</td>
-      <td style="padding:3px 6px;"><span style="color:${r.accScore>=50?'#4ade80':r.accScore>=35?'#fbbf24':'var(--muted)'}; font-size:11px;">${r.accScore}pt</span></td>
+      <td style="padding:3px 6px;"><span style="color:${ptColor}; font-size:11px; font-weight:600;">${r.accScore}pt</span></td>
       <td style="padding:3px 6px; font-size:10px; color:var(--muted); max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${f}">${f}</td>
     </tr>`;
   }).join('');
 
-  // 과소평가 분석 — 무엇이 등급을 끌어내렸는가
-  const missedHigh = valid.filter(r => !r.hit && r.actual >= 7);  // 실제로 큰데 B 미만 판정
-  const overPred   = valid.filter(r => r.grade === 'A' && r.actual < 20); // A 판정했는데 실제 <20x
-
-  let analysisHtml = '';
-  if (missedHigh.length) {
-    analysisHtml += `<div style="margin-top:12px; padding:8px 10px; background:rgba(239,68,68,.08); border-left:3px solid #ef4444; border-radius:4px;">
-      <b style="color:#ef4444;">⚠ 과소 등급 (실제 ≥7x인데 B 미만 판정): ${missedHigh.length}건</b>
-      <div style="font-size:11px; margin-top:4px; color:var(--muted);">
-        ${missedHigh.map(r => `${r.symbol.replace('USDT','')} (${r.actual}x → ${r.grade}급: ${(r.factors||[]).slice(0,2).join(', ')||'CG 데이터 부족'})`).join('<br>')}
-      </div>
-    </div>`;
-  }
-  if (overPred.length) {
-    analysisHtml += `<div style="margin-top:8px; padding:8px 10px; background:rgba(251,191,36,.08); border-left:3px solid #fbbf24; border-radius:4px;">
-      <b style="color:#fbbf24;">△ 과대 등급 (A 판정했는데 실제 <20x): ${overPred.length}건</b>
-      <div style="font-size:11px; margin-top:4px; color:var(--muted);">
-        ${overPred.map(r => `${r.symbol.replace('USDT','')} (실제 ${r.actual}x, 매집점수 ${r.accScore}pt)`).join('<br>')}
-      </div>
-    </div>`;
-  }
-
   return `
-    <div style="margin-bottom:16px;">
-      <div style="font-size:24px; font-weight:800; color:${accColor};">${hits.length}/${valid.length} 적중 (${acc}%)</div>
-      <div style="margin-top:4px; font-size:13px;">${gradeStats}</div>
-      ${overs.length ? `<div class="muted" style="font-size:11px; margin-top:4px;">△ 과소평가(실제가 상한 초과): ${overs.length}건</div>` : ''}
-      ${errors.length ? `<div class="muted" style="font-size:11px; margin-top:2px;">데이터 없음 (180d 이전 펌프 등): ${errors.length}건</div>` : ''}
-      <div class="muted" style="font-size:10px; margin-top:6px;">
-        판정 기준: 실제 배수 ≥ 등급 하한 (A≥20x · B≥5x · C≥3x · D≥2x) | ✓=적중 △=과소평가(상한 초과) ✗=미적중
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; align-items:start;">
+      <!-- 실질 추천 적중률 -->
+      <div style="padding:14px 16px; background:var(--surface-2); border-radius:8px; border:1px solid var(--border-2);">
+        <div style="font-size:11px; color:var(--muted); margin-bottom:6px; font-weight:600; letter-spacing:.04em;">실질 추천 적중률 <span style="font-weight:400;">(매집점수 ≥40pt)</span></div>
+        <div style="font-size:30px; font-weight:800; color:${actColor}; line-height:1;">${actHits.length}/${actionable.length}</div>
+        <div style="font-size:20px; font-weight:700; color:${actColor}; margin-top:2px;">${actAcc}%</div>
+        <div style="font-size:10px; color:var(--muted); margin-top:6px;">살 마음이 드는 종목 기준</div>
       </div>
-      <div style="font-size:10px; margin-top:3px; color:#fbbf24;">
-        ⓘ A등급은 OI/MCap≥0.20 실증 필수 (없으면 pts 70+이어도 B 자동 하향)
-      </div>
-      <div class="muted" style="font-size:10px; margin-top:2px;">
-        ⚠ CG 유통률·MC는 현재 값 기준 (펌프 당시와 다를 수 있음) · 일부 토큰 180d 이전 펌프는 감지 불가
+      <!-- 전체 적중률 (참고) -->
+      <div style="padding:14px 16px; background:var(--surface); border-radius:8px; border:1px solid var(--border);">
+        <div style="font-size:11px; color:var(--text-dim); margin-bottom:6px; font-weight:600; letter-spacing:.04em;">전체 적중률 <span style="font-weight:400;">(참고값)</span></div>
+        <div style="font-size:24px; font-weight:700; color:var(--muted); line-height:1; opacity:.7;">${hits.length}/${valid.length}</div>
+        <div style="font-size:16px; font-weight:600; color:var(--muted); margin-top:2px; opacity:.7;">${overallAcc}%</div>
+        <div style="font-size:10px; color:var(--text-dim); margin-top:6px;">저점수 노이즈 포함 → 과장됨</div>
       </div>
     </div>
+
+    <!-- 점수대별 적중률 -->
+    <div style="margin-bottom:14px; border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+      <div style="padding:8px 12px; background:var(--surface-2); font-size:11px; font-weight:600; color:var(--muted); letter-spacing:.04em; border-bottom:1px solid var(--border);">점수대별 적중률</div>
+      <table style="width:100%; border-collapse:collapse;">
+        ${tierRows}
+      </table>
+    </div>
+
+    <div style="margin-top:4px; font-size:13px; color:var(--text-2);">${gradeStats}</div>
+    ${overs.length ? `<div class="muted" style="font-size:11px; margin-top:4px;">△ 과소평가(실제가 상한 초과): ${overs.length}건</div>` : ''}
+    ${errors.length ? `<div class="muted" style="font-size:11px; margin-top:2px;">데이터 없음 (180d 이전 펌프 등): ${errors.length}건</div>` : ''}
+    <div class="muted" style="font-size:10px; margin-top:6px;">
+      판정 기준: 실제 배수 ≥ 등급 하한 (A≥20x · B≥5x · C≥3x · D≥2x) | ✓=적중 △=과소평가(상한 초과) ✗=미적중
+    </div>
+    <div style="font-size:10px; margin-top:3px; color:#fbbf24;">
+      ⓘ A등급은 OI/MCap≥0.20 실증 필수 (없으면 pts 70+이어도 B 자동 하향)
+    </div>
+    <div class="muted" style="font-size:10px; margin-top:2px;">
+      ⚠ CG 유통률·MC는 현재 값 기준 (펌프 당시와 다를 수 있음) · 일부 토큰 180d 이전 펌프는 감지 불가
+    </div>
     ${analysisHtml}
-    <table style="width:100%; font-size:12px; border-collapse:collapse; margin-top:12px;">
+    <table style="width:100%; font-size:12px; border-collapse:collapse; margin-top:14px;">
       <thead><tr style="color:var(--muted); font-size:11px; border-bottom:1px solid var(--border);">
         <th style="padding:4px 6px; text-align:left;">심볼</th>
         <th style="padding:4px 6px; text-align:left;">실제</th>
         <th style="padding:4px 6px; text-align:left;">Grade</th>
         <th style="padding:4px 6px; text-align:left;">예상범위</th>
         <th style="padding:4px 6px; text-align:center;">적중</th>
-        <th style="padding:4px 6px; text-align:left;">누적점수</th>
+        <th style="padding:4px 6px; text-align:left;">매집점수</th>
         <th style="padding:4px 6px; text-align:left;">주요 요인</th>
       </tr></thead>
       <tbody>${rows}</tbody>
@@ -4628,7 +4957,7 @@ function renderDeepResults(evolutions) {
     </tr>`;
   }).join('');
 
-  // 종목별 덤프 스코어 진화 테이블
+  // 종목별 고점 위험도 진화 테이블
   const dumpEvoRows = evolutions.map(e => {
     const dumpCells = DEEP_PHASES.map(ph => {
       const found = e.phases.find(p => p.phase === ph.name);
@@ -4648,7 +4977,7 @@ function renderDeepResults(evolutions) {
     </tr>`;
   }).join('');
 
-  // 덤프 시그널별 진화 (D1~D9 평균)
+  // D1~D9 시그널별 진화 (고점 위험도 구성 요소)
   const dumpSigEvoRows = DUMP_SIG_KEYS.map(dk => {
     const max = DUMP_SIG_MAX[dk];
     const cells = DEEP_PHASES.map(ph => {
@@ -4694,87 +5023,97 @@ function renderDeepResults(evolutions) {
   $('bt-body').innerHTML = `
     <div class="diag-section" style="text-align:center;">
       <div style="font-size:13px; color:var(--muted);">심층 백테스트 — ${evolutions.length}개 펌프 종목 × ${DEEP_PHASES.length}단계 시점</div>
-      <div style="margin: 10px 0; display: flex; justify-content: center; gap: 18px; flex-wrap: wrap;">
+      <div style="margin: 10px 0; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
         ${DEEP_PHASES.map(ph => `
-          <div style="min-width: 88px;">
-            <div style="color:${ph.color}; font-size:11px; font-weight:600;">${ph.name} (${ph.short})</div>
-            <div style="font-size: 20px; font-weight: 700;">${phaseScoreAvg[ph.name].toFixed(1)}</div>
-            <div class="muted" style="font-size:10px;">매집 점수</div>
-            <div style="font-size: 18px; font-weight: 700; color:${phaseDumpAvg[ph.name] >= 70 ? '#ef4444' : phaseDumpAvg[ph.name] >= 50 ? '#fb923c' : phaseDumpAvg[ph.name] >= 30 ? '#fbbf24' : 'var(--muted)'}; margin-top:6px;">${phaseDumpAvg[ph.name].toFixed(1)}</div>
-            <div class="muted" style="font-size:10px;">🔻 덤프 점수</div>
+          <div style="min-width: 72px;">
+            <div style="color:${ph.color}; font-size:10px; font-weight:600;">${ph.name} (${ph.short})</div>
+            <div style="font-size: 18px; font-weight: 700;">${phaseScoreAvg[ph.name].toFixed(1)}</div>
+            <div class="muted" style="font-size:9px;">매집 점수</div>
+            <div style="font-size: 16px; font-weight: 700; color:${phaseDumpAvg[ph.name] >= 70 ? '#ef4444' : phaseDumpAvg[ph.name] >= 50 ? '#fb923c' : phaseDumpAvg[ph.name] >= 30 ? '#fbbf24' : 'var(--muted)'}; margin-top:4px;">${phaseDumpAvg[ph.name].toFixed(1)}</div>
+            <div class="muted" style="font-size:9px;">⚠️ 고점 위험도</div>
           </div>
         `).join('')}
       </div>
-      <div class="muted" style="font-size:11px;">매집 점수: 초입 → 피크 상승이 정상. 덤프 점수: 피크에서 80~100점 도달해야 신호 정확.</div>
+      <div class="muted" style="font-size:11px;">매집 점수: 초입 → 피크 상승이 정상. 고점 위험도: 피크에서 80~100점 도달해야 신호 정확.</div>
     </div>
 
     <div class="diag-section" style="border-color:#ef4444;">
-      <h4 style="color:#ef4444;">🔻 덤프 시그널 검증 — 피크 시점에 점수가 폭증하는가?</h4>
-      <table style="width:100%; font-size:11px;">
-        <thead><tr style="color:var(--muted);">
-          <th style="text-align:left;">단계</th>
-          ${DEEP_PHASES.map(ph => `<th>${ph.name}<br><span class="muted" style="font-size:9px;">(${ph.short})</span></th>`).join('')}
-        </tr></thead>
-        <tbody>
-          <tr><td><b>평균 덤프 점수</b></td>
-            ${DEEP_PHASES.map(ph => {
-              const v = phaseDumpAvg[ph.name];
-              const cls = v >= 80 ? 'neg' : v >= 50 ? 'warn' : 'muted';
-              return `<td class="${cls}" style="font-weight:700;">${v.toFixed(1)}</td>`;
-            }).join('')}
-          </tr>
-          <tr><td><b>등급 분포</b><br><span class="muted" style="font-size:10px;">🚨 apex / 🔥 crit / ⚠ high</span></td>
-            ${dumpDistCells}
-          </tr>
-        </tbody>
-      </table>
-      <h4 style="color:#ef4444; margin-top:14px;">D1~D9 시그널별 진화</h4>
-      <table style="width:100%; font-size:11px;">
-        <thead><tr style="color:var(--muted);">
-          <th style="text-align:left;">시그널</th>
-          ${DEEP_PHASES.map(ph => `<th>${ph.name}</th>`).join('')}
-        </tr></thead>
-        <tbody>${dumpSigEvoRows}</tbody>
-      </table>
+      <h4 style="color:#ef4444;">⚠️ 고점 위험도 검증 — 피크 시점에 점수가 폭증하는가?</h4>
+      <div class="bt-table-wrap">
+        <table>
+          <thead><tr style="color:var(--muted);">
+            <th style="text-align:left;">단계</th>
+            ${DEEP_PHASES.map(ph => `<th>${ph.name} <span class="muted" style="font-size:9px;">(${ph.short})</span></th>`).join('')}
+          </tr></thead>
+          <tbody>
+            <tr><td><b>평균 고점 위험도</b></td>
+              ${DEEP_PHASES.map(ph => {
+                const v = phaseDumpAvg[ph.name];
+                const cls = v >= 80 ? 'neg' : v >= 50 ? 'warn' : 'muted';
+                return `<td class="${cls}" style="font-weight:700;">${v.toFixed(1)}</td>`;
+              }).join('')}
+            </tr>
+            <tr><td><b>등급 분포</b> <span class="muted" style="font-size:9px;">🚨apex 🔥crit ⚠high</span></td>
+              ${dumpDistCells}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <h4 style="color:#ef4444; margin-top:12px;">D1~D9 시그널별 진화</h4>
+      <div class="bt-table-wrap">
+        <table>
+          <thead><tr style="color:var(--muted);">
+            <th style="text-align:left;">시그널</th>
+            ${DEEP_PHASES.map(ph => `<th>${ph.name}</th>`).join('')}
+          </tr></thead>
+          <tbody>${dumpSigEvoRows}</tbody>
+        </table>
+      </div>
       <div class="muted" style="font-size:10px; margin-top:6px;">
         피크/사후 시점에 강하게 발현하는 시그널 = 고점 검출에 유효. 초입에서도 높으면 false positive 위험.
       </div>
     </div>
 
     <div class="diag-section">
-      <h4>🔻 종목별 덤프 점수 진화</h4>
-      <table style="width:100%; font-size:11px;">
-        <thead><tr style="color:var(--muted);">
-          <th style="text-align:left;">Symbol</th><th>펌프</th>
-          ${DEEP_PHASES.map(ph => `<th>${ph.name}</th>`).join('')}
-          <th>Δ</th>
-        </tr></thead>
-        <tbody>${dumpEvoRows}</tbody>
-      </table>
-      <div class="muted" style="font-size:10px; margin-top:6px;">각 셀: 덤프 점수 (색상=위험등급). Δ = 피크 - 초입.</div>
+      <h4>⚠️ 종목별 고점 위험도 진화</h4>
+      <div class="bt-table-wrap">
+        <table>
+          <thead><tr style="color:var(--muted);">
+            <th style="text-align:left;">Symbol</th><th>펌프</th>
+            ${DEEP_PHASES.map(ph => `<th>${ph.name}</th>`).join('')}
+            <th>Δ</th>
+          </tr></thead>
+          <tbody>${dumpEvoRows}</tbody>
+        </table>
+      </div>
+      <div class="muted" style="font-size:10px; margin-top:4px;">각 셀: 고점 위험도 (색상=위험등급). Δ = 피크 - 초입.</div>
     </div>
 
     ${recommendHtml}
 
     <div class="diag-section">
       <h4>📊 매집 시그널 진화 (펌프 종목 평균)</h4>
-      <table style="width:100%; font-size:11px;">
-        <thead><tr style="color:var(--muted);"><th style="text-align:left;">시그널</th><th>초입(-21d)</th><th>말기(-3d)</th><th>피크(0d)</th><th>분류</th><th>권장</th></tr></thead>
-        <tbody>${sigEvoRows}</tbody>
-      </table>
+      <div class="bt-table-wrap">
+        <table>
+          <thead><tr style="color:var(--muted);"><th style="text-align:left;">시그널</th><th>초입(-21d)</th><th>말기(-3d)</th><th>피크(0d)</th><th>분류</th><th>권장</th></tr></thead>
+          <tbody>${sigEvoRows}</tbody>
+        </table>
+      </div>
     </div>
 
     <div class="diag-section">
       <h4>📈 종목별 매집 점수 진화 (Top ${evolutions.length})</h4>
-      <table style="width:100%; font-size:11px;">
-        <thead><tr style="color:var(--muted);">
-          <th style="text-align:left;">Symbol</th><th>펌프</th>
-          ${DEEP_PHASES.map(ph => `<th>${ph.name}</th>`).join('')}
-          <th>Δ</th><th>BT</th>
-        </tr></thead>
-        <tbody>${evoRows}</tbody>
-      </table>
-      <div class="muted" style="font-size:10px; margin-top:6px;">행 클릭 시 워치리스트 추가. Δ = 피크 점수 - 초입 점수 (시그널 누적 정도).</div>
+      <div class="bt-table-wrap">
+        <table>
+          <thead><tr style="color:var(--muted);">
+            <th style="text-align:left;">Symbol</th><th>펌프</th>
+            ${DEEP_PHASES.map(ph => `<th>${ph.name}</th>`).join('')}
+            <th>Δ</th><th>BT</th>
+          </tr></thead>
+          <tbody>${evoRows}</tbody>
+        </table>
+      </div>
+      <div class="muted" style="font-size:10px; margin-top:4px;">행 클릭 시 워치리스트 추가. Δ = 피크 점수 - 초입 점수 (시그널 누적 정도).</div>
     </div>
   `;
 }
@@ -4905,17 +5244,30 @@ function buildSignalDiagnostics(r) {
   });
   // S20 삭제 (v1.3, 피크 임박 시 0pt — 의미 X)
 
-  // S21: RAVE 시그니처 콤보
-  const c12 = (r.bbScore || 0) >= 4;
-  const c6c = r.fundPosRatio >= 0.55;
-  const c7  = (r.fundingTrend?.score || 0) >= 3;
+  // S21: RAVE 시그니처 콤보 (강화 임계값)
+  const c12 = (r.bbScore || 0) >= 6;
+  const c6c = r.fundPosRatio >= 0.85;
+  const c7  = (r.fundingTrend?.score || 0) >= 5;
   const cc = (c12?1:0)+(c6c?1:0)+(c7?1:0);
   items.push({
     code: 'S21', name: '⭐ RAVE 시그니처 콤보 (BB+펀딩+추세)', max: 15, score: b.S21 || 0,
-    detail: `BB압축 ${c12?'✓':'✗'} · 펀딩양수율 ${c6c?'✓':'✗'} · 펀딩추세 ${c7?'✓':'✗'} (${cc}/3 충족)`,
-    advice: cc === 3 ? '✓ 만점 (RAVE급 시그니처 완벽)' :
-            cc === 2 ? '7pt — 1개 더 충족 시 +8pt (만점)' :
-            cc === 1 ? '0pt — 2개 더 충족 시 +7pt' :
+    detail: `BB압축≥6 ${c12?'✓':'✗'} · 펀딩양수율≥85% ${c6c?'✓':'✗'} · 펀딩추세≥5 ${c7?'✓':'✗'} (${cc}/3 충족)`,
+    advice: cc === 3 ? '✓ 만점 (강한 3중 시그니처)' :
+            cc === 2 ? '4pt — 1개 더 강화 시 +11pt (만점)' :
+            cc === 1 ? '0pt — 강한 신호 2개 더 필요' :
+            '0pt — BB≥6 · 펀딩양수율85%+ · 펀딩추세5+ 모두 필요'
+  });
+
+  // S22: 공급 희소성 × OI × BB 콤보
+  const c22_circ = r.cg?.circMax !== null && r.cg?.circMax !== undefined && r.cg.circMax < 0.25;
+  const c22_oi   = r.oiMcap !== null && r.oiMcap !== undefined && r.oiMcap >= 0.15;
+  const c22_bb   = (r.bbScore || 0) >= 4;
+  const cc22 = (c22_circ?1:0)+(c22_oi?1:0)+(c22_bb?1:0);
+  items.push({
+    code: 'S22', name: '🔴 공급희소×OI비중×BB압축 콤보', max: 12, score: b.S22 || 0,
+    detail: `유통률<25% ${c22_circ?'✓':'✗'} · OI/MCap≥15% ${c22_oi?'✓':'✗'} · BB압축≥4 ${c22_bb?'✓':'✗'} (${cc22}/3 충족)`,
+    advice: cc22 === 3 ? '✓ 만점 (크라임 선행 패턴 완성)' :
+            cc22 === 2 ? '4pt — 1개 더 시 +8pt (만점)' :
             '0pt — 세 조건 중 최소 2개 충족 필요'
   });
 
@@ -5265,7 +5617,7 @@ function renderPotentialAndPlan(r) {
   const fmtP = p => p >= 1 ? p.toFixed(3) : p >= 0.01 ? p.toFixed(5) : p.toExponential(2);
 
   const factorsHtml = crime.factors.length
-    ? crime.factors.map(f => `<span style="display:inline-block; margin:2px 4px 2px 0; padding:2px 8px; background:rgba(255,255,255,.05); border-radius:4px; font-size:11px;">${f}</span>`).join('')
+    ? crime.factors.map(f => `<span class="factor-pill">${f}</span>`).join('')
     : '<span class="muted">결정 요인 없음 — 데이터 부족</span>';
 
   const axes = [
@@ -5301,64 +5653,67 @@ function renderPotentialAndPlan(r) {
       </div>`;
 
     planHtml = `
-      <div style="font-weight:700; color:#4ade80; margin-top:6px; margin-bottom:4px;">🟢 매수 존</div>
-      ${planRow('#4ade80', '1차', `$${fmtP(plan.entry[0].price)}`, `${plan.entry[0].label} · 현재가 대비 ${((plan.entry[0].price/plan.currentPrice-1)*100).toFixed(1)}%`)}
-      ${planRow('#22d3ee', '2차', `$${fmtP(plan.entry[1].price)}`, `${plan.entry[1].label} · 현재가 대비 ${((plan.entry[1].price/plan.currentPrice-1)*100).toFixed(1)}%`)}
-      ${planRow('#dc2626', '⛔ 손절', `$${fmtP(plan.stopLoss.price)}`, plan.stopLoss.label)}
+      <div class="plan-zone plan-zone--buy">
+        <div class="plan-zone-hd" style="color:#4ade80;">🟢 매수 존</div>
+        ${planRow('#4ade80', '1차 진입', `$${fmtP(plan.entry[0].price)}`, `${plan.entry[0].label} · 현재가 대비 ${((plan.entry[0].price/plan.currentPrice-1)*100).toFixed(1)}%`)}
+        ${planRow('#22d3ee', '2차 진입', `$${fmtP(plan.entry[1].price)}`, `${plan.entry[1].label} · 현재가 대비 ${((plan.entry[1].price/plan.currentPrice-1)*100).toFixed(1)}%`)}
+        ${planRow('#dc2626', '⛔ 손절', `$${fmtP(plan.stopLoss.price)}`, plan.stopLoss.label)}
+      </div>
 
-      <div style="font-weight:700; color:#fb923c; margin:14px 0 4px;">🔴 익절 존 (90d 저점 $${fmtP(plan.refLow)} 기준 배수)</div>
-      ${plan.targets.map((t, i) => planRow(
-        ['#fbbf24','#fb923c','#ef4444'][i],
-        t.tier + ' 익절',
-        `$${fmtP(t.price)}`,
-        `${t.multiple}x · ${t.portion}% 청산`
-      )).join('')}
+      <div class="plan-zone plan-zone--sell">
+        <div class="plan-zone-hd" style="color:#fb923c;">🔴 익절 존 <span style="font-weight:400; color:var(--muted); text-transform:none;">90d 저점 $${fmtP(plan.refLow)} 기준</span></div>
+        ${plan.targets.map((t, i) => planRow(
+          ['#fbbf24','#fb923c','#ef4444'][i],
+          t.tier + ' 익절',
+          `$${fmtP(t.price)}`,
+          `${t.multiple}x · ${t.portion}% 청산`
+        )).join('')}
+      </div>
 
-      <div style="font-weight:700; margin:14px 0 4px;">📌 진입 트리거 (지지가 도달 시 모두 충족)</div>
-      <ul style="margin:4px 0 4px 18px; font-size:12px;">
-        ${plan.entryTriggers.map(t => `<li style="margin:2px 0;">${t}</li>`).join('')}
-      </ul>
+      <div class="plan-zone plan-zone--trigger">
+        <div class="plan-zone-hd">📌 진입 트리거</div>
+        <ul style="margin:0 0 0 16px; padding:0;">
+          ${plan.entryTriggers.map(t => `<li style="margin:3px 0; font-size:var(--text-xs); color:var(--text-2);">${t}</li>`).join('')}
+        </ul>
+      </div>
 
-      <div style="font-weight:700; margin:14px 0 4px;">⚠ 청산 트리거 (도달 시 즉시 행동)</div>
-      <div style="font-size:12px;">
+      <div class="plan-zone plan-zone--trigger">
+        <div class="plan-zone-hd">⚠ 청산 트리거</div>
         ${plan.exitTriggers.map(t => `
-          <div style="display:flex; gap:8px; padding:3px 0; border-bottom:1px solid var(--border);">
-            <b style="color:${t.color}; min-width:230px;">${t.label}</b>
-            <span>→ ${t.action}</span>
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:var(--space-3); padding:4px var(--space-2); margin:2px 0; background:var(--surface-3); border-radius:var(--r-sm); border-left:2px solid ${t.color};">
+            <span style="color:${t.color}; font-weight:700; font-size:var(--text-xs); flex:1;">${t.label}</span>
+            <span style="font-size:var(--text-xs); color:var(--muted); white-space:nowrap;">→ ${t.action}</span>
           </div>`).join('')}
       </div>`;
   }
 
   return `
-    <div class="diag-section" style="border-color:${crime.color};">
-      <h4 style="color:${crime.color}; margin-bottom:10px;">🎯 펌프 잠재력 (Crime Grade)</h4>
-      <div style="display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-bottom:10px;">
-        <div style="display:inline-block; padding:6px 14px; border-radius:8px;
-                    background:${crime.color}22; border:2px solid ${crime.color};
-                    color:${crime.color}; font-weight:800; font-size:18px;">
-          ${crime.grade}급 · ${crime.label}
+    <details class="diag-section diag-section--hero" style="border-color:${crime.color};" open>
+      <summary style="color:${crime.color};">🎯 펌프 잠재력 (Crime Grade)</summary>
+      <div style="display:flex; align-items:flex-start; gap:var(--space-5); flex-wrap:wrap; margin-bottom:var(--space-3);">
+        <div class="grade-chip" style="background:${crime.color}18; color:${crime.color};">${crime.grade}</div>
+        <div class="kpi" style="flex:1; min-width:120px;">
+          <span class="kpi-label">Crime Grade</span>
+          <span class="kpi-value" style="color:${crime.color}; font-size:var(--text-xl);">${crime.label}</span>
+          <span class="kpi-sub">예상 ${crime.range[0]}~${crime.range[1]}x · 구조 점수 ${crime.score}/100</span>
         </div>
-        <div>
-          <div style="font-size:13px;">예상 펌프 배수 <b style="color:${crime.color}; font-size:18px;">${crime.range[0]}~${crime.range[1]}x</b></div>
-          <div style="font-size:11px; color:var(--muted);">90d 저점 기준 · 구조 점수 ${crime.score}/100</div>
-        </div>
-        <div style="padding:6px 14px; border-radius:8px; background:${crime.convictionColor}18; border:1.5px solid ${crime.convictionColor}55;">
-          <div style="font-size:10px; color:var(--muted); margin-bottom:2px;">매집 확신도</div>
-          <div style="color:${crime.convictionColor}; font-weight:800; font-size:16px;">${crime.conviction} <span style="font-size:12px; font-weight:400;">${crime.convictionLabel}</span></div>
+        <div class="kpi">
+          <span class="kpi-label">매집 확신도</span>
+          <span class="kpi-value" style="font-size:var(--text-xl); color:${crime.convictionColor};">${crime.conviction}</span>
+          <span class="kpi-sub" style="color:${crime.convictionColor};">${crime.convictionLabel}</span>
         </div>
       </div>
-      <div style="margin-top:4px; font-size:11px; color:var(--muted); margin-bottom:6px;">
-        💡 <b>확신도</b>는 "지금 갈 것 같은가"를 판단 (점수≥65 + OI/MCap≥0.20 + BB≤0.60 = HIGH).
-        <b>등급</b>은 "갈 때 얼마나 오를 수 있는가" (구조적 폭발력).
+      <div style="font-size:var(--text-xs); color:var(--muted); margin-bottom:var(--space-3); line-height:1.6;">
+        💡 <b>확신도</b>는 "지금 갈 것 같은가" (점수≥65 + OI/MCap≥0.20 + BB≤0.60 = HIGH). <b>등급</b>은 "갈 때 얼마나 오를 수 있는가".
       </div>
-      <div style="margin-top:6px; font-size:11px; color:var(--muted); margin-bottom:4px;">📋 등급 산출 근거:</div>
-      <div style="margin-bottom:4px;">${factorsHtml}</div>
-      ${crime.grade === 'A' ? `<div style="margin-top:8px; font-size:11px; padding:5px 10px; background:rgba(239,68,68,.08); border-left:3px solid #ef4444; border-radius:3px; color:#ef4444;">🚨 <b>A등급(RAVE급)은 연 1~2회 수준의 희귀 이벤트.</b> OI 매집 실증 필수. 단독 포지션 금지.</div>` : ''}
-      ${crime.oiMissing ? `<div style="margin-top:6px; font-size:11px; padding:4px 8px; background:rgba(251,191,36,.08); border-left:2px solid #fbbf24; border-radius:3px; color:#fbbf24;">⚠ OI/MCap 데이터 없음 — A등급 발급 불가. 등급 실제보다 낮게 평가될 수 있음.</div>` : ''}
-    </div>
+      <div style="font-size:var(--text-xs); color:var(--muted); margin-bottom:var(--space-2);">📋 등급 산출 근거</div>
+      <div>${factorsHtml}</div>
+      ${crime.grade === 'A' ? `<div class="alert-inline danger">🚨 <b>A등급(RAVE급)은 연 1~2회 수준의 희귀 이벤트.</b> OI 매집 실증 필수. 단독 포지션 금지.</div>` : ''}
+      ${crime.oiMissing ? `<div class="alert-inline warn">⚠ OI/MCap 데이터 없음 — A등급 발급 불가. 등급 실제보다 낮게 평가될 수 있음.</div>` : ''}
+    </details>
 
-    <div class="diag-section" style="border-color:${risk.color};">
-      <h4 style="color:${risk.color}; margin-bottom:10px;">⚠ 리스크 프로파일 — ${risk.label}</h4>
+    <details class="diag-section" style="border-color:${risk.color};">
+      <summary style="color:${risk.color};">⚠ 리스크 프로파일 — ${risk.label}</summary>
       <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:10px;">${axisHtml}</div>
       <div style="font-size:12px; margin-top:6px;">
         <b>예상 드로다운:</b> 펌프 후 <span style="color:${risk.color}; font-weight:700;">-${risk.drawdownEst}%</span> 수준
@@ -5366,21 +5721,18 @@ function renderPotentialAndPlan(r) {
       <ul style="margin:8px 0 0 18px; font-size:11px; color:var(--muted);">
         ${risksList}
       </ul>
-    </div>
+    </details>
 
-    <div class="diag-section">
-      <h4>📊 기술적 지표 분석</h4>
+    <details class="diag-section">
+      <summary>📊 기술적 지표 분석</summary>
       ${plan ? (() => {
         const fmtPl = p => p >= 1 ? p.toFixed(3) : p >= 0.01 ? p.toFixed(5) : p.toExponential(2);
         // RSI 블록
         const rsiBlock = plan.rsiSignal ? `
-          <div style="display:flex; align-items:center; gap:12px; padding:8px 10px; margin-bottom:8px;
-                      background:${plan.rsiSignal.color}12; border-left:3px solid ${plan.rsiSignal.color}; border-radius:4px;">
-            <div>
-              <div style="font-size:12px; font-weight:700; color:${plan.rsiSignal.color};">RSI(14) ${plan.rsi.toFixed(1)} — ${plan.rsiSignal.label}</div>
-              <div style="font-size:11px; color:var(--muted); margin-top:2px;">${plan.rsiSignal.advice}</div>
-            </div>
-          </div>` : '<div class="muted" style="font-size:11px; margin-bottom:8px;">RSI 데이터 부족</div>';
+          <div class="alert-inline" style="background:${plan.rsiSignal.color}12; border-left-color:${plan.rsiSignal.color}; color:${plan.rsiSignal.color}; margin-bottom:var(--space-2);">
+            <b>RSI(14) ${plan.rsi.toFixed(1)} — ${plan.rsiSignal.label}</b>
+            <div style="font-size:var(--text-2xs); margin-top:2px; color:var(--muted);">${plan.rsiSignal.advice}</div>
+          </div>` : '<div class="muted" style="font-size:var(--text-xs); margin-bottom:var(--space-2);">RSI 데이터 부족</div>';
 
         // MA·VWMA 포지션
         const maRows = [
@@ -5391,32 +5743,29 @@ function renderPotentialAndPlan(r) {
           plan.bbLower ? { label:'BB 하단',  v:plan.bbLower, rel: plan.currentPrice > plan.bbLower ? '가격 위 (밴드 내부)' : '가격 아래 — 과매도 이탈', c: plan.currentPrice > plan.bbLower ? '#94a3b8':'#4ade80' } : null,
         ].filter(Boolean);
         const maBlock = `
-          <div style="margin-bottom:8px;">
-            <div style="font-size:11px; font-weight:700; margin-bottom:4px; color:var(--muted);">이동평균선 포지션 (현재가 $${fmtPl(plan.currentPrice)})</div>
+          <div style="margin-bottom:var(--space-3);">
+            <div class="metric-row-label" style="display:block; margin-bottom:var(--space-1);">이동평균선 포지션 (현재가 $${fmtPl(plan.currentPrice)})</div>
             ${maRows.map(r => `
-              <div style="display:flex; justify-content:space-between; align-items:center; padding:3px 8px; margin:2px 0;
-                          background:rgba(255,255,255,.03); border-radius:3px; font-size:11px;">
-                <span style="color:var(--muted); min-width:70px;">${r.label}</span>
-                <span style="font-family:monospace;">$${fmtPl(r.v)}</span>
-                <span style="color:${r.c}; font-size:10px;">${r.rel}</span>
+              <div class="metric-row">
+                <span class="metric-row-label">${r.label}</span>
+                <span class="metric-row-value">$${fmtPl(r.v)}</span>
+                <span class="metric-row-tag" style="color:${r.c};">${r.rel}</span>
               </div>`).join('')}
-            ${plan.crossSignal ? `<div style="margin-top:5px; padding:4px 8px; font-size:11px; background:${plan.crossSignal.color}15; border-left:2px solid ${plan.crossSignal.color}; border-radius:3px; color:${plan.crossSignal.color};">⚡ ${plan.crossSignal.type} — ${plan.crossSignal.desc}</div>` : ''}
+            ${plan.crossSignal ? `<div class="alert-inline" style="background:${plan.crossSignal.color}15; border-left-color:${plan.crossSignal.color}; color:${plan.crossSignal.color}; margin-top:var(--space-1);">⚡ ${plan.crossSignal.type} — ${plan.crossSignal.desc}</div>` : ''}
           </div>`;
 
         // 피보나치 지지·저항 (되돌림)
         const fibBlock = plan.fibLevels.length ? `
-          <div>
-            <div style="font-size:11px; font-weight:700; margin-bottom:4px; color:var(--muted);">피보나치 되돌림 — 지지/저항 (90d: 저점 $${fmtPl(plan.fibLow)} → 고점 $${fmtPl(plan.fibHigh)})</div>
+          <div style="margin-bottom:var(--space-2);">
+            <div class="metric-row-label" style="display:block; margin-bottom:var(--space-1);">피보나치 되돌림 (90d: 저점 $${fmtPl(plan.fibLow)} → 고점 $${fmtPl(plan.fibHigh)})</div>
             ${plan.fibLevels.map(f => {
               const isCurr = Math.abs(f.price - plan.currentPrice) / plan.currentPrice < 0.02;
               const isSupport = f.price < plan.currentPrice;
               const dist = ((f.price / plan.currentPrice - 1) * 100).toFixed(1);
-              return `<div style="display:flex; justify-content:space-between; align-items:center; padding:3px 8px; margin:2px 0;
-                        background:${isCurr ? f.color+'22' : 'rgba(255,255,255,.025)'}; border-radius:3px; font-size:11px;
-                        ${isCurr ? `border-left:2px solid ${f.color};` : ''}">
-                <span style="color:${f.color}; min-width:66px;">Fib ${f.ratio}</span>
-                <span style="font-family:monospace; color:${f.color};">$${fmtPl(f.price)}</span>
-                <span style="font-size:10px; color:${isSupport ? '#4ade80' : '#f87171'};">${isSupport ? '지지' : '저항'} ${dist}%${isCurr ? ' ← 현재가 근처' : ''}</span>
+              return `<div class="metric-row" style="${isCurr ? `background:${f.color}18; border-left:2px solid ${f.color}; padding-left:6px;` : ''}">
+                <span class="metric-row-label" style="color:${f.color};">Fib ${f.ratio}</span>
+                <span class="metric-row-value" style="color:${f.color};">$${fmtPl(f.price)}</span>
+                <span class="metric-row-tag" style="color:${isSupport ? '#4ade80' : '#f87171'};">${isSupport ? '지지' : '저항'} ${dist}%${isCurr ? ' ← 현재' : ''}</span>
               </div>`;
             }).join('')}
           </div>` : '';
@@ -5430,38 +5779,36 @@ function renderPotentialAndPlan(r) {
           2.618: '오버슈팅 영역'
         };
         const fibExtBlock = plan.fibExtensions && plan.fibExtensions.length ? `
-          <div style="margin-top:10px;">
-            <div style="font-size:11px; font-weight:700; margin-bottom:4px; color:var(--muted);">피보나치 확장 — 상방 목표 (90d 스윙폭 기준)</div>
+          <div style="margin-top:var(--space-3);">
+            <div class="metric-row-label" style="display:block; margin-bottom:var(--space-1);">피보나치 확장 — 상방 목표</div>
             ${plan.fibExtensions.map(e => `
-              <div style="display:flex; justify-content:space-between; align-items:center; padding:3px 8px; margin:2px 0;
-                          background:rgba(251,146,60,.06); border-radius:3px; font-size:11px;">
-                <span style="color:#fb923c; min-width:66px; font-weight:600;">Ext ${e.ratio}</span>
-                <span style="font-family:monospace; color:#fb923c;">$${fmtPl(e.price)}</span>
-                <span style="font-size:10px; color:#fb923c;">+${e.fromCurrent.toFixed(0)}% · ${FIB_EXT_DESC[e.ratio]}</span>
+              <div class="metric-row" style="border-left:2px solid #fb923c44;">
+                <span class="metric-row-label" style="color:#fb923c;">Ext ${e.ratio}</span>
+                <span class="metric-row-value" style="color:#fb923c;">$${fmtPl(e.price)}</span>
+                <span class="metric-row-tag" style="color:#fb923c;">+${e.fromCurrent.toFixed(0)}% · ${FIB_EXT_DESC[e.ratio]}</span>
               </div>`).join('')}
           </div>` : '';
 
         // 라운드 넘버 (심리적 저항)
         const roundsBlock = plan.roundNumbers && plan.roundNumbers.length ? `
-          <div style="margin-top:10px;">
-            <div style="font-size:11px; font-weight:700; margin-bottom:4px; color:var(--muted);">심리적 라운드 저항 (마디가 — 차익 실현 빈출 구간)</div>
+          <div style="margin-top:var(--space-3);">
+            <div class="metric-row-label" style="display:block; margin-bottom:var(--space-1);">심리적 라운드 저항</div>
             ${plan.roundNumbers.map(rn => `
-              <div style="display:flex; justify-content:space-between; align-items:center; padding:3px 8px; margin:2px 0;
-                          background:rgba(167,139,250,.06); border-radius:3px; font-size:11px;">
-                <span style="color:#a78bfa; min-width:66px; font-weight:600;">Round</span>
-                <span style="font-family:monospace; color:#a78bfa;">$${fmtPl(rn.price)}</span>
-                <span style="font-size:10px; color:#a78bfa;">+${rn.fromCurrent.toFixed(0)}%</span>
+              <div class="metric-row" style="border-left:2px solid #a78bfa44;">
+                <span class="metric-row-label" style="color:#a78bfa;">Round</span>
+                <span class="metric-row-value" style="color:#a78bfa;">$${fmtPl(rn.price)}</span>
+                <span class="metric-row-tag" style="color:#a78bfa;">+${rn.fromCurrent.toFixed(0)}%</span>
               </div>`).join('')}
           </div>` : '';
 
         return rsiBlock + maBlock + fibBlock + fibExtBlock + roundsBlock;
       })() : '<div class="muted">캔들 데이터 부족 — 기술 분석 불가</div>'}
-    </div>
+    </details>
 
-    <div class="diag-section">
-      <h4>📋 트레이드 플랜</h4>
+    <details class="diag-section">
+      <summary>📋 트레이드 플랜</summary>
       ${planHtml}
-    </div>
+    </details>
   `;
 }
 
@@ -5514,45 +5861,40 @@ function renderDiagnosisTab(r) {
   const isApex = dump.topRisk === 'apex';
 
   const apexDiagBanner = isApex ? `
-    <div style="
-      padding: 14px 18px; margin-bottom: 4px;
-      background: linear-gradient(135deg, rgba(255,45,85,.18), rgba(239,68,68,.10));
-      border: 2px solid #ff2d55; border-radius: 10px;
-      text-align: center;
-      animation: apexPulse 1.8s ease-in-out infinite alternate;
-    ">
-      <div style="font-size: 20px; font-weight: 800; color: #ff2d55;">🚨 이번 상승사이클 최고점 인접</div>
-      <div style="font-size: 11px; color: #ff6b81; margin-top: 5px;">고점 위험도 ${dump.score}/100 · 즉각 익절 / 신규 진입 절대 금지</div>
+    <div class="apex-banner">
+      <div class="apex-banner-dot"></div>
+      <div class="apex-banner-text"><b>이번 상승사이클 최고점 인접</b> — 고점 위험도 ${dump.score}/100 · 즉각 익절 / 신규 진입 절대 금지</div>
     </div>` : '';
 
   return `
     ${apexDiagBanner}
-    <div class="diag-section" style="text-align:center;">
-      <div style="font-size: 13px; color: var(--muted);">진단 결과</div>
-      <div style="margin: 8px 0;">
-        <span style="font-size: 36px; font-weight: 700;">${r.score}</span>
-        <span style="font-size: 18px; color: var(--muted);">/100</span>
-        <span class="diag-grade grade-${grade.g}">${grade.g}</span>
-        ${r.liveEquivalentScore && r.liveEquivalentScore !== r.score ? `<div class="muted" style="font-size:11px; margin-top:4px;">백테스트 환산 (가용 max ${r._availableMax || 100}/100): 라이브 ≈ <b>${r.liveEquivalentScore}</b></div>` : ''}
+    <div class="diag-section diag-section--hero">
+      <div style="display:flex; align-items:center; gap:var(--space-5); flex-wrap:wrap;">
+        <div class="grade-chip grade-${grade.g}">${grade.g}</div>
+        <div class="kpi" style="flex:1;">
+          <span class="kpi-label">매집 점수</span>
+          <div class="kpi-value">${r.score}<span style="font-size:var(--text-md); font-weight:var(--w-normal); color:var(--muted);">/100</span></div>
+          <span class="kpi-sub">${grade.desc}</span>
+        </div>
+        <div style="align-self:flex-start;">
+          <button id="diagWatchBtn" class="diag-watch-btn ${watched ? 'watched' : ''}" onclick="diagToggleWatch('${r.symbol}')">${watched ? '★ 워치리스트에서 제거' : '☆ 워치리스트 추가'}</button>
+        </div>
       </div>
-      <div style="font-size: 13px;">${grade.desc}</div>
-      ${comments.length ? `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; line-height: 1.6; color: var(--text);">${comments.map(c => '• ' + c).join('<br>')}</div>` : ''}
-      <div style="margin-top: 12px;">
-        <button id="diagWatchBtn" class="diag-watch-btn ${watched ? 'watched' : ''}" onclick="diagToggleWatch('${r.symbol}')">${watched ? '★ 워치리스트에서 제거' : '☆ 워치리스트 추가'}</button>
-      </div>
+      ${r.liveEquivalentScore && r.liveEquivalentScore !== r.score ? `<div style="font-size:var(--text-xs); color:var(--muted); margin-top:var(--space-2);">백테스트 환산 (가용 max ${r._availableMax || 100}/100): 라이브 ≈ <b>${r.liveEquivalentScore}</b></div>` : ''}
+      ${comments.length ? `<div style="margin-top:var(--space-3); padding-top:var(--space-3); border-top:1px solid var(--border); line-height:1.6;">${comments.map(c => `<div style="font-size:var(--text-xs); color:var(--text-2); padding:2px 0;">• ${c}</div>`).join('')}</div>` : ''}
     </div>
 
     <div class="diag-section" style="padding:0; background:transparent; border:none;">
       ${renderBigChartBlock(r)}
     </div>
 
-    <div class="diag-section">
-      <h4>📊 주요 지표</h4>
+    <details class="diag-section">
+      <summary>📊 주요 지표</summary>
       ${renderStatsGrid(r)}
-    </div>
+    </details>
 
-    <div class="diag-section" style="border-color: ${dumpLbl.color}; ${isApex ? 'background: rgba(255,45,85,.06);' : ''}">
-      <h4 style="color: ${dumpLbl.color}; margin-bottom: 10px;">고점 위험도 (Dump Risk Score)</h4>
+    <details class="diag-section" style="border-color: ${dumpLbl.color}; ${isApex ? 'background: rgba(255,45,85,.06);' : ''}" open>
+      <summary style="color: ${dumpLbl.color};">고점 위험도 (Dump Risk Score)</summary>
       <div style="display:flex; align-items:center; gap: 18px; flex-wrap:wrap;">
         <div style="text-align:center; min-width: 80px;">
           <div style="font-size: 40px; font-weight: 800; color: ${dumpLbl.color}; line-height:1;">${dump.score}</div>
@@ -5576,47 +5918,47 @@ function renderDiagnosisTab(r) {
         }).join('')}
       </div>
       <div style="margin-top: 8px; font-size: 11px; color: var(--info);">🔻 고점 탭에서 D1~D9 전체 시그널 확인</div>
-    </div>
+    </details>
 
     ${renderPotentialAndPlan(r)}
 
-    <div class="diag-section">
-      <h4>💸 펀딩 히스토리</h4>
+    <details class="diag-section">
+      <summary>💸 펀딩 히스토리</summary>
       ${renderFundingBlock(r)}
-    </div>
+    </details>
 
     ${hardX.length ? `
-    <div class="diag-section" style="border-color: var(--danger);">
-      <h4 style="color: var(--danger);">⚠ 현재 필터 기준 위반 (${hardX.length}건)</h4>
+    <details class="diag-section" style="border-color: var(--danger);">
+      <summary style="color: var(--danger);">⚠ 현재 필터 기준 위반 (${hardX.length}건)</summary>
       ${hardX.map(h => `<div class="diag-row neg">• ${h.reason}</div>`).join('')}
       <div class="muted" style="font-size: 11px; margin-top: 6px;">진단은 위반 조건과 무관하게 점수만 계산. 스캔 결과에는 포함되지 않음.</div>
-    </div>` : `
-    <div class="diag-section" style="border-color: var(--accent);">
-      <h4 style="color: var(--accent);">✓ 현재 필터 기준 모두 통과</h4>
+    </details>` : `
+    <details class="diag-section" style="border-color: var(--accent);">
+      <summary style="color: var(--accent);">✓ 현재 필터 기준 모두 통과</summary>
       <div class="diag-row">스캔 시 결과에 포함됨 (점수 ≥ ${opt.minScore} 충족 여부 별도)</div>
-    </div>`}
+    </details>`}
 
-    <div class="diag-section">
-      <h4>강점 Top 3</h4>
+    <details class="diag-section">
+      <summary>강점 Top 3</summary>
       ${strengths.length ? strengths.map(s => `
         <div class="diag-row">
           <span class="diag-pts ${sigClass(s)}">${s.score.toFixed(1)}/${s.max}</span>
           <b>${s.name}</b> — ${s.detail}
         </div>`).join('') : '<div class="diag-row muted">강점 시그널 없음</div>'}
-    </div>
+    </details>
 
-    <div class="diag-section">
-      <h4>약점 Top 5 (개선 여지)</h4>
+    <details class="diag-section">
+      <summary>약점 Top 5 (개선 여지)</summary>
       ${weaknesses.length ? weaknesses.map(s => `
         <div class="diag-row">
           <span class="diag-pts ${sigClass(s)}">${s.score.toFixed(1)}/${s.max}</span>
           <b>${s.name}</b> — ${s.detail}
           <div style="margin-left: 12px; color: var(--accent); font-size: 11px; margin-top: 2px;">→ ${s.advice}</div>
         </div>`).join('') : '<div class="diag-row muted">약점 없음 (만점)</div>'}
-    </div>
+    </details>
 
-    <div class="diag-section" style="border-color: #a855f7;">
-      <h4 style="color: #c084fc;">📈 메리트 시나리오</h4>
+    <details class="diag-section" style="border-color: #a855f7;">
+      <summary style="color: #c084fc;">📈 메리트 시나리오</summary>
       <div class="diag-row">
         <b>현재:</b> ${r.score}점 (${grade.g})
       </div>
@@ -5630,10 +5972,10 @@ function renderDiagnosisTab(r) {
         </span>
       </div>
       ${r.gainFromLow < 2 && r.score < 50 ? `<div class="diag-row" style="margin-top: 6px;"><b>참고:</b> 매집 초기일수록 점수가 낮은 것이 정상. 향후 OI/펀딩 추세 변화 관찰 권장</div>` : ''}
-    </div>
+    </details>
 
     <details class="diag-section">
-      <summary style="cursor: pointer; color: var(--muted); font-size: 12px;">▶ 전체 시그널 17종 상세 (펼치기)</summary>
+      <summary>전체 시그널 17종 상세</summary>
       <div style="margin-top: 10px;">
         ${sigsHtml}
       </div>
@@ -5658,6 +6000,19 @@ document.querySelectorAll('thead th[data-sort]').forEach(th => {
     render();
   });
 });
+
+// ── 테마 토글 ──────────────────────────────────────────────────
+(function initTheme() {
+  const saved = localStorage.getItem('raply.theme') || 'dark';
+  if (saved === 'light') document.body.classList.add('theme-light');
+  const btn = $('themeBtn');
+  btn.textContent = saved === 'light' ? '☀️' : '🌙';
+  btn.addEventListener('click', () => {
+    const isLight = document.body.classList.toggle('theme-light');
+    localStorage.setItem('raply.theme', isLight ? 'light' : 'dark');
+    btn.textContent = isLight ? '☀️' : '🌙';
+  });
+})();
 
 $('scanBtn').addEventListener('click', runScan);
 
