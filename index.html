@@ -672,6 +672,11 @@
     <span class="sub">17-Signal · S21 RAVE 콤보 · 🔻 고점 진단 (D1~D9) · 4-6개월 차트 · FDV/MC 필터 · Top10 홀더</span>
   </div>
   <div class="controls">
+    <select id="marketSelect" class="diag-input" style="width:auto; padding-right:24px;" title="시장 선택">
+      <option value="crypto">🪙 크립토</option>
+      <option value="us-stock">🇺🇸 미국 주식</option>
+      <option value="kr-stock">🇰🇷 한국 주식</option>
+    </select>
     <input id="diagInput" type="text" placeholder="심볼 진단 (예: KGEN)" class="diag-input" />
     <button id="diagBtn">🔍 진단</button>
     <input id="btMinRatio" type="number" step="0.5" value="3" class="diag-input" style="width:70px;" title="최소 펌프 배수 (3x 권장)" />
@@ -1222,6 +1227,112 @@ const CoinGecko = {
 };
 
 // GoPlus Token Security API (free, no key) — EVM chains only
+// ============================================================
+// YahooFinance — 주식(미국·한국) 캔들/메타 페치
+// 여러 CORS 프록시를 순차 시도하여 안정성 확보
+// ============================================================
+const YahooFinance = {
+  // 시도할 프록시 목록 (순차 fallback)
+  PROXIES: [
+    url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+    url => `https://cors.eu.org/${url}`,
+    url => url  // 직접 (브라우저가 받아주면)
+  ],
+
+  // 입력 ticker → 야후 표준 ticker 변환
+  //   US: AAPL → AAPL
+  //   KR: 005930 (숫자 6자리) → 005930.KS  (또는 .KQ)
+  //   KR: 005930.KS / 005930.KQ → 그대로
+  normalizeTicker(input, market) {
+    const raw = (input || '').trim().toUpperCase();
+    if (!raw) return null;
+    if (market === 'kr-stock') {
+      if (/^\d{6}$/.test(raw)) return raw + '.KS';  // 기본 코스피 가정 — 실패 시 .KQ 재시도
+      if (/^\d{6}\.(KS|KQ)$/.test(raw)) return raw;
+      return raw;  // ETF 등 영문 티커도 허용
+    }
+    return raw;  // US/일반: 영문 그대로
+  },
+
+  async _fetchChart(ticker, range, interval) {
+    const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}`;
+    let lastErr;
+    for (const proxyFn of this.PROXIES) {
+      try {
+        const url = proxyFn(targetUrl);
+        const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        if (!r.ok) { lastErr = new Error(`HTTP ${r.status}`); continue; }
+        const j = await r.json();
+        const result = j?.chart?.result?.[0];
+        if (result) return result;
+        const apiErr = j?.chart?.error?.description;
+        if (apiErr) throw new Error(apiErr);  // 데이터 없음은 진짜 에러
+        lastErr = new Error('result 없음');
+      } catch (e) {
+        lastErr = e;
+        if (/description|미발견|not found|invalid|symbol/i.test(e.message)) throw e;
+        // 네트워크/프록시 문제면 다음 프록시 시도
+      }
+    }
+    throw new Error(`Yahoo Finance ${ticker}: ${lastErr?.message || '전체 프록시 실패'}`);
+  },
+
+  async loadCandles(ticker, range = '2y', interval = '1d') {
+    const cacheKey = `yf_candles_${ticker}_${range}_${interval}`;
+    const cached = Cache.get(cacheKey);
+    if (cached) return cached;
+    const result = await this._fetchChart(ticker, range, interval);
+    const ts = result.timestamp || [];
+    const q = result.indicators?.quote?.[0];
+    if (!q) throw new Error(`Yahoo Finance ${ticker}: 캔들 없음`);
+    const candles = ts.map((t, i) => ({
+      t: t * 1000,
+      o: q.open[i],
+      h: q.high[i],
+      l: q.low[i],
+      c: q.close[i],
+      v: q.volume[i] || 0
+    })).filter(c => c.o !== null && c.h !== null && c.l !== null && c.c !== null);
+    Cache.set(cacheKey, candles, 30 * 60 * 1000);  // 30분 캐시
+    return candles;
+  },
+
+  async loadMeta(ticker) {
+    const cacheKey = `yf_meta_${ticker}`;
+    const cached = Cache.get(cacheKey);
+    if (cached) return cached;
+    try {
+      const result = await this._fetchChart(ticker, '1d', '1d');
+      const meta = result.meta || null;
+      if (meta) Cache.set(cacheKey, meta, 10 * 60 * 1000);
+      return meta;
+    } catch (e) { return null; }
+  },
+
+  // 한국 주식: .KS 실패 시 .KQ 재시도
+  async loadCandlesKR(rawTicker, range = '2y') {
+    if (!/^\d{6}$/.test(rawTicker)) {
+      return this.loadCandles(rawTicker.includes('.') ? rawTicker : rawTicker + '.KS', range);
+    }
+    try { return await this.loadCandles(rawTicker + '.KS', range); }
+    catch (e1) {
+      try { return await this.loadCandles(rawTicker + '.KQ', range); }
+      catch (e2) { throw new Error(`한국 주식 ${rawTicker}: 코스피·코스닥 모두 미발견`); }
+    }
+  },
+
+  async loadMetaKR(rawTicker) {
+    if (!/^\d{6}$/.test(rawTicker)) {
+      return this.loadMeta(rawTicker.includes('.') ? rawTicker : rawTicker + '.KS');
+    }
+    let m = await this.loadMeta(rawTicker + '.KS');
+    if (!m) m = await this.loadMeta(rawTicker + '.KQ');
+    return m;
+  }
+};
+
 const GoPlus = {
   CHAIN_IDS: {
     ethereum: '1', 'binance-smart-chain': '56', 'polygon-pos': '137',
@@ -2285,7 +2396,8 @@ const state = {
   scanning: false,
   watchlist: JSON.parse(localStorage.getItem('pps_watch') || '[]'),
   showingWatch: false,
-  rowMap: new Map() // symbol -> row (for modal)
+  rowMap: new Map(), // symbol -> row (for modal)
+  market: localStorage.getItem('pps_market') || 'crypto'  // 'crypto' | 'us-stock' | 'kr-stock'
 };
 
 function toggleWatch(symbol) {
@@ -3499,6 +3611,154 @@ function openModal(symbol) {
   }
 }
 function closeModal() { $('modal').classList.remove('show'); }
+
+// ============================================================
+// 주식 진단 (US/KR) — Yahoo Finance 기반
+// ============================================================
+async function diagnoseStock(input) {
+  if (!input || !input.trim()) return;
+  const market = state.market;
+  const rawInput = input.trim().toUpperCase();
+  let displayTicker = rawInput;
+  setStatus(`${rawInput} 진단 중...`);
+  log(`주식 진단 시작: ${rawInput} (${market})`);
+  $('diagBtn').disabled = true; $('diagBtn').textContent = '...';
+
+  try {
+    let candles, meta;
+    if (market === 'kr-stock') {
+      candles = await YahooFinance.loadCandlesKR(rawInput);
+      meta = await YahooFinance.loadMetaKR(rawInput);
+      displayTicker = meta?.symbol || rawInput;
+    } else {
+      const ticker = YahooFinance.normalizeTicker(rawInput, market);
+      candles = await YahooFinance.loadCandles(ticker);
+      meta = await YahooFinance.loadMeta(ticker);
+      displayTicker = ticker;
+    }
+
+    if (!candles || candles.length < 30) {
+      alert(`${rawInput}: 캔들 데이터 부족 (${candles?.length || 0}개)`);
+      setStatus(`진단 실패 — 데이터 부족`);
+      return;
+    }
+
+    const row = buildStockRow(displayTicker, candles, meta);
+    state.rowMap.set(row.symbol, row);
+    openStockModal(row);
+    setStatus(`${displayTicker} 진단 완료 — ${candles.length}개 캔들`);
+    log(`주식 진단 완료: ${displayTicker} · ${candles.length}d`);
+  } catch (e) {
+    alert(`${rawInput} 진단 실패: ${e.message}`);
+    setStatus(`진단 실패 — ${e.message}`);
+    log(`주식 진단 오류: ${e.message}`);
+  } finally {
+    $('diagBtn').disabled = false; $('diagBtn').textContent = '🔍 진단';
+  }
+}
+
+function buildStockRow(ticker, candles, meta) {
+  const last = candles[candles.length - 1];
+  const prev = candles[candles.length - 2];
+  const price = meta?.regularMarketPrice ?? last.c;
+  const prevClose = meta?.chartPreviousClose ?? meta?.previousClose ?? prev?.c ?? last.c;
+  const change24 = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
+  const firstDate = new Date(candles[0].t);
+  const ageDays = Math.floor((Date.now() - firstDate.getTime()) / 86400000);
+  // 14일 상승률
+  const idx14 = Math.max(0, candles.length - 15);
+  const price14 = candles[idx14].c;
+  const rise14 = ((last.c - price14) / price14) * 100;
+  // 52주 high/low
+  const recent = candles.slice(-Math.min(252, candles.length));
+  const w52high = Math.max(...recent.map(c => c.h));
+  const w52low = Math.min(...recent.map(c => c.l));
+
+  return {
+    symbol: ticker,
+    base: ticker,
+    price,
+    change24,
+    rise14,
+    ageDays,
+    candlesAll: candles,
+    meta,
+    w52high,
+    w52low,
+    isStock: true,
+    market: state.market,
+    currency: meta?.currency || 'USD'
+  };
+}
+
+function openStockModal(r) {
+  const priceStr = fmtStockPrice(r.price, r.currency);
+  const ch24Color = r.change24 >= 0 ? '#4ade80' : '#f87171';
+  const ch24Str = `${r.change24 >= 0 ? '+' : ''}${r.change24.toFixed(2)}%`;
+  const exchange = r.meta?.exchangeName || (r.market === 'kr-stock' ? 'KRX' : '');
+  $('m_symbol').innerHTML = `${r.symbol}${exchange ? ` <span class="muted" style="font-size:13px; font-weight:500;">· ${exchange}</span>` : ''}
+    <span style="margin-left:14px; font-size:15px; font-family:monospace; color:#e2e8f0; font-weight:700;">${priceStr}</span>
+    <span style="margin-left:8px; font-size:13px; color:${ch24Color}; font-weight:600;">${ch24Str}</span>`;
+  $('m_meta').innerHTML = `
+    상장 ${r.ageDays ?? '?'}일 데이터 · 14d ${r.rise14 >= 0 ? '+' : ''}${r.rise14.toFixed(2)}% · 52w $${fmtNum(r.w52low, 2)}~$${fmtNum(r.w52high, 2)}
+  `;
+  $('tab-diagnose').innerHTML = renderStockDiagnosisTab(r);
+  $('tab-price').innerHTML = '';
+  $('tab-exchanges').innerHTML = '<div class="muted" style="padding:20px;">주식 모드에서는 사용되지 않습니다.</div>';
+  $('tab-signals').innerHTML = '<div class="muted" style="padding:20px;">주식 모드에서는 사용되지 않습니다.</div>';
+  $('modal').classList.add('show');
+  setupChartZoom();
+  // 진단 탭으로 리셋
+  document.querySelectorAll('.modal-tabs .tab').forEach((t, i) => t.classList.toggle('active', i === 0));
+  document.querySelectorAll('.tab-panel').forEach((p, i) => p.classList.toggle('active', i === 0));
+}
+
+function fmtStockPrice(p, currency) {
+  if (p == null) return '-';
+  const sym = currency === 'KRW' ? '₩' : currency === 'JPY' ? '¥' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : '$';
+  if (currency === 'KRW' || currency === 'JPY') return `${sym}${p.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  return `${sym}${p.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+}
+
+function renderStockDiagnosisTab(r) {
+  const m = r.meta || {};
+  const cur = r.currency;
+  const fmt = v => v != null ? fmtStockPrice(v, cur) : '-';
+  const exchange = m.exchangeName || '-';
+  const tz = m.exchangeTimezoneShortName || '';
+
+  // 기본 통계 카드
+  const statsGrid = `
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-label">현재가</div><div class="stat-value">${fmt(r.price)}</div></div>
+      <div class="stat-card"><div class="stat-label">24h 변동</div><div class="stat-value ${r.change24 >= 0 ? 'pos' : 'neg'}">${r.change24 >= 0 ? '+' : ''}${r.change24.toFixed(2)}%</div></div>
+      <div class="stat-card"><div class="stat-label">14일 상승</div><div class="stat-value ${r.rise14 >= 0 ? 'pos' : 'neg'}">${r.rise14 >= 0 ? '+' : ''}${r.rise14.toFixed(2)}%</div></div>
+      <div class="stat-card"><div class="stat-label">52주 최고</div><div class="stat-value">${fmt(r.w52high)}</div></div>
+      <div class="stat-card"><div class="stat-label">52주 최저</div><div class="stat-value">${fmt(r.w52low)}</div></div>
+      <div class="stat-card"><div class="stat-label">거래소</div><div class="stat-value" style="font-size:13px;">${exchange} ${tz}</div></div>
+      <div class="stat-card"><div class="stat-label">데이터 기간</div><div class="stat-value">${r.ageDays}일</div></div>
+      <div class="stat-card"><div class="stat-label">캔들 수</div><div class="stat-value">${r.candlesAll.length}</div></div>
+    </div>`;
+
+  // 차트 블록
+  const chartBlock = `<div class="chart-block">
+    <h3>${r.candlesAll.length}-Day 캔들 + 거래량 (MA7/25/99 · VWMA100)
+      <span style="font-size:11px; font-weight:400; color:var(--muted);">스크롤 줌 · 드래그 이동 · 더블클릭 초기화 · 커서로 가격 확인</span>
+    </h3>
+    ${bigCandleSVG(r.candlesAll)}
+  </div>`;
+
+  // Phase B에서 펀더멘털 추가 예정 — 지금은 placeholder
+  const placeholder = `<div class="chart-block" style="border-left:3px solid var(--accent);">
+    <h3>📊 펀더멘털 분석 (Phase B 예정)</h3>
+    <div class="muted" style="font-size:13px; line-height:1.7;">
+      향후 추가 예정: PER · PBR · EPS · 매출/이익 성장률 · 배당수익률 · 베타 · 공매도 비율 · 실적 발표일 마커<br>
+      현재는 차트 + 기본 통계만 표시됩니다.
+    </div>
+  </div>`;
+
+  return statsGrid + chartBlock + placeholder;
+}
 
 // ============================================================
 // 단일 토큰 진단
@@ -5661,9 +5921,44 @@ document.querySelectorAll('thead th[data-sort]').forEach(th => {
 
 $('scanBtn').addEventListener('click', runScan);
 
-$('diagBtn').addEventListener('click', () => diagnoseToken($('diagInput').value));
+function runDiagnose() {
+  const val = $('diagInput').value;
+  if (state.market === 'crypto') diagnoseToken(val);
+  else diagnoseStock(val);
+}
+$('diagBtn').addEventListener('click', runDiagnose);
 $('diagInput').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') diagnoseToken($('diagInput').value);
+  if (e.key === 'Enter') runDiagnose();
+});
+
+// 시장 토글 — placeholder/버튼 라벨 갱신 + localStorage 저장
+function applyMarketUI() {
+  const market = state.market;
+  const inp = $('diagInput');
+  if (market === 'crypto') {
+    inp.placeholder = '심볼 진단 (예: KGEN)';
+  } else if (market === 'us-stock') {
+    inp.placeholder = '티커 진단 (예: AAPL, NVDA, TSLA)';
+  } else if (market === 'kr-stock') {
+    inp.placeholder = '종목 진단 (예: 005930, 035720)';
+  }
+  // 크립토 전용 버튼 가시성
+  const cryptoOnly = ['backtestBtn', 'deepBtBtn', 'gradeValBtn', 'dumpScanBtn', 'scanBtn'];
+  cryptoOnly.forEach(id => { const el = $(id); if (el) el.style.display = market === 'crypto' ? '' : 'none'; });
+  // 필터/경고/시그널 설명도 크립토 모드에서만
+  document.querySelector('.warning-bar').style.display = market === 'crypto' ? '' : 'none';
+  const detailsEl = document.querySelector('header + .warning-bar + details');
+  if (detailsEl) detailsEl.style.display = market === 'crypto' ? '' : 'none';
+  const filtersEl = document.querySelector('.filters');
+  if (filtersEl) filtersEl.style.display = market === 'crypto' ? '' : 'none';
+  // 스캔 결과 테이블도 크립토 모드일 때만 의미 있음 — 일단 표시 유지 (Phase C에서 처리)
+}
+$('marketSelect').value = state.market;
+applyMarketUI();
+$('marketSelect').addEventListener('change', (e) => {
+  state.market = e.target.value;
+  localStorage.setItem('pps_market', state.market);
+  applyMarketUI();
 });
 
 $('backtestBtn').addEventListener('click', runBacktest);
