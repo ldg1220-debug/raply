@@ -1330,6 +1330,132 @@ const YahooFinance = {
     let m = await this.loadMeta(rawTicker + '.KS');
     if (!m) m = await this.loadMeta(rawTicker + '.KQ');
     return m;
+  },
+
+  // ── 펀더멘털 (quoteSummary) — 다중 모듈 일괄 요청 ─────────────────
+  // 야후가 anti-scraping crumb 요구해서 프록시 통과율 낮음 — 실패해도 graceful
+  FUND_MODULES: [
+    'price',
+    'summaryDetail',
+    'defaultKeyStatistics',
+    'financialData',
+    'assetProfile',
+    'calendarEvents'
+  ],
+
+  async _fetchQuoteSummary(ticker) {
+    const modules = this.FUND_MODULES.join(',');
+    const targetUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${modules}`;
+    let lastErr;
+    for (const proxyFn of this.PROXIES) {
+      try {
+        const url = proxyFn(targetUrl);
+        const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        if (!r.ok) { lastErr = new Error(`HTTP ${r.status}`); continue; }
+        const j = await r.json();
+        const result = j?.quoteSummary?.result?.[0];
+        if (result) return result;
+        const apiErr = j?.quoteSummary?.error?.description;
+        if (apiErr) throw new Error(apiErr);
+        lastErr = new Error('result 없음');
+      } catch (e) {
+        lastErr = e;
+        if (/not found|invalid|symbol/i.test(e.message)) throw e;
+      }
+    }
+    throw new Error(`quoteSummary ${ticker}: ${lastErr?.message || '전체 프록시 실패'}`);
+  },
+
+  async loadFundamentals(ticker) {
+    const cacheKey = `yf_fund_${ticker}`;
+    const cached = Cache.get(cacheKey);
+    if (cached) return cached;
+    try {
+      const result = await this._fetchQuoteSummary(ticker);
+      if (!result) return null;
+      // raw 값 추출 헬퍼 (Yahoo는 { raw, fmt } 객체 반환)
+      const rv = (x) => x?.raw ?? null;
+      const fv = (x) => x?.fmt ?? null;
+      const sd = result.summaryDetail || {};
+      const ks = result.defaultKeyStatistics || {};
+      const fd = result.financialData || {};
+      const ap = result.assetProfile || {};
+      const pr = result.price || {};
+      const ce = result.calendarEvents || {};
+      const fund = {
+        // 기본
+        longName: pr.longName || pr.shortName || null,
+        sector: ap.sector || null,
+        industry: ap.industry || null,
+        country: ap.country || null,
+        website: ap.website || null,
+        summary: ap.longBusinessSummary || null,
+        marketCap: rv(pr.marketCap),
+        currency: pr.currency || null,
+        // 밸류에이션
+        trailingPE: rv(sd.trailingPE),
+        forwardPE: rv(sd.forwardPE) || rv(ks.forwardPE),
+        pegRatio: rv(ks.pegRatio),
+        priceToBook: rv(ks.priceToBook),
+        priceToSales: rv(sd.priceToSalesTrailing12Months),
+        enterpriseToEbitda: rv(ks.enterpriseToEbitda),
+        // 수익성·재무
+        profitMargin: rv(fd.profitMargins) || rv(ks.profitMargins),
+        operatingMargin: rv(fd.operatingMargins),
+        grossMargin: rv(fd.grossMargins),
+        returnOnEquity: rv(fd.returnOnEquity),
+        returnOnAssets: rv(fd.returnOnAssets),
+        debtToEquity: rv(fd.debtToEquity),
+        currentRatio: rv(fd.currentRatio),
+        freeCashflow: rv(fd.freeCashflow),
+        totalCash: rv(fd.totalCash),
+        // 성장성
+        revenueGrowth: rv(fd.revenueGrowth),
+        earningsGrowth: rv(fd.earningsGrowth),
+        // 배당
+        dividendYield: rv(sd.dividendYield) ?? rv(sd.trailingAnnualDividendYield),
+        dividendRate: rv(sd.dividendRate),
+        payoutRatio: rv(sd.payoutRatio),
+        exDividendDate: rv(sd.exDividendDate),
+        // 위험
+        beta: rv(sd.beta) || rv(ks.beta),
+        shortPercentOfFloat: rv(ks.shortPercentOfFloat),
+        shortRatio: rv(ks.shortRatio),
+        sharesShort: rv(ks.sharesShort),
+        // 52주 범위 (meta보다 정확)
+        fiftyTwoWeekHigh: rv(sd.fiftyTwoWeekHigh),
+        fiftyTwoWeekLow: rv(sd.fiftyTwoWeekLow),
+        // 거래량
+        avgVolume: rv(sd.averageVolume),
+        avgVolume10d: rv(sd.averageDailyVolume10Day),
+        // 이벤트
+        earningsTimestamp: ce?.earnings?.earningsDate?.[0]?.raw || null,
+        // EPS/매출
+        trailingEps: rv(ks.trailingEps),
+        forwardEps: rv(ks.forwardEps),
+        totalRevenue: rv(fd.totalRevenue),
+        revenuePerShare: rv(fd.revenuePerShare),
+        // 분석가 의견
+        recommendationKey: fd.recommendationKey || null,  // strongBuy/buy/hold/sell/strongSell
+        recommendationMean: rv(fd.recommendationMean),
+        targetMeanPrice: rv(fd.targetMeanPrice),
+        numberOfAnalystOpinions: rv(fd.numberOfAnalystOpinions)
+      };
+      Cache.set(cacheKey, fund, 6 * 60 * 60 * 1000);  // 6시간 캐시
+      return fund;
+    } catch (e) {
+      log(`펀더멘털 페치 실패 (${ticker}): ${e.message}`);
+      return null;
+    }
+  },
+
+  async loadFundamentalsKR(rawTicker) {
+    if (!/^\d{6}$/.test(rawTicker)) {
+      return this.loadFundamentals(rawTicker.includes('.') ? rawTicker : rawTicker + '.KS');
+    }
+    let f = await this.loadFundamentals(rawTicker + '.KS');
+    if (!f) f = await this.loadFundamentals(rawTicker + '.KQ');
+    return f;
   }
 };
 
@@ -3625,15 +3751,21 @@ async function diagnoseStock(input) {
   $('diagBtn').disabled = true; $('diagBtn').textContent = '...';
 
   try {
-    let candles, meta;
+    let candles, meta, fundamentals;
     if (market === 'kr-stock') {
-      candles = await YahooFinance.loadCandlesKR(rawInput);
-      meta = await YahooFinance.loadMetaKR(rawInput);
+      [candles, meta, fundamentals] = await Promise.all([
+        YahooFinance.loadCandlesKR(rawInput),
+        YahooFinance.loadMetaKR(rawInput),
+        YahooFinance.loadFundamentalsKR(rawInput)
+      ]);
       displayTicker = meta?.symbol || rawInput;
     } else {
       const ticker = YahooFinance.normalizeTicker(rawInput, market);
-      candles = await YahooFinance.loadCandles(ticker);
-      meta = await YahooFinance.loadMeta(ticker);
+      [candles, meta, fundamentals] = await Promise.all([
+        YahooFinance.loadCandles(ticker),
+        YahooFinance.loadMeta(ticker),
+        YahooFinance.loadFundamentals(ticker)
+      ]);
       displayTicker = ticker;
     }
 
@@ -3643,11 +3775,12 @@ async function diagnoseStock(input) {
       return;
     }
 
-    const row = buildStockRow(displayTicker, candles, meta);
+    const row = buildStockRow(displayTicker, candles, meta, fundamentals);
     state.rowMap.set(row.symbol, row);
     openStockModal(row);
-    setStatus(`${displayTicker} 진단 완료 — ${candles.length}개 캔들`);
-    log(`주식 진단 완료: ${displayTicker} · ${candles.length}d`);
+    const fundNote = fundamentals ? ' + 펀더멘털' : ' (펀더멘털 페치 실패)';
+    setStatus(`${displayTicker} 진단 완료 — ${candles.length}개 캔들${fundNote}`);
+    log(`주식 진단 완료: ${displayTicker} · ${candles.length}d${fundNote}`);
   } catch (e) {
     alert(`${rawInput} 진단 실패: ${e.message}`);
     setStatus(`진단 실패 — ${e.message}`);
@@ -3657,7 +3790,7 @@ async function diagnoseStock(input) {
   }
 }
 
-function buildStockRow(ticker, candles, meta) {
+function buildStockRow(ticker, candles, meta, fundamentals) {
   const last = candles[candles.length - 1];
   const prev = candles[candles.length - 2];
   const price = meta?.regularMarketPrice ?? last.c;
@@ -3669,10 +3802,10 @@ function buildStockRow(ticker, candles, meta) {
   const idx14 = Math.max(0, candles.length - 15);
   const price14 = candles[idx14].c;
   const rise14 = ((last.c - price14) / price14) * 100;
-  // 52주 high/low
+  // 52주 high/low — fundamentals 우선, 없으면 candles로 계산
   const recent = candles.slice(-Math.min(252, candles.length));
-  const w52high = Math.max(...recent.map(c => c.h));
-  const w52low = Math.min(...recent.map(c => c.l));
+  const w52high = fundamentals?.fiftyTwoWeekHigh ?? Math.max(...recent.map(c => c.h));
+  const w52low = fundamentals?.fiftyTwoWeekLow ?? Math.min(...recent.map(c => c.l));
 
   return {
     symbol: ticker,
@@ -3683,11 +3816,12 @@ function buildStockRow(ticker, candles, meta) {
     ageDays,
     candlesAll: candles,
     meta,
+    fundamentals,
     w52high,
     w52low,
     isStock: true,
     market: state.market,
-    currency: meta?.currency || 'USD'
+    currency: meta?.currency || fundamentals?.currency || 'USD'
   };
 }
 
@@ -3696,11 +3830,14 @@ function openStockModal(r) {
   const ch24Color = r.change24 >= 0 ? '#4ade80' : '#f87171';
   const ch24Str = `${r.change24 >= 0 ? '+' : ''}${r.change24.toFixed(2)}%`;
   const exchange = r.meta?.exchangeName || (r.market === 'kr-stock' ? 'KRX' : '');
-  $('m_symbol').innerHTML = `${r.symbol}${exchange ? ` <span class="muted" style="font-size:13px; font-weight:500;">· ${exchange}</span>` : ''}
+  const longName = r.fundamentals?.longName || '';
+  const nameSuffix = longName ? ` — <span style="font-size:13px; color:#cbd5e1; font-weight:500;">${longName}</span>` : '';
+  $('m_symbol').innerHTML = `${r.symbol}${nameSuffix}${exchange ? ` <span class="muted" style="font-size:13px; font-weight:500;">· ${exchange}</span>` : ''}
     <span style="margin-left:14px; font-size:15px; font-family:monospace; color:#e2e8f0; font-weight:700;">${priceStr}</span>
     <span style="margin-left:8px; font-size:13px; color:${ch24Color}; font-weight:600;">${ch24Str}</span>`;
+  const sector = r.fundamentals?.sector ? ` · ${r.fundamentals.sector}${r.fundamentals.industry ? ` / ${r.fundamentals.industry}` : ''}` : '';
   $('m_meta').innerHTML = `
-    상장 ${r.ageDays ?? '?'}일 데이터 · 14d ${r.rise14 >= 0 ? '+' : ''}${r.rise14.toFixed(2)}% · 52w $${fmtNum(r.w52low, 2)}~$${fmtNum(r.w52high, 2)}
+    상장 ${r.ageDays ?? '?'}일 데이터 · 14d ${r.rise14 >= 0 ? '+' : ''}${r.rise14.toFixed(2)}% · 52w ${fmtStockPrice(r.w52low, r.currency)}~${fmtStockPrice(r.w52high, r.currency)}${sector}
   `;
   $('tab-diagnose').innerHTML = renderStockDiagnosisTab(r);
   $('tab-price').innerHTML = '';
@@ -3722,22 +3859,53 @@ function fmtStockPrice(p, currency) {
 
 function renderStockDiagnosisTab(r) {
   const m = r.meta || {};
+  const f = r.fundamentals || null;
   const cur = r.currency;
-  const fmt = v => v != null ? fmtStockPrice(v, cur) : '-';
+  const fmtP = v => v != null ? fmtStockPrice(v, cur) : '-';
+  const fmtPct = (v, decimals = 2) => v != null ? `${(v * 100).toFixed(decimals)}%` : '-';
+  const fmtRatio = (v, decimals = 2) => v != null ? v.toFixed(decimals) : '-';
+  const fmtBigMoney = v => {
+    if (v == null) return '-';
+    const sym = cur === 'KRW' ? '₩' : cur === 'JPY' ? '¥' : '$';
+    if (v >= 1e12) return `${sym}${(v / 1e12).toFixed(2)}T`;
+    if (v >= 1e9) return `${sym}${(v / 1e9).toFixed(2)}B`;
+    if (v >= 1e6) return `${sym}${(v / 1e6).toFixed(2)}M`;
+    return `${sym}${v.toLocaleString()}`;
+  };
+  const fmtVolBig = v => v != null ? (v >= 1e9 ? (v/1e9).toFixed(2)+'B' : v >= 1e6 ? (v/1e6).toFixed(2)+'M' : v >= 1e3 ? (v/1e3).toFixed(1)+'K' : v.toFixed(0)) : '-';
+  const fmtDate = ts => ts ? new Date(ts * 1000).toLocaleDateString() : '-';
   const exchange = m.exchangeName || '-';
   const tz = m.exchangeTimezoneShortName || '';
 
+  // 52주 범위 내 현재가 위치 (시각 바)
+  const w52pos = (r.price - r.w52low) / Math.max(0.0001, r.w52high - r.w52low);
+  const w52pct = Math.max(0, Math.min(1, w52pos)) * 100;
+
   // 기본 통계 카드
   const statsGrid = `
-    <div class="stat-grid">
-      <div class="stat-card"><div class="stat-label">현재가</div><div class="stat-value">${fmt(r.price)}</div></div>
-      <div class="stat-card"><div class="stat-label">24h 변동</div><div class="stat-value ${r.change24 >= 0 ? 'pos' : 'neg'}">${r.change24 >= 0 ? '+' : ''}${r.change24.toFixed(2)}%</div></div>
-      <div class="stat-card"><div class="stat-label">14일 상승</div><div class="stat-value ${r.rise14 >= 0 ? 'pos' : 'neg'}">${r.rise14 >= 0 ? '+' : ''}${r.rise14.toFixed(2)}%</div></div>
-      <div class="stat-card"><div class="stat-label">52주 최고</div><div class="stat-value">${fmt(r.w52high)}</div></div>
-      <div class="stat-card"><div class="stat-label">52주 최저</div><div class="stat-value">${fmt(r.w52low)}</div></div>
-      <div class="stat-card"><div class="stat-label">거래소</div><div class="stat-value" style="font-size:13px;">${exchange} ${tz}</div></div>
-      <div class="stat-card"><div class="stat-label">데이터 기간</div><div class="stat-value">${r.ageDays}일</div></div>
-      <div class="stat-card"><div class="stat-label">캔들 수</div><div class="stat-value">${r.candlesAll.length}</div></div>
+    <div class="diag-section">
+      <h4>📊 주요 지표</h4>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-label">현재가</div><div class="stat-value">${fmtP(r.price)}</div></div>
+        <div class="stat-card"><div class="stat-label">24h 변동</div><div class="stat-value ${r.change24 >= 0 ? 'pos' : 'neg'}">${r.change24 >= 0 ? '+' : ''}${r.change24.toFixed(2)}%</div></div>
+        <div class="stat-card"><div class="stat-label">14일 상승</div><div class="stat-value ${r.rise14 >= 0 ? 'pos' : 'neg'}">${r.rise14 >= 0 ? '+' : ''}${r.rise14.toFixed(2)}%</div></div>
+        <div class="stat-card"><div class="stat-label">시가총액</div><div class="stat-value">${fmtBigMoney(f?.marketCap)}</div></div>
+        <div class="stat-card"><div class="stat-label">평균 거래량 (10d)</div><div class="stat-value">${fmtVolBig(f?.avgVolume10d || f?.avgVolume)}</div></div>
+        <div class="stat-card"><div class="stat-label">거래소</div><div class="stat-value" style="font-size:13px;">${exchange} ${tz}</div></div>
+        <div class="stat-card"><div class="stat-label">데이터 기간</div><div class="stat-value">${r.ageDays}일</div></div>
+        <div class="stat-card"><div class="stat-label">캔들 수</div><div class="stat-value">${r.candlesAll.length}</div></div>
+      </div>
+      <div style="margin-top: 10px; background: rgba(255,255,255,.03); border-radius: 6px; padding: 8px 10px;">
+        <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-bottom:4px;">
+          <span>52주 최저 ${fmtP(r.w52low)}</span>
+          <span>현재가 위치 ${w52pct.toFixed(0)}%</span>
+          <span>52주 최고 ${fmtP(r.w52high)}</span>
+        </div>
+        <div style="position:relative; height:8px; background:#1e2535; border-radius:4px; overflow:hidden;">
+          <div style="position:absolute; left:0; top:0; height:100%; width:${w52pct}%; background:linear-gradient(90deg, #4ade80 0%, #fbbf24 50%, #ef4444 100%);"></div>
+          <div style="position:absolute; left:${w52pct}%; top:-3px; width:2px; height:14px; background:#fff; border-radius:1px; transform:translateX(-1px);"></div>
+        </div>
+      </div>
     </div>`;
 
   // 차트 블록
@@ -3748,16 +3916,137 @@ function renderStockDiagnosisTab(r) {
     ${bigCandleSVG(r.candlesAll)}
   </div>`;
 
-  // Phase B에서 펀더멘털 추가 예정 — 지금은 placeholder
-  const placeholder = `<div class="chart-block" style="border-left:3px solid var(--accent);">
-    <h3>📊 펀더멘털 분석 (Phase B 예정)</h3>
-    <div class="muted" style="font-size:13px; line-height:1.7;">
-      향후 추가 예정: PER · PBR · EPS · 매출/이익 성장률 · 배당수익률 · 베타 · 공매도 비율 · 실적 발표일 마커<br>
-      현재는 차트 + 기본 통계만 표시됩니다.
-    </div>
-  </div>`;
+  // 펀더멘털이 없으면 안내
+  if (!f) {
+    return statsGrid + chartBlock + `<div class="diag-section" style="border-left:3px solid #ef4444;">
+      <h4 style="color:#fbbf24;">⚠️ 펀더멘털 페치 실패</h4>
+      <div class="muted" style="font-size:13px; line-height:1.7;">
+        Yahoo Finance API에서 펀더멘털 데이터를 가져오지 못했습니다. CORS 프록시 문제이거나 종목 코드 미발견일 수 있습니다.<br>
+        차트와 기본 통계는 정상 표시됩니다.
+      </div>
+    </div>`;
+  }
 
-  return statsGrid + chartBlock + placeholder;
+  // 색상 헬퍼: 좋음/보통/나쁨
+  const colorMargin = v => v == null ? '' : v >= 0.20 ? 'pos' : v >= 0.10 ? '' : v < 0 ? 'neg' : '';
+  const colorPE = v => v == null ? '' : v < 15 ? 'pos' : v < 25 ? '' : 'neg';
+  const colorGrowth = v => v == null ? '' : v >= 0.20 ? 'pos' : v >= 0 ? '' : 'neg';
+  const colorROE = v => v == null ? '' : v >= 0.15 ? 'pos' : v >= 0.05 ? '' : 'neg';
+  const colorDebt = v => v == null ? '' : v < 50 ? 'pos' : v < 150 ? '' : 'neg';
+  const colorBeta = v => v == null ? '' : v < 1.0 ? 'pos' : v < 1.5 ? '' : 'neg';
+  const colorShort = v => v == null ? '' : v < 0.03 ? 'pos' : v < 0.10 ? '' : 'neg';
+
+  // 밸류에이션
+  const valuation = `
+    <div class="diag-section">
+      <h4>💰 밸류에이션</h4>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-label">PER (TTM)</div><div class="stat-value ${colorPE(f.trailingPE)}">${fmtRatio(f.trailingPE)}</div></div>
+        <div class="stat-card"><div class="stat-label">Forward PER</div><div class="stat-value ${colorPE(f.forwardPE)}">${fmtRatio(f.forwardPE)}</div></div>
+        <div class="stat-card"><div class="stat-label">PEG</div><div class="stat-value">${fmtRatio(f.pegRatio)}</div></div>
+        <div class="stat-card"><div class="stat-label">PBR</div><div class="stat-value">${fmtRatio(f.priceToBook)}</div></div>
+        <div class="stat-card"><div class="stat-label">PSR</div><div class="stat-value">${fmtRatio(f.priceToSales)}</div></div>
+        <div class="stat-card"><div class="stat-label">EV/EBITDA</div><div class="stat-value">${fmtRatio(f.enterpriseToEbitda)}</div></div>
+      </div>
+    </div>`;
+
+  // 수익성
+  const profitability = `
+    <div class="diag-section">
+      <h4>💵 수익성</h4>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-label">매출총이익률</div><div class="stat-value ${colorMargin(f.grossMargin)}">${fmtPct(f.grossMargin)}</div></div>
+        <div class="stat-card"><div class="stat-label">영업이익률</div><div class="stat-value ${colorMargin(f.operatingMargin)}">${fmtPct(f.operatingMargin)}</div></div>
+        <div class="stat-card"><div class="stat-label">순이익률</div><div class="stat-value ${colorMargin(f.profitMargin)}">${fmtPct(f.profitMargin)}</div></div>
+        <div class="stat-card"><div class="stat-label">ROE</div><div class="stat-value ${colorROE(f.returnOnEquity)}">${fmtPct(f.returnOnEquity)}</div></div>
+        <div class="stat-card"><div class="stat-label">ROA</div><div class="stat-value">${fmtPct(f.returnOnAssets)}</div></div>
+        <div class="stat-card"><div class="stat-label">EPS (TTM)</div><div class="stat-value">${fmtRatio(f.trailingEps)}</div></div>
+        <div class="stat-card"><div class="stat-label">EPS (Forward)</div><div class="stat-value">${fmtRatio(f.forwardEps)}</div></div>
+        <div class="stat-card"><div class="stat-label">잉여현금흐름</div><div class="stat-value">${fmtBigMoney(f.freeCashflow)}</div></div>
+      </div>
+    </div>`;
+
+  // 성장성
+  const growth = `
+    <div class="diag-section">
+      <h4>📈 성장성</h4>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-label">매출 성장률 (YoY)</div><div class="stat-value ${colorGrowth(f.revenueGrowth)}">${fmtPct(f.revenueGrowth)}</div></div>
+        <div class="stat-card"><div class="stat-label">EPS 성장률 (YoY)</div><div class="stat-value ${colorGrowth(f.earningsGrowth)}">${fmtPct(f.earningsGrowth)}</div></div>
+        <div class="stat-card"><div class="stat-label">총 매출</div><div class="stat-value">${fmtBigMoney(f.totalRevenue)}</div></div>
+        <div class="stat-card"><div class="stat-label">주당 매출</div><div class="stat-value">${fmtRatio(f.revenuePerShare)}</div></div>
+      </div>
+    </div>`;
+
+  // 배당
+  const hasDiv = f.dividendYield != null && f.dividendYield > 0;
+  const dividend = hasDiv ? `
+    <div class="diag-section">
+      <h4>💸 배당</h4>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-label">배당수익률</div><div class="stat-value pos">${fmtPct(f.dividendYield)}</div></div>
+        <div class="stat-card"><div class="stat-label">주당 배당금</div><div class="stat-value">${fmtP(f.dividendRate)}</div></div>
+        <div class="stat-card"><div class="stat-label">배당성향</div><div class="stat-value">${fmtPct(f.payoutRatio)}</div></div>
+        <div class="stat-card"><div class="stat-label">배당락일</div><div class="stat-value" style="font-size:13px;">${fmtDate(f.exDividendDate)}</div></div>
+      </div>
+    </div>` : '';
+
+  // 위험·재무건전성
+  const risk = `
+    <div class="diag-section">
+      <h4>⚠️ 위험·재무건전성</h4>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-label">베타</div><div class="stat-value ${colorBeta(f.beta)}">${fmtRatio(f.beta)}</div></div>
+        <div class="stat-card"><div class="stat-label">부채/자본 (D/E)</div><div class="stat-value ${colorDebt(f.debtToEquity)}">${fmtRatio(f.debtToEquity)}</div></div>
+        <div class="stat-card"><div class="stat-label">유동비율</div><div class="stat-value">${fmtRatio(f.currentRatio)}</div></div>
+        <div class="stat-card"><div class="stat-label">공매도 비율</div><div class="stat-value ${colorShort(f.shortPercentOfFloat)}">${fmtPct(f.shortPercentOfFloat)}</div></div>
+        <div class="stat-card"><div class="stat-label">공매도 잔고</div><div class="stat-value">${fmtVolBig(f.sharesShort)}</div></div>
+        <div class="stat-card"><div class="stat-label">현금 보유</div><div class="stat-value">${fmtBigMoney(f.totalCash)}</div></div>
+      </div>
+    </div>`;
+
+  // 분석가 의견
+  const recKey = f.recommendationKey;
+  const recLabel = { strong_buy: '강력매수', buy: '매수', hold: '보유', sell: '매도', strong_sell: '강력매도', none: '의견없음' }[recKey] || recKey || '-';
+  const recColor = (recKey === 'strong_buy' || recKey === 'buy') ? '#4ade80' : recKey === 'hold' ? '#fbbf24' : (recKey === 'sell' || recKey === 'strong_sell') ? '#ef4444' : 'var(--muted)';
+  const targetGap = f.targetMeanPrice && r.price ? ((f.targetMeanPrice - r.price) / r.price) * 100 : null;
+  const analyst = (f.targetMeanPrice || f.recommendationKey) ? `
+    <div class="diag-section">
+      <h4>🎯 분석가 의견</h4>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-label">의견</div><div class="stat-value" style="color:${recColor}; font-size:15px;">${recLabel}</div></div>
+        <div class="stat-card"><div class="stat-label">평균 점수 (1~5)</div><div class="stat-value">${fmtRatio(f.recommendationMean, 2)}</div></div>
+        <div class="stat-card"><div class="stat-label">목표가</div><div class="stat-value">${fmtP(f.targetMeanPrice)}</div></div>
+        <div class="stat-card"><div class="stat-label">상승여력</div><div class="stat-value ${targetGap >= 0 ? 'pos' : 'neg'}">${targetGap != null ? (targetGap >= 0 ? '+' : '') + targetGap.toFixed(1) + '%' : '-'}</div></div>
+        <div class="stat-card"><div class="stat-label">분석가 수</div><div class="stat-value">${f.numberOfAnalystOpinions ?? '-'}</div></div>
+      </div>
+    </div>` : '';
+
+  // 이벤트
+  const earningsDate = f.earningsTimestamp ? fmtDate(f.earningsTimestamp) : null;
+  const events = (earningsDate || f.exDividendDate) ? `
+    <div class="diag-section">
+      <h4>📅 다가오는 이벤트</h4>
+      <div class="stat-grid">
+        ${earningsDate ? `<div class="stat-card"><div class="stat-label">다음 실적 발표</div><div class="stat-value" style="font-size:14px; color:#fbbf24;">${earningsDate}</div></div>` : ''}
+        ${f.exDividendDate ? `<div class="stat-card"><div class="stat-label">배당락일</div><div class="stat-value" style="font-size:14px;">${fmtDate(f.exDividendDate)}</div></div>` : ''}
+      </div>
+    </div>` : '';
+
+  // 회사 개요
+  const profile = (f.sector || f.summary) ? `
+    <div class="diag-section">
+      <h4>🏢 회사 개요</h4>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:8px;">
+        ${f.sector ? `<span style="background:#1e293b; padding:4px 10px; border-radius:12px; font-size:12px;">📂 ${f.sector}</span>` : ''}
+        ${f.industry ? `<span style="background:#1e293b; padding:4px 10px; border-radius:12px; font-size:12px;">🏭 ${f.industry}</span>` : ''}
+        ${f.country ? `<span style="background:#1e293b; padding:4px 10px; border-radius:12px; font-size:12px;">🌍 ${f.country}</span>` : ''}
+        ${f.website ? `<a href="${f.website}" target="_blank" rel="noopener" class="link-btn">🔗 공식 사이트</a>` : ''}
+      </div>
+      ${f.summary ? `<div style="font-size:12px; line-height:1.7; color:var(--muted); max-height:140px; overflow:auto;">${f.summary}</div>` : ''}
+    </div>` : '';
+
+  return statsGrid + chartBlock + valuation + profitability + growth + dividend + risk + analyst + events + profile;
 }
 
 // ============================================================
