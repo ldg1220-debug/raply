@@ -210,17 +210,129 @@ const polyline = (vals, color, strokeW, dash) => {
 
 ---
 
-## 6. Git 상태
+## 6. 주식(US+KR) 모드 추가 — 신규 대형 작업
+
+### 6-1. 사용자 결정사항
+| 항목 | 결정 |
+|---|---|
+| 지원 시장 | **미국 + 한국 둘 다** |
+| 기능 범위 | **차트 + 펀더멘털 + 스크리너** |
+| UI 전환 | **상단 토글 (크립토 ⇄ 주식)** |
+
+### 6-2. 데이터 소스
+| 시장 | API | 비고 |
+|---|---|---|
+| 미국 주식 | **Yahoo Finance** `query1.finance.yahoo.com/v8/finance/chart/{TICKER}` | CORS 가능, 무료 |
+| 미국 펀더멘털 | **Yahoo `quoteSummary`** (`?modules=summaryDetail,defaultKeyStatistics,financialData,assetProfile,calendarEvents`) | 무료 |
+| 한국 주식 (캔들) | **네이버 금융 크롤링** (`/api/sise/etfItemDailyPriceInfo.naver` 등) 또는 Yahoo Finance (`005930.KS` 형식) | Yahoo가 CORS 더 쉬움 |
+| 한국 펀더멘털 | Yahoo (`.KS` / `.KQ` 티커) | 일부 항목만 |
+| 스크리너 후보 | 미국: S&P 500 / NASDAQ 100 정적 리스트, 한국: KOSPI200 / KOSDAQ150 정적 리스트 | 동적 로드 어려움, JSON 정적 |
+
+### 6-3. 구현 단계 (우선순위 순)
+
+#### Phase A: 모드 시스템 골격 (반나절~1일)
+1. **상단 토글 UI** 추가 (헤더 좌측 또는 검색창 옆)
+   - `state.market = 'crypto' | 'us-stock' | 'kr-stock'` 또는 `'crypto' | 'stock'`로 통합
+2. **데이터 페치 분기 추상화**
+   - `fetchUniverse(market)` — 종목 리스트
+   - `fetchCandles(symbol, market)` — OHLCV
+   - `fetchMeta(symbol, market)` — 펀더멘털
+3. **단순 티커 입력 → 차트 렌더링** 동작 확인 (AAPL, 005930.KS 등)
+
+#### Phase B: 주식용 진단 모달 (2~3일)
+1. `renderDiagnosisTab` 분기: `market === 'stock'` 시 다른 컴포넌트
+2. **크립토 전용 섹션 제거**:
+   - 펀딩 레이트 (`renderFundingBlock`, `fundingBarSVG`)
+   - Crime Grade (S/A/B/C/D 펌프 등급)
+   - OI 시그널
+   - 17-signal 누적 점수
+   - CEX 매트릭스
+   - GoPlus / 온체인
+3. **주식 전용 섹션 추가**:
+   - 기본 정보: 섹터, 산업, 시총, 발행주식수
+   - 밸류에이션: PER, PBR, PSR, EV/EBITDA
+   - 수익성: EPS, ROE, 영업이익률
+   - 성장성: 매출/EPS 성장률
+   - 배당: 수익률, 배당 성장률, 배당성향
+   - 위험: 베타, 52주 변동성, 공매도 비율
+   - 이벤트: 다음 실적 발표일, 배당락일
+   - 차트 마커: 52주 최고/최저선, 실적 발표 세로선
+4. **차트 코어는 그대로 재사용** (`bigCandleSVG`, `setupChartZoom`)
+
+#### Phase C: 스크리너 (3~5일)
+1. **스코어링 시스템 재설계** (크립토 17-signal과 별개)
+   - 모드별 점수 함수: `scoreCrypto()`, `scoreStock()`
+   - 추천 전략 카테고리: 가치주 / 성장주 / 모멘텀 / 배당
+   - 각 카테고리별 시그널 (예시):
+     - **가치**: PER<15, PBR<1.5, ROE>10%, 부채비율<100%
+     - **성장**: 매출 성장>20%, EPS 성장>15%, PEG<1.5
+     - **모멘텀**: 52주 신고가 근처, RSI>60, MA 정배열, 거래량 증가
+     - **배당**: 배당수익률>3%, 배당성장 10년 이상
+2. **스크리너 테이블** 컬럼 분기: 크립토(현재) vs 주식
+3. **종목 유니버스 페치**:
+   - 미국: S&P500 + NASDAQ100 (정적 JSON, ~600개)
+   - 한국: KOSPI200 + KOSDAQ150 (정적 JSON, ~350개)
+   - 각 종목별 quoteSummary 병렬 페치 (rate limit 주의 — 동시 ~10개)
+4. **캐싱 전략**: 펀더멘털은 일 1회, 가격은 5분 갱신
+
+#### Phase D: 한국 주식 특이사항 (1~2일)
+1. **티커 형식**: `005930.KS` (코스피), `000660.KQ` (코스닥)
+2. **상하한가 30%** 라인 표시
+3. **VI 발동 이력** (가능하면)
+4. **외국인/기관 매매 동향** (네이버 크롤링 가능 시 별도 차트)
+
+### 6-4. 파일 구조 제안
+```
+index.html (단일 SPA 유지)
+├── state.market (모드)
+├── fetchUniverse(market) ─┬─ fetchUniverseCrypto()
+│                          ├─ fetchUniverseUS()    ← S&P500 정적 JSON
+│                          └─ fetchUniverseKR()    ← KOSPI200 정적 JSON
+├── fetchCandles(symbol, market) ─┬─ Binance API (기존)
+│                                 └─ Yahoo Finance API
+├── fetchMeta(symbol, market) ─┬─ CoinGecko (기존)
+│                              └─ Yahoo quoteSummary
+├── score(r, market) ─┬─ scoreCrypto (기존 17-signal)
+│                     ├─ scoreStockValue
+│                     ├─ scoreStockGrowth
+│                     ├─ scoreStockMomentum
+│                     └─ scoreStockDividend
+└── renderDiagnosisTab(r) ─┬─ renderDiagnosisCrypto(r)  (기존 리네임)
+                           └─ renderDiagnosisStock(r)   (신규)
+```
+
+### 6-5. 재사용 가능한 모듈
+- ✅ `bigCandleSVG`, `setupChartZoom` — 그대로
+- ✅ `smaArr`, `vwmaArr`, `rsiArr` — 그대로
+- ✅ Fib retracement/extension — 그대로
+- ✅ 크로스헤어/툴팁 — 그대로
+- ✅ 디자인 토큰, 컴포넌트 CSS (`.kpi`, `.metric-row`, `.factor-pill` 등) — 그대로
+- ❌ 펀딩 관련 모듈 — 사용 안 함
+- ❌ Crime Grade 계산 — 사용 안 함
+- ❌ 17-signal scoring — 크립토에서만 사용
+
+### 6-6. 첫 구현 시 시작 지점
+**Phase A부터 시작**. 가장 작은 단위로:
+1. 헤더에 `<select id="market">` 추가 (크립토 / 미국주식 / 한국주식)
+2. `state.market` 변수 도입
+3. 검색창에 `AAPL` 입력 → Yahoo Finance fetch → 기존 `bigCandleSVG`에 전달 → 차트 표시 확인
+
+이 단계 성공하면 그 다음은 단순 확장.
+
+---
+
+## 7. Git 상태
 
 - **현재 브랜치**: `claude/crypto-pump-dump-analysis-FoCcU`
-- **마지막 커밋**: `98e897d` (MA/VWMA non-scaling-stroke fix)
+- **마지막 커밋**: `c7caf3b` (CONTEXT.md handoff doc)
 - **원격**: `origin/claude/crypto-pump-dump-analysis-FoCcU` (push 완료)
 - **PR**: 사용자 명시 요청 시에만 생성
 
 ---
 
-## 7. 새 세션 시작 시 권장 첫 명령
+## 8. 새 세션 시작 시 권장 첫 명령
 
+### 옵션 A — 진단 모달 디자인 개선 이어가기
 ```
 /home/user/raply/CONTEXT.md 읽고 작업 이어가자.
 다음은 진단 모달 디자인 개선:
@@ -228,4 +340,14 @@ const polyline = (vals, color, strokeW, dash) => {
 2) Crime Grade 카드 재구성
 3) Apex banner 리파인
 이미 CSS 클래스(.diag-section--hero, .kpi, .factor-pill, .grade-chip, .apex-banner 등)는 index.html ~line 290에 정의되어 있음.
+```
+
+### 옵션 B — 주식(US+KR) 모드 추가 시작
+```
+/home/user/raply/CONTEXT.md 읽고 §6 주식 모드 작업 시작.
+Phase A부터:
+1) 헤더에 시장 토글 (크립토/미국주식/한국주식) 추가
+2) state.market 도입
+3) AAPL 티커 입력 → Yahoo Finance fetch → bigCandleSVG로 차트 표시 (최소 동작 확인)
+차트 코어(bigCandleSVG, setupChartZoom)는 그대로 재사용. 펀딩/Crime Grade/CEX/온체인은 주식 모드에서 비표시.
 ```
