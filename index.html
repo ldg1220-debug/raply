@@ -1517,8 +1517,9 @@ const StockUniverse = {
     ['REGN','Regeneron'],['C','Citigroup'],['ETN','Eaton'],['SBUX','Starbucks'],['LMT','Lockheed Martin'],
     ['MU','Micron'],['VRTX','Vertex Pharm'],['PANW','Palo Alto Networks'],['NKE','Nike'],['ANET','Arista']
   ],
-  // 한국 KOSPI/KOSDAQ 인기 ~40개
+  // 한국 KOSPI/KOSDAQ 인기 ~60개
   KR: [
+    // KOSPI 시총 상위
     ['005930','삼성전자'],['000660','SK하이닉스'],['373220','LG에너지솔루션'],['207940','삼성바이오로직스'],
     ['005380','현대차'],['000270','기아'],['105560','KB금융'],['035420','NAVER'],['035720','카카오'],
     ['005490','POSCO홀딩스'],['068270','셀트리온'],['028260','삼성물산'],['055550','신한지주'],
@@ -1528,9 +1529,14 @@ const StockUniverse = {
     ['030200','KT'],['034730','SK'],['316140','우리금융지주'],['024110','기업은행'],
     ['138040','메리츠금융지주'],['047810','한국항공우주'],['086280','현대글로비스'],['066570','LG전자'],
     ['096770','SK이노베이션'],['051910','LG화학'],['006400','삼성SDI'],
-    // 코스닥
+    ['000810','삼성화재'],['034220','LG디스플레이'],['011170','롯데케미칼'],['009540','HD한국조선해양'],
+    ['010140','삼성중공업'],['078930','GS'],['180640','한진칼'],['000720','현대건설'],
+    ['004020','현대제철'],['021240','코웨이'],['097950','CJ제일제당'],['006800','미래에셋증권'],
+    // KOSDAQ 인기
     ['247540','에코프로비엠'],['086520','에코프로'],['091990','셀트리온헬스케어'],['196170','알테오젠'],
-    ['058470','리노공업'],['293490','카카오게임즈'],['041510','SM'],['357780','솔브레인']
+    ['058470','리노공업'],['293490','카카오게임즈'],['041510','SM'],['357780','솔브레인'],
+    ['066970','엘앤에프'],['112040','위메이드'],['039030','이오테크닉스'],['145020','휴젤'],
+    ['035900','JYP Ent.'],['122870','와이지엔터테인먼트'],['418550','제이오'],['277810','레인보우로보틱스']
   ],
 
   get(market) {
@@ -3131,12 +3137,22 @@ function rsiArr(closes, period = 14) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // 큰 차트 — 캔들 + 볼륨 + RSI + Fibonacci (일봉)
-function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
+function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80, opts = {}) {
   if (!candles || candles.length === 0) return '<div class="muted">캔들 데이터 없음</div>';
+  // opts: { dailyLimits: {upper, lower} | null, w52: {high, low} | null }
   const rh = 60; // RSI 패널 높이
   const totalH = ch + vh + 20 + 8 + rh + 12;
   const highs = candles.map(c => c.h), lows = candles.map(c => c.l), vols = candles.map(c => c.v), closes = candles.map(c => c.c);
-  const maxP = Math.max(...highs), minP = Math.min(...lows);
+  let maxP = Math.max(...highs), minP = Math.min(...lows);
+  // 상하한가/52주 라인이 가시 범위 밖이면 범위 확장 (선이 차트 밖으로 잘리지 않도록)
+  if (opts.dailyLimits) {
+    if (opts.dailyLimits.upper > maxP) maxP = opts.dailyLimits.upper;
+    if (opts.dailyLimits.lower < minP) minP = opts.dailyLimits.lower;
+  }
+  if (opts.w52) {
+    if (opts.w52.high > maxP) maxP = opts.w52.high;
+    if (opts.w52.low < minP) minP = opts.w52.low;
+  }
   const rangeP = maxP - minP || 1;
   const maxV = Math.max(...vols, 1);
   const barW = w / candles.length;
@@ -3191,6 +3207,34 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
     const fy = toY(fp).toFixed(1);
     return `<line x1="0" y1="${fy}" x2="${w}" y2="${fy}" stroke="${FIB_COLORS[i]}" stroke-width="1.1" stroke-dasharray="6,4" vector-effect="non-scaling-stroke" opacity="0.75"/>`;
   }).join('') : '';
+
+  // 한국 주식 상하한가 라인 (±30%) + 52주 신고가/신저가 라인
+  const fmtLabel = p => p >= 1 ? p.toFixed(2) : p.toFixed(4);
+  let extraLines = '';
+  let extraLabels = '';
+  if (opts.dailyLimits) {
+    const { upper, lower } = opts.dailyLimits;
+    const uy = toY(upper);
+    const ly = toY(lower);
+    extraLines += `<line x1="0" y1="${uy.toFixed(1)}" x2="${w}" y2="${uy.toFixed(1)}" stroke="#ef4444" stroke-width="1.3" stroke-dasharray="10,5" vector-effect="non-scaling-stroke" opacity="0.85"/>`;
+    extraLines += `<line x1="0" y1="${ly.toFixed(1)}" x2="${w}" y2="${ly.toFixed(1)}" stroke="#3b82f6" stroke-width="1.3" stroke-dasharray="10,5" vector-effect="non-scaling-stroke" opacity="0.85"/>`;
+    // 좌측 라벨
+    extraLabels += `<rect x="2" y="${(uy - 7).toFixed(1)}" width="92" height="14" fill="#0b0e14" opacity="0.9" stroke="#ef4444" stroke-width="0.7" rx="2"/>
+      <text x="48" y="${(uy + 3.5).toFixed(1)}" fill="#ef4444" font-size="10" font-weight="700" font-family="monospace" text-anchor="middle">상한가 ${fmtLabel(upper)}</text>`;
+    extraLabels += `<rect x="2" y="${(ly - 7).toFixed(1)}" width="92" height="14" fill="#0b0e14" opacity="0.9" stroke="#3b82f6" stroke-width="0.7" rx="2"/>
+      <text x="48" y="${(ly + 3.5).toFixed(1)}" fill="#3b82f6" font-size="10" font-weight="700" font-family="monospace" text-anchor="middle">하한가 ${fmtLabel(lower)}</text>`;
+  }
+  if (opts.w52) {
+    const { high, low } = opts.w52;
+    const hy = toY(high);
+    const ly2 = toY(low);
+    extraLines += `<line x1="0" y1="${hy.toFixed(1)}" x2="${w}" y2="${hy.toFixed(1)}" stroke="#fbbf24" stroke-width="1.0" stroke-dasharray="3,4" vector-effect="non-scaling-stroke" opacity="0.7"/>`;
+    extraLines += `<line x1="0" y1="${ly2.toFixed(1)}" x2="${w}" y2="${ly2.toFixed(1)}" stroke="#94a3b8" stroke-width="1.0" stroke-dasharray="3,4" vector-effect="non-scaling-stroke" opacity="0.7"/>`;
+    extraLabels += `<rect x="98" y="${(hy - 7).toFixed(1)}" width="84" height="14" fill="#0b0e14" opacity="0.9" stroke="#fbbf24" stroke-width="0.6" rx="2"/>
+      <text x="140" y="${(hy + 3.5).toFixed(1)}" fill="#fbbf24" font-size="10" font-weight="700" font-family="monospace" text-anchor="middle">52w↑ ${fmtLabel(high)}</text>`;
+    extraLabels += `<rect x="98" y="${(ly2 - 7).toFixed(1)}" width="84" height="14" fill="#0b0e14" opacity="0.9" stroke="#94a3b8" stroke-width="0.6" rx="2"/>
+      <text x="140" y="${(ly2 + 3.5).toFixed(1)}" fill="#94a3b8" font-size="10" font-weight="700" font-family="monospace" text-anchor="middle">52w↓ ${fmtLabel(low)}</text>`;
+  }
   // 인라인 가격 라벨 — 각 Fib 선의 우측 끝에 작은 pill (가격만)
   // Y 자동 맞춤 시 JS 에서 rect.y / text.y 를 새 위치로 업데이트
   const fibInline = fibRange > 0 ? FIB_RATIOS.map((r, i) => {
@@ -3293,7 +3337,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
   //     └── cz-rsi   (Y 고정 0~100): RSI 폴리라인
   // 그룹 외부(고정): 격자선/RSI 배경·임계선/범례/Fib 인라인 라벨/Fib 패널/RSI 라벨/시간축/Vol 제목/크로스헤어
   const zoomGroup = `<g id="chartZoomG">
-    <g id="cz-price">${fibLines}${priceParts}${maLayer}</g>
+    <g id="cz-price">${fibLines}${extraLines}${priceParts}${maLayer}</g>
     <g id="cz-vol">${volParts}</g>
     <g id="cz-rsi">${rsiPolyline}</g>
   </g>`;
@@ -3327,7 +3371,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80) {
     rsi14, vwma100, ma99, ma25, ma7
   };
 
-  return `<svg id="bigchartsvg" width="100%" viewBox="0 0 ${w} ${totalH}" preserveAspectRatio="none" style="display:block; cursor:crosshair; touch-action:none;">${grid}${rsiBg}${zoomGroup}${fibInline}${volDivider}${legend}${fibLabels}${rsiLabels}${xLabels}${volTitle}${crosshair}</svg>`;
+  return `<svg id="bigchartsvg" width="100%" viewBox="0 0 ${w} ${totalH}" preserveAspectRatio="none" style="display:block; cursor:crosshair; touch-action:none;">${grid}${rsiBg}${zoomGroup}${fibInline}${extraLabels}${volDivider}${legend}${fibLabels}${rsiLabels}${xLabels}${volTitle}${crosshair}</svg>`;
 }
 
 function fundingBarSVG(rates, w = 1100, h = 160, history = null) {
@@ -4190,9 +4234,20 @@ function openStockModal(r) {
   const exchange = r.meta?.exchangeName || (r.market === 'kr-stock' ? 'KRX' : '');
   const longName = r.fundamentals?.longName || '';
   const nameSuffix = longName ? ` — <span style="font-size:13px; color:#cbd5e1; font-weight:500;">${longName}</span>` : '';
+  // 시간 외 단일가 / Pre-market / Post-market (Yahoo meta)
+  let extraPrice = '';
+  const pre = r.meta?.preMarketPrice, post = r.meta?.postMarketPrice;
+  if (pre && pre !== r.price) {
+    const ch = ((pre - r.price) / r.price) * 100;
+    extraPrice += ` <span style="margin-left:8px; font-size:11px; color:#a78bfa;">Pre ${fmtStockPrice(pre, r.currency)} (${ch >= 0 ? '+' : ''}${ch.toFixed(2)}%)</span>`;
+  }
+  if (post && post !== r.price) {
+    const ch = ((post - r.price) / r.price) * 100;
+    extraPrice += ` <span style="margin-left:8px; font-size:11px; color:#fbbf24;">After ${fmtStockPrice(post, r.currency)} (${ch >= 0 ? '+' : ''}${ch.toFixed(2)}%)</span>`;
+  }
   $('m_symbol').innerHTML = `${r.symbol}${nameSuffix}${exchange ? ` <span class="muted" style="font-size:13px; font-weight:500;">· ${exchange}</span>` : ''}
     <span style="margin-left:14px; font-size:15px; font-family:monospace; color:#e2e8f0; font-weight:700;">${priceStr}</span>
-    <span style="margin-left:8px; font-size:13px; color:${ch24Color}; font-weight:600;">${ch24Str}</span>`;
+    <span style="margin-left:8px; font-size:13px; color:${ch24Color}; font-weight:600;">${ch24Str}</span>${extraPrice}`;
   const sector = r.fundamentals?.sector ? ` · ${r.fundamentals.sector}${r.fundamentals.industry ? ` / ${r.fundamentals.industry}` : ''}` : '';
   $('m_meta').innerHTML = `
     상장 ${r.ageDays ?? '?'}일 데이터 · 14d ${r.rise14 >= 0 ? '+' : ''}${r.rise14.toFixed(2)}% · 52w ${fmtStockPrice(r.w52low, r.currency)}~${fmtStockPrice(r.w52high, r.currency)}${sector}
@@ -4235,6 +4290,17 @@ function renderStockDiagnosisTab(r) {
   const exchange = m.exchangeName || '-';
   const tz = m.exchangeTimezoneShortName || '';
 
+  // 한국 주식 데이터 정확도 안내 (Yahoo Finance 기반이라 한국 종목은 일부 누락 가능)
+  const krNote = r.market === 'kr-stock' ? `
+    <div class="diag-section" style="border-left:3px solid #fbbf24; padding:10px 14px;">
+      <div style="font-size:12px; color:#fbbf24; font-weight:700; margin-bottom:4px;">⚠️ 한국 주식 데이터 안내</div>
+      <div style="font-size:11px; line-height:1.6; color:var(--muted);">
+        Yahoo Finance 기반이라 한국 종목의 일부 펀더멘털(PER/배당 등)이 누락되거나 지연될 수 있습니다.
+        정확한 정보는 <a href="https://finance.naver.com/item/main.naver?code=${(r.symbol || '').replace(/\.(KS|KQ)$/, '')}" target="_blank" rel="noopener" style="color:#60a5fa;">네이버 금융</a> ·
+        <a href="https://finance.daum.net/quotes/A${(r.symbol || '').replace(/\.(KS|KQ)$/, '')}" target="_blank" rel="noopener" style="color:#60a5fa;">다음 금융</a>에서 확인하세요.
+      </div>
+    </div>` : '';
+
   // 52주 범위 내 현재가 위치 (시각 바)
   const w52pos = (r.price - r.w52low) / Math.max(0.0001, r.w52high - r.w52low);
   const w52pct = Math.max(0, Math.min(1, w52pos)) * 100;
@@ -4266,17 +4332,30 @@ function renderStockDiagnosisTab(r) {
       </div>
     </div>`;
 
+  // 차트 옵션 — 한국 주식 상하한가(±30%), 모든 주식 52주 신고가/신저가
+  const chartOpts = {};
+  if (r.market === 'kr-stock') {
+    const lastClose = r.candlesAll[r.candlesAll.length - 1]?.c;
+    if (lastClose) {
+      chartOpts.dailyLimits = { upper: lastClose * 1.30, lower: lastClose * 0.70 };
+    }
+  }
+  if (r.w52high && r.w52low) {
+    chartOpts.w52 = { high: r.w52high, low: r.w52low };
+  }
+  const chartTitleExtra = r.market === 'kr-stock' ? ' · 상한가(빨강)/하한가(파랑) ±30%' : '';
+  const chartTitleW52 = (chartOpts.w52 ? ' · 52w 신고가(노랑)/신저가(회색)' : '');
   // 차트 블록
   const chartBlock = `<div class="chart-block">
-    <h3>${r.candlesAll.length}-Day 캔들 + 거래량 (MA7/25/99 · VWMA100)
+    <h3>${r.candlesAll.length}-Day 캔들 + 거래량 (MA7/25/99 · VWMA100)${chartTitleExtra}${chartTitleW52}
       <span style="font-size:11px; font-weight:400; color:var(--muted);">스크롤 줌 · 드래그 이동 · 더블클릭 초기화 · 커서로 가격 확인</span>
     </h3>
-    ${bigCandleSVG(r.candlesAll)}
+    ${bigCandleSVG(r.candlesAll, 1100, 280, 80, chartOpts)}
   </div>`;
 
   // 펀더멘털이 없으면 안내
   if (!f) {
-    return statsGrid + chartBlock + `<div class="diag-section" style="border-left:3px solid #ef4444;">
+    return krNote + statsGrid + chartBlock + `<div class="diag-section" style="border-left:3px solid #ef4444;">
       <h4 style="color:#fbbf24;">⚠️ 펀더멘털 페치 실패</h4>
       <div class="muted" style="font-size:13px; line-height:1.7;">
         Yahoo Finance API에서 펀더멘털 데이터를 가져오지 못했습니다. CORS 프록시 문제이거나 종목 코드 미발견일 수 있습니다.<br>
@@ -4404,7 +4483,7 @@ function renderStockDiagnosisTab(r) {
       ${f.summary ? `<div style="font-size:12px; line-height:1.7; color:var(--muted); max-height:140px; overflow:auto;">${f.summary}</div>` : ''}
     </div>` : '';
 
-  return statsGrid + chartBlock + valuation + profitability + growth + dividend + risk + analyst + events + profile;
+  return krNote + statsGrid + chartBlock + valuation + profitability + growth + dividend + risk + analyst + events + profile;
 }
 
 // ============================================================
