@@ -228,6 +228,16 @@ const polyline = (vals, color, strokeW, dash) => {
 | 한국 펀더멘털 | Yahoo (`.KS` / `.KQ` 티커) | 일부 항목만 |
 | 스크리너 후보 | 미국: S&P 500 / NASDAQ 100 정적 리스트, 한국: KOSPI200 / KOSDAQ150 정적 리스트 | 동적 로드 어려움, JSON 정적 |
 
+### 6-2b. 실제 검증으로 확인된 사실 (구현 후 수정됨)
+- **Yahoo는 CORS 헤더가 없음** → 브라우저 직접 호출 불가. 무료 공용 프록시(corsproxy.io 등)는 `keyless_legacy_url`로 막힘.
+  → 앱은 ①⚙ 프록시(localStorage `pps_yf_proxy`) ②같은 출처 `/api/yf` ③공용 프록시 순으로 시도. 설정법은 `PROXY.md`, 코드는 `proxy/cloudflare-worker.js`, `api/yf.js`.
+- **`quoteSummary`는 crumb 필요(401 Invalid Crumb)** → 사용 불가. 펀더멘털은 `fundamentals-timeseries`(crumb 불필요) + `chart?events=div`(배당) + `v1/finance/search`(업종/이름)로 계산.
+  베타·공매도·애널리스트·실적일·회사소개는 제공 불가(UI에서 제거).
+- **Yahoo는 틀린 접미사(.KS↔.KQ)로 조회해도 과거에 멈춘 가짜 시세를 반환** (예: 005930.KQ=84,400원) → `resolveKR`이 두 접미사를 모두 조회해 `regularMarketTime`이 최신인 쪽 선택.
+- 가치/성장/배당 스크리닝은 캔들 없이 행 생성 → 행 클릭 시 캔들을 지연 로딩.
+- 시장 전환 시 이전 시장 스크리너 결과 제거 (통화 혼동 버그).
+- 차트: 1만 이상 가격(원화) 축 라벨 과학적 표기 수정(`fmtAxisPrice`), 격자 가격 라벨 순서 뒤집힘 버그 수정(크립토 포함).
+
 ### 6-3. 구현 단계 (우선순위 순)
 
 #### Phase A: 모드 시스템 골격 (반나절~1일)

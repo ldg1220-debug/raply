@@ -690,6 +690,7 @@
     <button id="deepBtBtn" title="펌프 -21d/-10d/-3d/피크 4단계 비교">🔬+ 심층</button>
     <button id="gradeValBtn" title="실제 Crime 47종목 대상 Crime Grade 정확도 검증 (실제 API 데이터 사용)">📊 Grade검증</button>
     <button id="dumpScanBtn" title="180일 신고가 근접 + 최근 30일 내 ATH 갱신 종목 고점 위험 스캔">🔻 고점</button>
+    <button id="proxyBtn" style="display:none;" title="Yahoo Finance 접속용 프록시 주소 설정 (PROXY.md 참고)">⚙ 프록시</button>
     <button id="watchBtn">★ Watchlist</button>
     <button id="scanBtn" class="primary">스캔 시작</button>
   </div>
@@ -880,7 +881,7 @@
       <th data-sort-stock="earningsGrowth">EPS↑</th>
       <th data-sort-stock="dividendYield">배당</th>
       <th data-sort-stock="debtToEquity">D/E</th>
-      <th data-sort-stock="beta">β</th>
+      <th data-sort-stock="enterpriseToEbitda">EV/EBITDA</th>
       <th data-sort-stock="w52pos">52w위치</th>
       <th data-sort-stock="score" class="sorted">Score ▼</th>
       <th data-sort-stock="grade">등급</th>
@@ -1010,6 +1011,9 @@ async function getJSON(url, retry = 2, timeoutMs = 12000) {
   }
 }
 
+function fmtAxisPrice(p) {
+  return Math.abs(p) >= 10000 ? Math.round(p).toLocaleString('en-US') : p.toPrecision(4);
+}
 function fmtNum(n, d=2) {
   if (n === null || n === undefined || isNaN(n)) return '-';
   if (Math.abs(n) >= 1) return n.toLocaleString(undefined, { maximumFractionDigits: d });
@@ -1276,234 +1280,251 @@ const CoinGecko = {
 
 // GoPlus Token Security API (free, no key) — EVM chains only
 // ============================================================
-// YahooFinance — 주식(미국·한국) 캔들/메타 페치
-// 여러 CORS 프록시를 순차 시도하여 안정성 확보
+// YahooFinance — 주식(미국·한국) 캔들/펀더멘털
+// Yahoo 는 CORS 헤더가 없어 브라우저 직접 호출 불가 → 프록시 필요.
+//   ① 사용자 프록시(⚙ 프록시 버튼, localStorage 'pps_yf_proxy')  ← 가장 안정적
+//   ② 같은 출처 /api/yf?url=  (Vercel 등에 배포했을 때)
+//   ③ 공용 CORS 프록시 (자주 막힘 — 최후 수단)
+// 펀더멘털은 crumb 가 필요한 quoteSummary 대신 fundamentals-timeseries 사용.
 // ============================================================
 const YahooFinance = {
-  // 시도할 프록시 목록 (순차 fallback)
-  PROXIES: [
-    url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-    url => `https://cors.eu.org/${url}`,
-    url => url  // 직접 (브라우저가 받아주면)
-  ],
+  _good: null,          // 마지막으로 성공한 프록시 key
+  _deadUntil: 0,        // 모든 프록시 실패 시 잠시 빠른 실패
+  _deadErr: null,
+  _krMap: {},           // '005930' → '005930.KS' | '005930.KQ'
 
-  // 입력 ticker → 야후 표준 ticker 변환
-  //   US: AAPL → AAPL
-  //   KR: 005930 (숫자 6자리) → 005930.KS  (또는 .KQ)
-  //   KR: 005930.KS / 005930.KQ → 그대로
-  normalizeTicker(input, market) {
-    const raw = (input || '').trim().toUpperCase();
-    if (!raw) return null;
-    if (market === 'kr-stock') {
-      if (/^\d{6}$/.test(raw)) return raw + '.KS';  // 기본 코스피 가정 — 실패 시 .KQ 재시도
-      if (/^\d{6}\.(KS|KQ)$/.test(raw)) return raw;
-      return raw;  // ETF 등 영문 티커도 허용
-    }
-    return raw;  // US/일반: 영문 그대로
+  getCustomProxy() {
+    try { return (localStorage.getItem('pps_yf_proxy') || '').trim(); } catch { return ''; }
+  },
+  setCustomProxy(v) {
+    try { localStorage.setItem('pps_yf_proxy', (v || '').trim()); } catch {}
+    this._good = null; this._deadUntil = 0; this._deadErr = null;
   },
 
-  async _fetchChart(ticker, range, interval) {
-    const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}`;
+  _proxies() {
+    const list = [];
+    const custom = this.getCustomProxy();
+    if (custom) {
+      list.push({ key: 'custom', fn: u => custom.includes('{url}') ? custom.replace('{url}', encodeURIComponent(u)) : custom + encodeURIComponent(u) });
+    }
+    if (/^https?:$/.test(location.protocol)) {
+      list.push({ key: 'same-origin', fn: u => `/api/yf?url=${encodeURIComponent(u)}` });
+    }
+    list.push(
+      { key: 'allorigins', fn: u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` },
+      { key: 'codetabs',   fn: u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}` },
+      { key: 'corsproxy',  fn: u => `https://corsproxy.io/?url=${encodeURIComponent(u)}` }
+    );
+    if (this._good) {
+      const i = list.findIndex(p => p.key === this._good);
+      if (i > 0) list.unshift(list.splice(i, 1)[0]);
+    }
+    return list;
+  },
+
+  // 프록시를 순차 시도해 JSON 반환. 전부 실패하면 throw (네트워크 오류)
+  async _fetchJSON(targetUrl) {
+    if (Date.now() < this._deadUntil) throw this._deadErr;
     let lastErr;
-    for (const proxyFn of this.PROXIES) {
+    for (const p of this._proxies()) {
       try {
-        const url = proxyFn(targetUrl);
-        const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
-        if (!r.ok) { lastErr = new Error(`HTTP ${r.status}`); continue; }
-        const j = await r.json();
-        const result = j?.chart?.result?.[0];
-        if (result) return result;
-        const apiErr = j?.chart?.error?.description;
-        if (apiErr) throw new Error(apiErr);  // 데이터 없음은 진짜 에러
-        lastErr = new Error('result 없음');
+        const r = await fetch(p.fn(targetUrl), { signal: AbortSignal.timeout(9000) });
+        let j = null;
+        try { j = await r.json(); } catch {}
+        // Yahoo 는 심볼 없음에도 404 + JSON 을 돌려줌 → JSON 구조가 맞으면 프록시 성공으로 간주
+        if (j && (j.chart || j.timeseries || j.quotes !== undefined || j.finance)) {
+          this._good = p.key; this._deadUntil = 0;
+          return j;
+        }
+        lastErr = new Error(`${p.key}: HTTP ${r.status}`);
       } catch (e) {
-        lastErr = e;
-        if (/description|미발견|not found|invalid|symbol/i.test(e.message)) throw e;
-        // 네트워크/프록시 문제면 다음 프록시 시도
+        lastErr = new Error(`${p.key}: ${e.message}`);
       }
     }
-    throw new Error(`Yahoo Finance ${ticker}: ${lastErr?.message || '전체 프록시 실패'}`);
+    const err = new Error(`프록시 연결 실패 — ${lastErr?.message || '알 수 없음'}`);
+    err.network = true;
+    this._deadErr = err; this._deadUntil = Date.now() + 20000;
+    throw err;
+  },
+
+  async _chart(ticker, range, interval, extra = '') {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}${extra}`;
+    const j = await this._fetchJSON(url);
+    const res = j?.chart?.result?.[0];
+    if (!res) {
+      const e = new Error(j?.chart?.error?.description || '데이터 없음');
+      e.notFound = true;
+      throw e;
+    }
+    return res;
+  },
+
+  // 연결 점검 (스크리너 시작 전)
+  async ping() { await this._chart('AAPL', '1d', '1d'); },
+
+  normalizeTicker(input, market) {
+    const raw = (input || '').trim().toUpperCase();
+    return raw || null;
   },
 
   async loadCandles(ticker, range = '2y', interval = '1d') {
     const cacheKey = `yf_candles_${ticker}_${range}_${interval}`;
     const cached = Cache.get(cacheKey);
     if (cached) return cached;
-    const result = await this._fetchChart(ticker, range, interval);
+    const result = await this._chart(ticker, range, interval);
     const ts = result.timestamp || [];
     const q = result.indicators?.quote?.[0];
-    if (!q) throw new Error(`Yahoo Finance ${ticker}: 캔들 없음`);
+    if (!q) throw new Error(`${ticker}: 캔들 없음`);
     const candles = ts.map((t, i) => ({
-      t: t * 1000,
-      o: q.open[i],
-      h: q.high[i],
-      l: q.low[i],
-      c: q.close[i],
-      v: q.volume[i] || 0
-    })).filter(c => c.o !== null && c.h !== null && c.l !== null && c.c !== null);
-    Cache.set(cacheKey, candles, 30 * 60 * 1000);  // 30분 캐시
+      t: t * 1000, o: q.open[i], h: q.high[i], l: q.low[i], c: q.close[i], v: q.volume[i] || 0
+    })).filter(c => c.o != null && c.h != null && c.l != null && c.c != null);
+    Cache.set(cacheKey, candles, 30 * 60 * 1000);
     return candles;
   },
 
+  // 메타(현재가/52주/통화/거래소). 심볼 없음 → null, 네트워크 오류 → throw
   async loadMeta(ticker) {
     const cacheKey = `yf_meta_${ticker}`;
     const cached = Cache.get(cacheKey);
     if (cached) return cached;
     try {
-      const result = await this._fetchChart(ticker, '1d', '1d');
-      const meta = result.meta || null;
+      const res = await this._chart(ticker, '1d', '1d');
+      const meta = res.meta || null;
       if (meta) Cache.set(cacheKey, meta, 10 * 60 * 1000);
       return meta;
-    } catch (e) { return null; }
-  },
-
-  // 한국 주식: .KS 실패 시 .KQ 재시도
-  async loadCandlesKR(rawTicker, range = '2y') {
-    if (!/^\d{6}$/.test(rawTicker)) {
-      return this.loadCandles(rawTicker.includes('.') ? rawTicker : rawTicker + '.KS', range);
-    }
-    try { return await this.loadCandles(rawTicker + '.KS', range); }
-    catch (e1) {
-      try { return await this.loadCandles(rawTicker + '.KQ', range); }
-      catch (e2) { throw new Error(`한국 주식 ${rawTicker}: 코스피·코스닥 모두 미발견`); }
+    } catch (e) {
+      if (e.notFound) return null;
+      throw e;
     }
   },
 
-  async loadMetaKR(rawTicker) {
-    if (!/^\d{6}$/.test(rawTicker)) {
-      return this.loadMeta(rawTicker.includes('.') ? rawTicker : rawTicker + '.KS');
+  // ── 한국: 6자리 코드 → .KS(코스피) / .KQ(코스닥) 자동 판별 ───────
+  async resolveKR(raw) {
+    raw = (raw || '').trim().toUpperCase();
+    if (!/^\d{6}$/.test(raw)) return raw.includes('.') ? raw : raw + '.KS';
+    if (this._krMap[raw]) return this._krMap[raw];
+    const stored = Cache.get(`yf_kr_sfx_${raw}`);
+    if (stored) { this._krMap[raw] = raw + stored; return raw + stored; }
+    // Yahoo 는 틀린 접미사(.KS↔.KQ)로 조회해도 과거에 멈춘 가짜 시세를 돌려주므로,
+    // 둘 다 조회해서 시세 시각(regularMarketTime)이 가장 최근인 쪽을 선택한다.
+    const [ks, kq] = await Promise.all([this.loadMeta(raw + '.KS'), this.loadMeta(raw + '.KQ')]); // 네트워크 오류는 그대로 throw
+    const tKS = ks?.regularMarketTime || 0, tKQ = kq?.regularMarketTime || 0;
+    if (!tKS && !tKQ) {
+      const e = new Error(`${raw}: 코스피/코스닥에 없는 종목코드`);
+      e.notFound = true;
+      throw e;
     }
-    let m = await this.loadMeta(rawTicker + '.KS');
-    if (!m) m = await this.loadMeta(rawTicker + '.KQ');
-    return m;
+    const sfx = tKS >= tKQ ? '.KS' : '.KQ';
+    this._krMap[raw] = raw + sfx;
+    Cache.set(`yf_kr_sfx_${raw}`, sfx, 30 * 24 * 3600 * 1000);
+    return raw + sfx;
   },
+  async loadCandlesKR(raw, range = '2y') { return this.loadCandles(await this.resolveKR(raw), range); },
+  async loadMetaKR(raw)                  { return this.loadMeta(await this.resolveKR(raw)); },
+  async loadFundamentalsKR(raw)          { return this.loadFundamentals(await this.resolveKR(raw)); },
 
-  // ── 펀더멘털 (quoteSummary) — 다중 모듈 일괄 요청 ─────────────────
-  // 야후가 anti-scraping crumb 요구해서 프록시 통과율 낮음 — 실패해도 graceful
-  FUND_MODULES: [
-    'price',
-    'summaryDetail',
-    'defaultKeyStatistics',
-    'financialData',
-    'assetProfile',
-    'calendarEvents'
+  // ── 펀더멘털 (crumb 불필요 엔드포인트 3종 조합) ─────────────────
+  TS_TYPES: [
+    'trailingPeRatio', 'trailingForwardPeRatio', 'trailingPegRatio', 'trailingPbRatio', 'trailingPsRatio',
+    'trailingEnterprisesValueEBITDARatio', 'trailingMarketCap',
+    'trailingTotalRevenue', 'trailingNetIncome', 'trailingOperatingIncome', 'trailingGrossProfit',
+    'trailingFreeCashFlow', 'trailingDilutedEPS',
+    'quarterlyStockholdersEquity', 'quarterlyTotalDebt', 'quarterlyTotalAssets',
+    'quarterlyCashAndCashEquivalents', 'quarterlyCurrentAssets', 'quarterlyCurrentLiabilities',
+    'quarterlyOrdinarySharesNumber', 'annualTotalRevenue', 'annualDilutedEPS'
   ],
 
-  async _fetchQuoteSummary(ticker) {
-    const modules = this.FUND_MODULES.join(',');
-    const targetUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=${modules}`;
-    let lastErr;
-    for (const proxyFn of this.PROXIES) {
-      try {
-        const url = proxyFn(targetUrl);
-        const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
-        if (!r.ok) { lastErr = new Error(`HTTP ${r.status}`); continue; }
-        const j = await r.json();
-        const result = j?.quoteSummary?.result?.[0];
-        if (result) return result;
-        const apiErr = j?.quoteSummary?.error?.description;
-        if (apiErr) throw new Error(apiErr);
-        lastErr = new Error('result 없음');
-      } catch (e) {
-        lastErr = e;
-        if (/not found|invalid|symbol/i.test(e.message)) throw e;
-      }
-    }
-    throw new Error(`quoteSummary ${ticker}: ${lastErr?.message || '전체 프록시 실패'}`);
-  },
-
   async loadFundamentals(ticker) {
-    const cacheKey = `yf_fund_${ticker}`;
+    const cacheKey = `yf_fund2_${ticker}`;
     const cached = Cache.get(cacheKey);
     if (cached) return cached;
-    try {
-      const result = await this._fetchQuoteSummary(ticker);
-      if (!result) return null;
-      // raw 값 추출 헬퍼 (Yahoo는 { raw, fmt } 객체 반환)
-      const rv = (x) => x?.raw ?? null;
-      const fv = (x) => x?.fmt ?? null;
-      const sd = result.summaryDetail || {};
-      const ks = result.defaultKeyStatistics || {};
-      const fd = result.financialData || {};
-      const ap = result.assetProfile || {};
-      const pr = result.price || {};
-      const ce = result.calendarEvents || {};
-      const fund = {
-        // 기본
-        longName: pr.longName || pr.shortName || null,
-        sector: ap.sector || null,
-        industry: ap.industry || null,
-        country: ap.country || null,
-        website: ap.website || null,
-        summary: ap.longBusinessSummary || null,
-        marketCap: rv(pr.marketCap),
-        currency: pr.currency || null,
-        // 밸류에이션
-        trailingPE: rv(sd.trailingPE),
-        forwardPE: rv(sd.forwardPE) || rv(ks.forwardPE),
-        pegRatio: rv(ks.pegRatio),
-        priceToBook: rv(ks.priceToBook),
-        priceToSales: rv(sd.priceToSalesTrailing12Months),
-        enterpriseToEbitda: rv(ks.enterpriseToEbitda),
-        // 수익성·재무
-        profitMargin: rv(fd.profitMargins) || rv(ks.profitMargins),
-        operatingMargin: rv(fd.operatingMargins),
-        grossMargin: rv(fd.grossMargins),
-        returnOnEquity: rv(fd.returnOnEquity),
-        returnOnAssets: rv(fd.returnOnAssets),
-        debtToEquity: rv(fd.debtToEquity),
-        currentRatio: rv(fd.currentRatio),
-        freeCashflow: rv(fd.freeCashflow),
-        totalCash: rv(fd.totalCash),
-        // 성장성
-        revenueGrowth: rv(fd.revenueGrowth),
-        earningsGrowth: rv(fd.earningsGrowth),
-        // 배당
-        dividendYield: rv(sd.dividendYield) ?? rv(sd.trailingAnnualDividendYield),
-        dividendRate: rv(sd.dividendRate),
-        payoutRatio: rv(sd.payoutRatio),
-        exDividendDate: rv(sd.exDividendDate),
-        // 위험
-        beta: rv(sd.beta) || rv(ks.beta),
-        shortPercentOfFloat: rv(ks.shortPercentOfFloat),
-        shortRatio: rv(ks.shortRatio),
-        sharesShort: rv(ks.sharesShort),
-        // 52주 범위 (meta보다 정확)
-        fiftyTwoWeekHigh: rv(sd.fiftyTwoWeekHigh),
-        fiftyTwoWeekLow: rv(sd.fiftyTwoWeekLow),
-        // 거래량
-        avgVolume: rv(sd.averageVolume),
-        avgVolume10d: rv(sd.averageDailyVolume10Day),
-        // 이벤트
-        earningsTimestamp: ce?.earnings?.earningsDate?.[0]?.raw || null,
-        // EPS/매출
-        trailingEps: rv(ks.trailingEps),
-        forwardEps: rv(ks.forwardEps),
-        totalRevenue: rv(fd.totalRevenue),
-        revenuePerShare: rv(fd.revenuePerShare),
-        // 분석가 의견
-        recommendationKey: fd.recommendationKey || null,  // strongBuy/buy/hold/sell/strongSell
-        recommendationMean: rv(fd.recommendationMean),
-        targetMeanPrice: rv(fd.targetMeanPrice),
-        numberOfAnalystOpinions: rv(fd.numberOfAnalystOpinions)
-      };
-      Cache.set(cacheKey, fund, 6 * 60 * 60 * 1000);  // 6시간 캐시
-      return fund;
-    } catch (e) {
-      log(`펀더멘털 페치 실패 (${ticker}): ${e.message}`);
+
+    const now = Math.floor(Date.now() / 1000);
+    const tsUrl = `https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(ticker)}`
+      + `?type=${this.TS_TYPES.join(',')}&period1=${now - 4 * 365 * 86400}&period2=${now + 86400}&merge=false`;
+    const searchUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(ticker)}&quotesCount=3&newsCount=0`;
+
+    const [tsR, divR, searchR] = await Promise.allSettled([
+      this._fetchJSON(tsUrl),
+      this._chart(ticker, '1y', '1mo', '&events=div'),
+      this._fetchJSON(searchUrl)
+    ]);
+    // 세 요청 모두 네트워크 실패면 null (호출자가 안내)
+    if (tsR.status === 'rejected' && divR.status === 'rejected' && searchR.status === 'rejected') {
+      log(`펀더멘털 페치 실패 (${ticker}): ${tsR.reason?.message}`);
       return null;
     }
-  },
 
-  async loadFundamentalsKR(rawTicker) {
-    if (!/^\d{6}$/.test(rawTicker)) {
-      return this.loadFundamentals(rawTicker.includes('.') ? rawTicker : rawTicker + '.KS');
+    // 시계열 헬퍼: 오름차순 [{d, v}]
+    const res = tsR.status === 'fulfilled' ? (tsR.value?.timeseries?.result || []) : [];
+    const series = (t) => {
+      const x = res.find(r => r.meta?.type?.[0] === t);
+      const a = (x?.[t] || []).filter(e => e && e.reportedValue && e.reportedValue.raw != null);
+      return a.map(e => ({ d: e.asOfDate, v: e.reportedValue.raw })).sort((p, q) => p.d < q.d ? -1 : 1);
+    };
+    const last = (t) => { const s = series(t); return s.length ? s[s.length - 1].v : null; };
+    const growth = (t) => {
+      const s = series(t);
+      if (s.length < 2) return null;
+      const cur = s[s.length - 1].v, prev = s[s.length - 2].v;
+      return prev > 0 ? cur / prev - 1 : null;
+    };
+    const ratio = (a, b) => (a != null && b != null && b !== 0) ? a / b : null;
+
+    const rev = last('trailingTotalRevenue');
+    const ni = last('trailingNetIncome');
+    const equity = last('quarterlyStockholdersEquity');
+    const debt = last('quarterlyTotalDebt');
+    const eps = last('trailingDilutedEPS');
+    const shares = last('quarterlyOrdinarySharesNumber');
+
+    // 배당: 최근 12개월 합계 / 현재가
+    let dividendRate = null, dividendYield = null, exDividendDate = null, payoutRatio = null;
+    let w52h = null, w52l = null, price = null, currency = null, longName = null;
+    if (divR.status === 'fulfilled') {
+      const m = divR.value.meta || {};
+      price = m.regularMarketPrice ?? null;
+      w52h = m.fiftyTwoWeekHigh ?? null; w52l = m.fiftyTwoWeekLow ?? null;
+      currency = m.currency || null; longName = m.longName || m.shortName || null;
+      const divs = Object.values(divR.value.events?.dividends || {});
+      if (divs.length) {
+        dividendRate = divs.reduce((a, d) => a + (d.amount || 0), 0);
+        exDividendDate = Math.max(...divs.map(d => d.date));
+        if (price) dividendYield = dividendRate / price;
+        if (eps && eps > 0) payoutRatio = dividendRate / eps;
+      }
     }
-    let f = await this.loadFundamentals(rawTicker + '.KS');
-    if (!f) f = await this.loadFundamentals(rawTicker + '.KQ');
-    return f;
+    // 업종/회사명
+    let sector = null, industry = null;
+    if (searchR.status === 'fulfilled') {
+      const q = (searchR.value.quotes || []).find(x => x.symbol === ticker) || null;
+      if (q) { sector = q.sectorDisp || q.sector || null; industry = q.industryDisp || q.industry || null; longName = q.longname || q.shortname || longName; }
+    }
+
+    const fund = {
+      longName, sector, industry, country: null, website: null, summary: null,
+      marketCap: last('trailingMarketCap'), currency,
+      trailingPE: last('trailingPeRatio'), forwardPE: last('trailingForwardPeRatio'),
+      pegRatio: last('trailingPegRatio'), priceToBook: last('trailingPbRatio'),
+      priceToSales: last('trailingPsRatio'), enterpriseToEbitda: last('trailingEnterprisesValueEBITDARatio'),
+      profitMargin: ratio(ni, rev), operatingMargin: ratio(last('trailingOperatingIncome'), rev),
+      grossMargin: ratio(last('trailingGrossProfit'), rev),
+      returnOnEquity: equity > 0 ? ratio(ni, equity) : null,
+      returnOnAssets: ratio(ni, last('quarterlyTotalAssets')),
+      debtToEquity: equity > 0 && debt != null ? (debt / equity) * 100 : null,
+      currentRatio: ratio(last('quarterlyCurrentAssets'), last('quarterlyCurrentLiabilities')),
+      freeCashflow: last('trailingFreeCashFlow'), totalCash: last('quarterlyCashAndCashEquivalents'),
+      revenueGrowth: growth('annualTotalRevenue'), earningsGrowth: growth('annualDilutedEPS'),
+      dividendYield, dividendRate, payoutRatio, exDividendDate,
+      // crumb 필요 항목 — 제공 불가
+      beta: null, shortPercentOfFloat: null, shortRatio: null, sharesShort: null,
+      fiftyTwoWeekHigh: w52h, fiftyTwoWeekLow: w52l,
+      avgVolume: null, avgVolume10d: null, earningsTimestamp: null,
+      trailingEps: eps, forwardEps: null, totalRevenue: rev, revenuePerShare: ratio(rev, shares),
+      recommendationKey: null, recommendationMean: null, targetMeanPrice: null, numberOfAnalystOpinions: null
+    };
+    Cache.set(cacheKey, fund, 6 * 60 * 60 * 1000);
+    return fund;
   }
 };
 
@@ -3254,7 +3275,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80, opts = {}) {
   const fibInline = fibRange > 0 ? FIB_RATIOS.map((r, i) => {
     const fp = fibHigh - r * fibRange;
     const fy = toY(fp);
-    const txt = fp.toPrecision(4);
+    const txt = fmtAxisPrice(fp);
     const labelW = txt.length * 6.5 + 10;
     const lx = w - labelW - 4;
     return `<rect id="fib-rect-${i}" data-fp="${fp}" x="${lx}" y="${(fy - 7).toFixed(1)}" width="${labelW}" height="13" fill="#0b0e14" opacity="0.85" rx="2" stroke="${FIB_COLORS[i]}" stroke-width="0.7"/>
@@ -3272,7 +3293,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80, opts = {}) {
       rows += `
         <line x1="${boxX + 8}" y1="${y - 3}" x2="${boxX + 26}" y2="${y - 3}" stroke="${FIB_COLORS[i]}" stroke-width="2" stroke-dasharray="4,3"/>
         <text x="${boxX + 32}" y="${y}" fill="${FIB_COLORS[i]}" font-size="11" font-weight="700">Fib ${r}</text>
-        <text x="${boxX + boxW - 8}" y="${y}" fill="${FIB_COLORS[i]}" font-size="11" font-weight="700" text-anchor="end" font-family="monospace">${fp.toPrecision(4)}</text>`;
+        <text x="${boxX + boxW - 8}" y="${y}" fill="${FIB_COLORS[i]}" font-size="11" font-weight="700" text-anchor="end" font-family="monospace">${fmtAxisPrice(fp)}</text>`;
     });
     // 드래그 가능한 그룹으로 래핑 (style:cursor + transform 으로 이동)
     return `<g id="fib-panel" transform="translate(0,0)" style="cursor:grab;">
@@ -3308,7 +3329,7 @@ function bigCandleSVG(candles, w = 1100, ch = 280, vh = 80, opts = {}) {
     const y = ch - t * ch;
     const p = minP + t * rangeP;
     const showLabel = y > 90; // 범례(y 6~82) 영역 회피
-    return `<line x1="0" y1="${y}" x2="${w}" y2="${y}" stroke="#243045" stroke-width="0.5" opacity="0.5"/>${showLabel ? `<text id="grid-label-${i}" x="6" y="${y-3}" fill="#cbd5e1" font-size="11" font-weight="600">${p.toPrecision(4)}</text>` : ''}`;
+    return `<line x1="0" y1="${y}" x2="${w}" y2="${y}" stroke="#243045" stroke-width="0.5" opacity="0.5"/>${showLabel ? `<text id="grid-label-${i}" x="6" y="${y-3}" fill="#cbd5e1" font-size="11" font-weight="600">${fmtAxisPrice(p)}</text>` : ''}`;
   }).join('');
 
   // RSI 패널
@@ -3681,12 +3702,13 @@ function setupChartZoom() {
     }
 
     // 격자 라벨 텍스트 업데이트 (현재 가시 범위 기준)
+    // grid-label-i 는 아래(i=0, 최저가)에서 위(i=4, 최고가) 순서 — 렌더링의 t 와 동일하게 vMinP 에서 올라가야 함
     const visRange = vMaxP - vMinP;
     [0, 0.25, 0.5, 0.75, 1].forEach((t, i) => {
       const lbl = gridLabels[i];
       if (!lbl) return;
-      const p = vMaxP - t * visRange;
-      lbl.textContent = p.toPrecision(4);
+      const p = vMinP + t * visRange;
+      lbl.textContent = fmtAxisPrice(p);
     });
 
     // Fib 인라인 라벨 Y 위치 업데이트 (price → screen y)
@@ -3739,7 +3761,7 @@ function setupChartZoom() {
   const tipV     = document.getElementById('ch-tip-v');
   const tipChg   = document.getElementById('ch-tip-chg');
 
-  const fmtP = p => p >= 1 ? p.toFixed(3) : p >= 0.01 ? p.toFixed(5) : p.toExponential(2);
+  const fmtP = p => p >= 1000 ? Math.round(p).toLocaleString('en-US') : p >= 1 ? p.toFixed(3) : p >= 0.01 ? p.toFixed(5) : p.toExponential(2);
   const fmtVol = v => v >= 1e9 ? (v/1e9).toFixed(2)+'B' : v >= 1e6 ? (v/1e6).toFixed(2)+'M' : v >= 1e3 ? (v/1e3).toFixed(1)+'K' : v.toFixed(0);
 
   const updateCrosshair = (e) => {
@@ -3978,23 +4000,16 @@ async function diagnoseStock(input) {
   $('diagBtn').disabled = true; $('diagBtn').textContent = '...';
 
   try {
-    let candles, meta, fundamentals;
-    if (market === 'kr-stock') {
-      [candles, meta, fundamentals] = await Promise.all([
-        YahooFinance.loadCandlesKR(rawInput),
-        YahooFinance.loadMetaKR(rawInput),
-        YahooFinance.loadFundamentalsKR(rawInput)
-      ]);
-      displayTicker = meta?.symbol || rawInput;
-    } else {
-      const ticker = YahooFinance.normalizeTicker(rawInput, market);
-      [candles, meta, fundamentals] = await Promise.all([
-        YahooFinance.loadCandles(ticker),
-        YahooFinance.loadMeta(ticker),
-        YahooFinance.loadFundamentals(ticker)
-      ]);
-      displayTicker = ticker;
-    }
+    // 한국: 코스피(.KS)/코스닥(.KQ) 먼저 판별 → 이후 같은 티커로 병렬 페치
+    const ticker = market === 'kr-stock'
+      ? await YahooFinance.resolveKR(rawInput)
+      : YahooFinance.normalizeTicker(rawInput, market);
+    const [candles, meta, fundamentals] = await Promise.all([
+      YahooFinance.loadCandles(ticker),
+      YahooFinance.loadMeta(ticker),
+      YahooFinance.loadFundamentals(ticker).catch(() => null)
+    ]);
+    displayTicker = ticker;
 
     if (!candles || candles.length < 30) {
       alert(`${rawInput}: 캔들 데이터 부족 (${candles?.length || 0}개)`);
@@ -4009,7 +4024,10 @@ async function diagnoseStock(input) {
     setStatus(`${displayTicker} 진단 완료 — ${candles.length}개 캔들${fundNote}`);
     log(`주식 진단 완료: ${displayTicker} · ${candles.length}d${fundNote}`);
   } catch (e) {
-    alert(`${rawInput} 진단 실패: ${e.message}`);
+    const hint = e.network
+      ? '\n\n⚙ 프록시 버튼으로 본인 프록시(Cloudflare Worker/Vercel)를 등록하세요. 설정 방법은 PROXY.md 참고.'
+      : '';
+    alert(`${rawInput} 진단 실패: ${e.message}${hint}`);
     setStatus(`진단 실패 — ${e.message}`);
     log(`주식 진단 오류: ${e.message}`);
   } finally {
@@ -4038,20 +4056,33 @@ async function runStockScan() {
 
   state.stockRows = [];
   state.stockRowMap = new Map();
+  render();
+
+  // 시작 전 연결 점검 — 프록시가 전부 죽어 있으면 수십 번 헛돌지 않고 바로 안내
+  try {
+    await YahooFinance.ping();
+  } catch (e) {
+    state.scanning = false;
+    scanBtn.disabled = false;
+    scanBtn.textContent = '주식 스크리너';
+    setStatus(`스크리닝 중단 — ${e.message}`);
+    log(`주식 스크리너 중단: ${e.message}`);
+    alert(`Yahoo Finance에 연결할 수 없습니다.\n(${e.message})\n\n무료 공용 프록시가 막힌 상태입니다.\n⚙ 프록시 버튼으로 본인 프록시(Cloudflare Worker/Vercel)를 등록하세요.\n설정 방법은 PROXY.md 참고.`);
+    return;
+  }
 
   let done = 0, failed = 0;
-  const CONCURRENCY = 6;
+  const CONCURRENCY = 4;
 
   async function processOne([ticker, name]) {
     try {
-      const yfTicker = isKR
-        ? (/^\d{6}$/.test(ticker) ? ticker : ticker)
-        : ticker;
+      // 한국은 코스피/코스닥 판별 후 같은 티커로 조회
+      const yfTicker = isKR ? await YahooFinance.resolveKR(ticker) : ticker;
       // 펀더멘털은 항상, 캔들은 모멘텀 카테고리에만
       const [fund, candles, meta] = await Promise.all([
-        isKR ? YahooFinance.loadFundamentalsKR(yfTicker) : YahooFinance.loadFundamentals(yfTicker),
-        needCandles ? (isKR ? YahooFinance.loadCandlesKR(yfTicker, '1y') : YahooFinance.loadCandles(yfTicker, '1y')) : Promise.resolve(null),
-        isKR ? YahooFinance.loadMetaKR(yfTicker) : YahooFinance.loadMeta(yfTicker)
+        YahooFinance.loadFundamentals(yfTicker).catch(() => null),
+        needCandles ? YahooFinance.loadCandles(yfTicker, '1y') : Promise.resolve(null),
+        YahooFinance.loadMeta(yfTicker)
       ]);
 
       if (!fund && !candles && !meta) { failed++; return; }
@@ -4072,21 +4103,22 @@ async function runStockScan() {
           const cur = meta?.regularMarketPrice ?? cs[cs.length - 1].c;
           return prev ? ((cur - prev) / prev) * 100 : 0;
         })(),
+        // 캔들 없이(가치/성장/배당) 만든 행은 14일 수익률을 알 수 없음 → null ('-' 표시)
         rise14: (() => {
-          if (cs.length < 15) return 0;
+          if (!candles || cs.length < 15) return null;
           const last = cs[cs.length - 1].c;
           const ago = cs[Math.max(0, cs.length - 15)].c;
           return ((last - ago) / ago) * 100;
         })(),
         w52high: (() => {
-          if (cs.length < 30) return fund?.fiftyTwoWeekHigh ?? cs[cs.length-1]?.c;
-          const recent = cs.slice(-252);
-          return Math.max(...recent.map(c => c.h), fund?.fiftyTwoWeekHigh ?? 0);
+          const m52 = meta?.fiftyTwoWeekHigh ?? fund?.fiftyTwoWeekHigh ?? null;
+          if (!candles || cs.length < 30) return m52 ?? cs[cs.length-1]?.c;
+          return Math.max(...cs.slice(-252).map(c => c.h), m52 ?? 0);
         })(),
         w52low: (() => {
-          if (cs.length < 30) return fund?.fiftyTwoWeekLow ?? cs[cs.length-1]?.c;
-          const recent = cs.slice(-252);
-          return Math.min(...recent.map(c => c.l), fund?.fiftyTwoWeekLow ?? Infinity);
+          const m52 = meta?.fiftyTwoWeekLow ?? fund?.fiftyTwoWeekLow ?? null;
+          if (!candles || cs.length < 30) return m52 ?? cs[cs.length-1]?.c;
+          return Math.min(...cs.slice(-252).map(c => c.l), m52 ?? Infinity);
         })(),
         candlesAll: candles,  // 모멘텀일 때만 채워짐
         meta,
@@ -4130,6 +4162,9 @@ async function runStockScan() {
   scanBtn.textContent = '주식 스크리너';
   setStatus(`스크리닝 완료 — ${state.stockRows.length}/${total}종목 (실패 ${failed}) · 카테고리: ${category}`);
   log(`스크리너 완료: ${state.stockRows.length}건`);
+  if (state.stockRows.length === 0) {
+    alert('스크리닝 결과가 0건입니다. 프록시 연결이 불안정할 수 있습니다.\n⚙ 프록시 버튼으로 본인 프록시를 등록하세요. (PROXY.md 참고)');
+  }
   state.sortBy = 'score';
   state.sortDir = 'desc';
   render();
@@ -4173,7 +4208,7 @@ function renderStockTable() {
     const rowCls = r.score >= 70 ? 'score-high' : '';
     const grade = stockGradeLabel(r.score);
     const ch24Cls = r.change24 >= 0 ? 'pos' : 'neg';
-    const ch14Cls = r.rise14 >= 0 ? 'pos' : 'neg';
+    const ch14Cls = r.rise14 == null ? '' : r.rise14 >= 0 ? 'pos' : 'neg';
     const sector = (f.sector || '').slice(0, 14);
     return `<tr class="${rowCls}" data-sym="${r.symbol}" style="cursor:pointer;">
       <td><b>${r.symbol}</b></td>
@@ -4181,7 +4216,7 @@ function renderStockTable() {
       <td style="font-size:11px;">${sector}</td>
       <td>${fmtP(r.price)}</td>
       <td class="${ch24Cls}">${r.change24 >= 0 ? '+' : ''}${r.change24.toFixed(2)}%</td>
-      <td class="${ch14Cls}">${r.rise14 >= 0 ? '+' : ''}${r.rise14.toFixed(1)}%</td>
+      <td class="${ch14Cls}">${r.rise14 == null ? '-' : (r.rise14 >= 0 ? '+' : '') + r.rise14.toFixed(1) + '%'}</td>
       <td>${fmtMC(f.marketCap)}</td>
       <td>${fmtRat(f.trailingPE, 1)}</td>
       <td>${fmtRat(f.priceToBook, 2)}</td>
@@ -4190,7 +4225,7 @@ function renderStockTable() {
       <td>${fmtPct(f.earningsGrowth, 1)}</td>
       <td>${fmtPct(f.dividendYield, 2)}</td>
       <td>${fmtRat(f.debtToEquity, 0)}</td>
-      <td>${fmtRat(f.beta, 2)}</td>
+      <td>${fmtRat(f.enterpriseToEbitda, 1)}</td>
       <td>${r.w52pos != null ? r.w52pos.toFixed(0) + '%' : '-'}</td>
       <td><span class="score ${scoreCls}">${r.score}</span></td>
       <td><b style="color:${grade.color};">${grade.g}</b></td>
@@ -4198,10 +4233,25 @@ function renderStockTable() {
   }).join('');
 
   bodyEl.querySelectorAll('tr[data-sym]').forEach(tr => {
-    tr.addEventListener('click', () => {
+    tr.addEventListener('click', async () => {
       const sym = tr.getAttribute('data-sym');
       const r = state.stockRowMap.get(sym);
-      if (r) openStockModal(r);
+      if (!r) return;
+      if (!r.candlesAll) {
+        // 가치/성장/배당 스크리닝은 캔들 없이 만든 행 → 모달용 차트를 지금 불러옴
+        setStatus(`${sym} 차트 로딩 중...`);
+        try {
+          r.candlesAll = await YahooFinance.loadCandles(r.symbol);
+          const cs = r.candlesAll;
+          if (cs.length >= 15) r.rise14 = ((cs[cs.length - 1].c - cs[cs.length - 15].c) / cs[cs.length - 15].c) * 100;
+          r.ageDays = cs.length;
+        } catch (e) {
+          alert(`${sym} 차트 로딩 실패: ${e.message}`);
+          setStatus(`차트 로딩 실패 — ${e.message}`);
+          return;
+        }
+      }
+      openStockModal(r);
     });
   });
 }
@@ -4264,7 +4314,7 @@ function openStockModal(r) {
     <span style="margin-left:8px; font-size:13px; color:${ch24Color}; font-weight:600;">${ch24Str}</span>${extraPrice}`;
   const sector = r.fundamentals?.sector ? ` · ${r.fundamentals.sector}${r.fundamentals.industry ? ` / ${r.fundamentals.industry}` : ''}` : '';
   $('m_meta').innerHTML = `
-    상장 ${r.ageDays ?? '?'}일 데이터 · 14d ${r.rise14 >= 0 ? '+' : ''}${r.rise14.toFixed(2)}% · 52w ${fmtStockPrice(r.w52low, r.currency)}~${fmtStockPrice(r.w52high, r.currency)}${sector}
+    상장 ${r.ageDays ?? '?'}일 데이터 · 14d ${r.rise14 == null ? '-' : (r.rise14 >= 0 ? '+' : '') + r.rise14.toFixed(2) + '%'} · 52w ${fmtStockPrice(r.w52low, r.currency)}~${fmtStockPrice(r.w52high, r.currency)}${sector}
   `;
   $('tab-diagnose').innerHTML = renderStockDiagnosisTab(r);
   $('tab-price').innerHTML = '';
@@ -4328,7 +4378,7 @@ function renderStockDiagnosisTab(r) {
         <div class="stat-card"><div class="stat-label">24h 변동</div><div class="stat-value ${r.change24 >= 0 ? 'pos' : 'neg'}">${r.change24 >= 0 ? '+' : ''}${r.change24.toFixed(2)}%</div></div>
         <div class="stat-card"><div class="stat-label">14일 상승</div><div class="stat-value ${r.rise14 >= 0 ? 'pos' : 'neg'}">${r.rise14 >= 0 ? '+' : ''}${r.rise14.toFixed(2)}%</div></div>
         <div class="stat-card"><div class="stat-label">시가총액</div><div class="stat-value">${fmtBigMoney(f?.marketCap)}</div></div>
-        <div class="stat-card"><div class="stat-label">평균 거래량 (10d)</div><div class="stat-value">${fmtVolBig(f?.avgVolume10d || f?.avgVolume)}</div></div>
+        <div class="stat-card"><div class="stat-label">당일 거래량</div><div class="stat-value">${fmtVolBig(m.regularMarketVolume)}</div></div>
         <div class="stat-card"><div class="stat-label">거래소</div><div class="stat-value" style="font-size:13px;">${exchange} ${tz}</div></div>
         <div class="stat-card"><div class="stat-label">데이터 기간</div><div class="stat-value">${r.ageDays}일</div></div>
         <div class="stat-card"><div class="stat-label">캔들 수</div><div class="stat-value">${r.candlesAll.length}</div></div>
@@ -4372,7 +4422,7 @@ function renderStockDiagnosisTab(r) {
     return krNote + statsGrid + chartBlock + `<div class="diag-section" style="border-left:3px solid #ef4444;">
       <h4 style="color:#fbbf24;">⚠️ 펀더멘털 페치 실패</h4>
       <div class="muted" style="font-size:13px; line-height:1.7;">
-        Yahoo Finance API에서 펀더멘털 데이터를 가져오지 못했습니다. CORS 프록시 문제이거나 종목 코드 미발견일 수 있습니다.<br>
+        Yahoo Finance에서 펀더멘털을 가져오지 못했습니다. 프록시 연결 문제일 가능성이 큽니다 (⚙ 프록시 버튼 / PROXY.md 참고).<br>
         차트와 기본 통계는 정상 표시됩니다.
       </div>
     </div>`;
@@ -4445,13 +4495,10 @@ function renderStockDiagnosisTab(r) {
   // 위험·재무건전성
   const risk = `
     <div class="diag-section">
-      <h4>⚠️ 위험·재무건전성</h4>
+      <h4>⚠️ 재무건전성</h4>
       <div class="stat-grid">
-        <div class="stat-card"><div class="stat-label">베타</div><div class="stat-value ${colorBeta(f.beta)}">${fmtRatio(f.beta)}</div></div>
         <div class="stat-card"><div class="stat-label">부채/자본 (D/E)</div><div class="stat-value ${colorDebt(f.debtToEquity)}">${fmtRatio(f.debtToEquity)}</div></div>
         <div class="stat-card"><div class="stat-label">유동비율</div><div class="stat-value">${fmtRatio(f.currentRatio)}</div></div>
-        <div class="stat-card"><div class="stat-label">공매도 비율</div><div class="stat-value ${colorShort(f.shortPercentOfFloat)}">${fmtPct(f.shortPercentOfFloat)}</div></div>
-        <div class="stat-card"><div class="stat-label">공매도 잔고</div><div class="stat-value">${fmtVolBig(f.sharesShort)}</div></div>
         <div class="stat-card"><div class="stat-label">현금 보유</div><div class="stat-value">${fmtBigMoney(f.totalCash)}</div></div>
       </div>
     </div>`;
@@ -6262,7 +6309,7 @@ function renderPotentialAndPlan(r) {
   const crime = computeCrimeGrade(r);
   const risk = computeRiskProfile(r);
   const plan = computeTradePlan(r, crime);
-  const fmtP = p => p >= 1 ? p.toFixed(3) : p >= 0.01 ? p.toFixed(5) : p.toExponential(2);
+  const fmtP = p => p >= 1000 ? Math.round(p).toLocaleString('en-US') : p >= 1 ? p.toFixed(3) : p >= 0.01 ? p.toFixed(5) : p.toExponential(2);
 
   const factorsHtml = crime.factors.length
     ? crime.factors.map(f => `<span style="display:inline-block; margin:2px 4px 2px 0; padding:2px 8px; background:rgba(255,255,255,.05); border-radius:4px; font-size:11px;">${f}</span>`).join('')
@@ -6665,6 +6712,20 @@ $('scanBtn').addEventListener('click', () => {
   else runStockScan();
 });
 
+$('proxyBtn').addEventListener('click', () => {
+  const cur = YahooFinance.getCustomProxy();
+  const v = prompt(
+    'Yahoo Finance 접속용 프록시 주소를 입력하세요.\n' +
+    '예) https://내-워커.workers.dev/?url=\n' +
+    '    https://내-앱.vercel.app/api/yf?url=\n' +
+    '(주소 뒤에 대상 URL이 자동으로 붙습니다. 비우면 공용 프록시 사용)\n\n' +
+    '설정 방법: PROXY.md', cur);
+  if (v === null) return;
+  YahooFinance.setCustomProxy(v);
+  setStatus(v.trim() ? `프록시 설정됨: ${v.trim()}` : '프록시 해제 — 공용 프록시 사용');
+  log(v.trim() ? `Yahoo 프록시 설정: ${v.trim()}` : 'Yahoo 프록시 해제');
+});
+
 function runDiagnose() {
   const val = $('diagInput').value;
   if (state.market === 'crypto') diagnoseToken(val);
@@ -6695,6 +6756,13 @@ function applyMarketUI() {
     scanBtn.style.display = '';
     scanBtn.textContent = market === 'crypto' ? '스캔 시작' : '주식 스크리너';
   }
+  // 시장이 바뀌면 이전 시장의 스크리너 결과는 비움 (통화/지표가 섞여 보이는 문제 방지)
+  if (state.stockRows.length && state.stockRows[0].market !== market) {
+    state.stockRows = [];
+    state.stockRowMap = new Map();
+  }
+  const proxyBtn = $('proxyBtn');
+  if (proxyBtn) proxyBtn.style.display = market === 'crypto' ? 'none' : '';
   // 주식 카테고리 선택 표시
   const catSel = $('stockCategory');
   if (catSel) catSel.style.display = market === 'crypto' ? 'none' : '';
