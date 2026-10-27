@@ -937,6 +937,20 @@
 <div id="log"></div>
 
 <script>
+// localStorage 접근이 막힌 환경(샌드박스 미리보기/일부 시크릿 모드)에서도 앱이 죽지 않도록 메모리 폴백
+(() => {
+  try { window.localStorage.getItem('__t'); return; } catch (e) {}
+  const mem = new Map();
+  const shim = {
+    getItem: k => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => { mem.set(k, String(v)); },
+    removeItem: k => { mem.delete(k); },
+    clear: () => mem.clear(),
+    key: i => Array.from(mem.keys())[i] ?? null,
+    get length() { return mem.size; }
+  };
+  try { Object.defineProperty(window, 'localStorage', { value: shim, configurable: true }); } catch (e) {}
+})();
 (() => {
 'use strict';
 
